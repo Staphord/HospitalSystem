@@ -1,0 +1,29 @@
+{
+  "realm": "hospital-realm",
+  "enabled": true,
+  "displayName": "Hospital Realm",
+  "clients": [
+    {
+      "clientId": "hospital-api",
+      "name": "Hospital API",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "hospital-api-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:8000/*"],
+      "webOrigins": ["http://localhost:8000"]
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "hospital_user"
+      },
+      {
+        "name": "hospital_admin"
+      }
+    ]
+  }
+}
