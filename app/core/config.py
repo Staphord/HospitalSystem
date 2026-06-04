@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     keycloak_admin_username: str = Field(alias="KEYCLOAK_ADMIN_USERNAME")
     keycloak_admin_password: str = Field(alias="KEYCLOAK_ADMIN_PASSWORD")
     keycloak_introspect: bool = Field(
-        default=False, alias="KEYCLOAK_INTROSPECT")
+        default=True, alias="KEYCLOAK_INTROSPECT")
 
     allowed_origins: str = Field(default="", alias="ALLOWED_ORIGINS")
     default_hospital_id: str = Field(

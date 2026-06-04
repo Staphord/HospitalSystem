@@ -2,16 +2,36 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Generator
+from typing import Generator, Optional
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
 
+_engine: Optional[object] = None
+_SessionLocal: Optional[sessionmaker] = None
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def _init_engine() -> None:
+    global _engine, _SessionLocal
+    if _engine is not None:
+        return
+    _engine = create_engine(settings.database_url, pool_pre_ping=True)
+    _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+
+
+def get_session_local() -> sessionmaker:
+    _init_engine()
+    return _SessionLocal
+
+
+def init_db() -> None:
+    from app.db.base import Base
+    import app.models
+
+    _init_engine()
+    Base.metadata.create_all(bind=_engine)
 
 
 class DatabaseRouter(ABC):
@@ -22,8 +42,7 @@ class DatabaseRouter(ABC):
 
 class DefaultDatabaseRouter(DatabaseRouter):
     def get_session(self, hospital_id: str) -> Session:
-        # Placeholder: route by hospital_id to separate DBs in the future.
-        return SessionLocal()
+        return get_session_local()()
 
 
 _router = DefaultDatabaseRouter()
@@ -36,7 +55,7 @@ class HospitalContext:
 
 
 def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
+    db = get_session_local()()
     try:
         yield db
     finally:

@@ -74,15 +74,20 @@ async def _decode_token(token: str) -> Dict[str, Any]:
             token,
             rsa_key,
             algorithms=["RS256"],
-            audience=settings.keycloak_client_id,
             issuer=_issuer(),
-            options={"verify_aud": True},
+            options={"verify_exp": True, "verify_aud": False},
         )
         return payload
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
@@ -148,7 +153,8 @@ async def get_current_active_user(
 def require_role(role: str):
     async def _role_dependency(user: TokenPayload = Depends(get_current_active_user)) -> TokenPayload:
         roles = user.realm_access.get("roles", []) if user.realm_access else []
-        if role not in roles:
+        allowed = role in roles or "super_admin" in roles
+        if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
@@ -161,12 +167,15 @@ def require_role(role: str):
 async def get_current_hospital_id(
         user: TokenPayload = Depends(get_current_active_user),
         db=Depends(get_db),
-) -> str:
-    try:
-        record = db.query(User).filter(
-            User.keycloak_sub == user.sub).one_or_none()
-        if record and record.hospital_id:
-            return record.hospital_id
-    except Exception:
-        pass
-    return settings.default_hospital_id
+) -> str | None:
+    record = db.query(User).filter(
+        User.keycloak_sub == user.sub).one_or_none()
+    if record and record.hospital_id:
+        return record.hospital_id
+    roles = user.realm_access.get("roles", []) if user.realm_access else []
+    if "super_admin" in roles:
+        return None
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="User is not associated with any hospital",
+    )

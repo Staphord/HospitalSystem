@@ -23,6 +23,9 @@
       },
       {
         "name": "hospital_admin"
+      },
+      {
+        "name": "super_admin"
       }
     ]
   }

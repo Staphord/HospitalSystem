@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from app.core.database import close_hospital_context, get_hospital_context
 from app.core.limiter import limiter
@@ -9,7 +9,10 @@ router = APIRouter()
 
 @router.get("/patients")
 @limiter.limit("30/minute")
-async def list_patients(hospital_id: str = Depends(get_current_hospital_id)) -> dict:
+async def list_patients(
+    request: Request,
+    hospital_id: str = Depends(get_current_hospital_id),
+) -> dict:
     context = get_hospital_context(hospital_id)
     try:
         return {
@@ -26,6 +29,7 @@ async def list_patients(hospital_id: str = Depends(get_current_hospital_id)) -> 
 @router.post("/patients/create")
 @limiter.limit("10/minute")
 async def create_patient(
+    request: Request,
     hospital_id: str = Depends(get_current_hospital_id),
     _user=Depends(require_role("hospital_admin")),
 ) -> dict:

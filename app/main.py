@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -7,12 +9,20 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.api.v1.router import router as api_v1_router
 from app.core.config import settings
 from app.core.limiter import limiter
+from app.core.middleware import AuditLogMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.core.database import init_db
+    init_db()
+    yield
 
 
 docs_url = None if settings.environment == "prod" else "/docs"
 openapi_url = None if settings.environment == "prod" else "/openapi.json"
 
-app = FastAPI(docs_url=docs_url, openapi_url=openapi_url)
+app = FastAPI(docs_url=docs_url, openapi_url=openapi_url, lifespan=lifespan)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -38,6 +48,9 @@ async def security_headers(request: Request, call_next):
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Content-Security-Policy"] = "default-src 'none'"
     return response
+
+
+app.add_middleware(AuditLogMiddleware)
 
 
 app.include_router(api_v1_router, prefix="/api/v1")
