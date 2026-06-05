@@ -1,23 +1,113 @@
-from fastapi import APIRouter, Depends, Request
+import uuid
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.auth.schemas import (
+    ImpersonateRequest,
+    ImpersonateResponse,
     LoginRequest,
     LogoutRequest,
     MFAVerifyRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshRequest,
+    SignupRequest,
+    SignupResponse,
     TokenResponse,
 )
 from app.core.database import get_db
+from app.core.database import get_session_local
 from app.core.limiter import limiter
+from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.core.security import TokenPayload, get_current_active_user
 from app.exceptions import BadRequestError
+from app.models.master import GlobalAuditLog, Tenant
 from app.services import auth as auth_service
+from app.services.impersonation import create_impersonation_token, log_impersonation_event
+from app.services.keycloak_admin import (
+    create_keycloak_user,
+    ensure_roles,
+    set_user_attribute,
+    create_local_user,
+)
 
 public_router = APIRouter()
 router = APIRouter(dependencies=[Depends(get_current_active_user)])
+
+
+@public_router.post("/signup", response_model=SignupResponse, status_code=201)
+@limiter.limit("5/minute")
+async def signup(
+    request: Request,
+    body: SignupRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    tenant_id = f"hosp-{uuid.uuid4().hex[:8]}"
+
+    existing = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail="Tenant already exists")
+
+    from app.services.tenant_service import encrypt_dsn
+    tenant = Tenant(
+        tenant_id=tenant_id,
+        name=body.hospital_name,
+        db_dsn_encrypted=encrypt_dsn(f"postgresql://placeholder@{tenant_id}:5432/{tenant_id}"),
+        status="active",
+        subscription_plan="standard",
+        subscription_start=datetime.now(timezone.utc),
+        subscription_end=datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year + 1),
+        is_active=True,
+    )
+    db.add(tenant)
+    db.commit()
+
+    await ensure_roles(["hospital_user", "hospital_admin"])
+
+    try:
+        kc_sub = await create_keycloak_user(
+            username=body.admin_username,
+            password=body.admin_password,
+            email=body.admin_email,
+            roles=["hospital_admin", "hospital_user"],
+            full_name=body.admin_full_name or None,
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to create admin user: {e}",
+        )
+
+    await set_user_attribute(kc_sub, "tenant_id", tenant_id)
+
+    create_local_user(
+        db=db,
+        keycloak_sub=kc_sub,
+        username=body.admin_username,
+        full_name=body.admin_full_name or None,
+        email=body.admin_email,
+        role="hospital_admin",
+        hospital_id=tenant_id,
+    )
+
+    result = await auth_service.login(
+        username=body.admin_username,
+        password=body.admin_password,
+        db=db,
+    )
+
+    return {
+        "tenant_id": tenant_id,
+        "hospital_name": body.hospital_name,
+        "access_token": result["access_token"],
+        "refresh_token": result["refresh_token"],
+        "expires_in": result["expires_in"],
+        "refresh_expires_in": result["refresh_expires_in"],
+        "token_type": "Bearer",
+    }
 
 
 @public_router.post("/login", response_model=TokenResponse)
@@ -32,6 +122,25 @@ async def login(
         password=body.password,
         db=db,
     )
+
+    ip = request.client.host if request.client else None
+    try:
+        audit_db = get_session_local()()
+        record = GlobalAuditLog(
+            user_sub=result.get("session_id", ""),
+            action="LOGIN",
+            detail=f"User '{body.username}' logged in",
+            ip_address=ip,
+        )
+        audit_db.add(record)
+        audit_db.commit()
+    except Exception:
+        pass
+    finally:
+        if audit_db:
+            audit_db.close()
+
+    result["scope"] = "full"
     return result
 
 
@@ -46,6 +155,7 @@ async def refresh(
         refresh_token=body.refresh_token,
         db=db,
     )
+    result["scope"] = "full"
     return result
 
 
@@ -91,6 +201,23 @@ async def logout(
         db=db,
     )
 
+    ip = request.client.host if request.client else None
+    try:
+        audit_db = get_session_local()()
+        record = GlobalAuditLog(
+            user_sub=user.sub,
+            action="LOGOUT",
+            detail=f"User '{user.preferred_username}' logged out",
+            ip_address=ip,
+        )
+        audit_db.add(record)
+        audit_db.commit()
+    except Exception:
+        pass
+    finally:
+        if audit_db:
+            audit_db.close()
+
 
 @router.post("/logout-all", status_code=204)
 @limiter.limit("10/minute")
@@ -128,3 +255,34 @@ async def mfa_verify(
     if not valid:
         raise BadRequestError("Invalid TOTP code")
     return {"detail": "MFA verified successfully"}
+
+
+@router.post("/impersonate", response_model=ImpersonateResponse)
+@limiter.limit("10/minute")
+async def impersonate(
+    request: Request,
+    body: ImpersonateRequest,
+    user: TokenPayload = Depends(get_current_active_user),
+) -> dict:
+    roles = user.realm_access.get("roles", []) if user.realm_access else []
+    if "super_admin" not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super admins can impersonate tenants",
+        )
+
+    result = create_impersonation_token(
+        super_admin_sub=user.sub,
+        super_admin_username=user.preferred_username or "unknown",
+        target_tenant_id=body.target_tenant_id,
+    )
+
+    ip = request.client.host if request.client else None
+    await log_impersonation_event(
+        action="IMPERSONATION_START",
+        super_admin_sub=user.sub,
+        target_tenant_id=body.target_tenant_id,
+        ip_address=ip,
+    )
+
+    return result

@@ -26,12 +26,29 @@ def get_session_local() -> sessionmaker:
     return _SessionLocal
 
 
+def _migrate_user_table() -> None:
+    from sqlalchemy import inspect, text
+    from app.db.base import Base
+
+    inspector = inspect(_engine)
+    columns = [c["name"] for c in inspector.get_columns("users")]
+    with _engine.connect() as conn:
+        if "username" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR"))
+        if "role" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR"))
+        if "full_name" not in columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR"))
+        conn.commit()
+
+
 def init_db() -> None:
     from app.db.base import Base
     import app.models
 
     _init_engine()
     Base.metadata.create_all(bind=_engine)
+    _migrate_user_table()
 
 
 class DatabaseRouter(ABC):

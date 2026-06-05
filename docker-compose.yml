@@ -1,18 +1,34 @@
 version: "3.8"
 services:
-  db:
+  master-db:
     image: postgres:15
     environment:
       POSTGRES_USER: hospital
       POSTGRES_PASSWORD: hospital
-      POSTGRES_DB: hospital_meta
+      POSTGRES_DB: hospital_master
     ports:
       - "5432:5432"
+    volumes:
+      - master_db_data:/var/lib/postgresql/data
+
+  tenant-db-1:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: tenant1
+      POSTGRES_PASSWORD: tenant1_secret
+      POSTGRES_DB: hospital_tenant_1
+    ports:
+      - "5433:5432"
+    volumes:
+      - tenant1_db_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
 
   keycloak-db:
     image: postgres:15
@@ -21,7 +37,7 @@ services:
       POSTGRES_PASSWORD: keycloak
       POSTGRES_DB: keycloak
     ports:
-      - "5433:5432"
+      - "5434:5432"
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.6.2
@@ -45,12 +61,31 @@ services:
   app:
     build: .
     depends_on:
-      - db
+      - master-db
       - redis
       - keycloak
     environment:
-      DATABASE_URL: postgresql://hospital:hospital@db:5432/hospital_meta
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://hospital:hospital@master-db:5432/hospital_master
+      SECRET_KEY: change_me_to_a_random_secret_32_chars
+      REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://keycloak:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
       KEYCLOAK_CLIENT_SECRET: hospital-api-secret
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "true"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: ZXlKcGMzUWlPaUprYVhOamRXVnpZM0psY3lJc0luTjFZaUk2SWpFaUxDSnVZVzFsSWpvaU1EQWlMQ0pqYldGMFpXNTBYM1I1Y0dVaU9pSXhNREFpTENKemVtRnRaU0k2SWpFd01D
+      IMPERSONATION_TOKEN_TTL: 900
+      SUSPENSION_CHECK_INTERVAL: 86400
+      SUSPENDED_BLOCKLIST_TTL: 3600
+    ports:
+      - "8000:8000"
+
+volumes:
+  master_db_data:
+  tenant1_db_data:
+  redis_data:

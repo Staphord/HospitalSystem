@@ -1,6 +1,6 @@
 fastapi
-uvicorn
-sqlalchemy
+uvicorn[standard]
+sqlalchemy[asyncio]
 alembic
 pydantic[email]
 pydantic-settings
@@ -9,12 +9,14 @@ python-keycloak
 passlib[bcrypt]
 pyotp
 psycopg2-binary
-redis
+asyncpg
+redis[hiredis]
 slowapi
 cachetools
+cryptography
+apscheduler
 pytest
 pytest-asyncio
 httpx
 python-dotenv
 streamlit
- 

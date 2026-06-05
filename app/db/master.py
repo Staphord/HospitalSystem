@@ -1,5 +1,8 @@
+from contextlib import contextmanager
+from typing import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
 
@@ -16,9 +19,14 @@ MasterSessionLocal = sessionmaker(
 )
 
 
-def get_master_session():
+@contextmanager
+def get_master_session() -> Generator[Session, None, None]:
     db = MasterSessionLocal()
     try:
         yield db
     finally:
         db.close()
+
+
+def get_master_db() -> Session:
+    return MasterSessionLocal()

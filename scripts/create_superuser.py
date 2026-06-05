@@ -154,18 +154,22 @@ def create_user(
 
     user_id = kc_admin.get_user_id(username)
     if user_id:
-        kc_admin.update_user(
-            user_id=user_id,
-            payload={
-                "firstName": username.capitalize(),
-                "lastName": "User",
-                "emailVerified": True,
-                "requiredActions": [],
-            },
-        )
+        # Fetch existing user first to preserve all fields (PUT = full replacement)
+        existing_user = kc_admin.get_user(user_id)
+        update_payload = {
+            "firstName": username.capitalize(),
+            "lastName": "User",
+            "email": existing_user.get("email", email),
+            "emailVerified": True,
+            "enabled": existing_user.get("enabled", True),
+            "requiredActions": [],
+        }
+        if hospital_id:
+            update_payload["attributes"] = {"tenant_id": [hospital_id]}
+        kc_admin.update_user(user_id=user_id, payload=update_payload)
         print(f"  User '{username}' already exists in Keycloak (ID: {user_id})")
     else:
-        user_id = kc_admin.create_user({
+        create_payload = {
             "username": username,
             "firstName": username.capitalize(),
             "lastName": "User",
@@ -173,7 +177,10 @@ def create_user(
             "email": email,
             "emailVerified": True,
             "requiredActions": [],
-        })
+        }
+        if hospital_id:
+            create_payload["attributes"] = {"tenant_id": [hospital_id]}
+        user_id = kc_admin.create_user(create_payload)
         print(f"  Created Keycloak user (ID: {user_id})")
 
     kc_admin.set_user_password(user_id=user_id, password=password, temporary=False)

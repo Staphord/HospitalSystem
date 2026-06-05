@@ -1,42 +1,52 @@
-from typing import Dict, Optional
+from __future__ import annotations
+
+from typing import AsyncGenerator
 
 from cachetools import TTLCache
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
-from app.core.tenant import resolve_tenant_db_url
+from app.db.master import get_master_session
 from app.exceptions import TenantNotFoundError
+from app.services.tenant_service import get_tenant_db_dsn
 
-_engine_cache: TTLCache[str, sessionmaker] = TTLCache(
-    maxsize=64, ttl=3600
-)
+_async_engine_cache: TTLCache[str, async_sessionmaker] = TTLCache(maxsize=64, ttl=3600)
+_async_engine_instances: dict[str, object] = {}
 
 
-def _get_tenant_session_factory(tenant_id: str) -> sessionmaker:
-    if tenant_id in _engine_cache:
-        return _engine_cache[tenant_id]
+async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
+    if tenant_id in _async_engine_cache:
+        return _async_engine_cache[tenant_id]
 
-    db_url = resolve_tenant_db_url(tenant_id)
-    if not db_url:
-        raise TenantNotFoundError(f"Tenant '{tenant_id}' not found")
+    from app.db.master import get_master_db
+    db = get_master_db()
+    try:
+        dsn = await get_tenant_db_dsn(db, tenant_id)
+    finally:
+        db.close()
 
-    engine = create_engine(
-        db_url,
+    if not dsn:
+        raise TenantNotFoundError(f"Tenant '{tenant_id}' not found or inactive")
+
+    async_dsn = dsn.replace("postgresql://", "postgresql+asyncpg://")
+    engine = create_async_engine(
+        async_dsn,
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=10,
         pool_recycle=3600,
+        echo=settings.environment == "dev",
     )
-    factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    _engine_cache[tenant_id] = factory
+    factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    _async_engine_cache[tenant_id] = factory
+    _async_engine_instances[tenant_id] = engine
     return factory
 
 
-def get_tenant_db(tenant_id: str) -> Session:
-    factory = _get_tenant_session_factory(tenant_id)
-    db = factory()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_tenant_session(tenant_id: str) -> AsyncGenerator[AsyncSession, None]:
+    factory = await _get_async_session_factory(tenant_id)
+    async with factory() as session:
+        try:
+            yield session
+        finally:
+            await session.close()

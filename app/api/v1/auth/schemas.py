@@ -14,6 +14,8 @@ class TokenResponse(BaseModel):
     token_type: str = "Bearer"
     session_id: str
     not_before_policy: int = 0
+    scope: str = "full"
+    tenant_id: str | None = None
 
 
 class RefreshRequest(BaseModel):
@@ -50,3 +52,34 @@ class MFAStatusResponse(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     code: str | None = None
+
+
+class ImpersonateRequest(BaseModel):
+    target_tenant_id: str = Field(..., min_length=1)
+
+
+class ImpersonateResponse(BaseModel):
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: int
+    scope: str = "readonly"
+    tenant_id: str
+    impersonator: bool = True
+
+
+class SignupRequest(BaseModel):
+    hospital_name: str = Field(..., min_length=1, max_length=255)
+    admin_username: str = Field(..., min_length=3, max_length=255)
+    admin_password: str = Field(..., min_length=8, max_length=128)
+    admin_email: EmailStr
+    admin_full_name: str = Field(default="", max_length=255)
+
+
+class SignupResponse(BaseModel):
+    tenant_id: str
+    hospital_name: str
+    access_token: str
+    refresh_token: str
+    expires_in: int
+    refresh_expires_in: int
+    token_type: str = "Bearer"

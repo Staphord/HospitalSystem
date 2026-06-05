@@ -74,3 +74,20 @@ class MFARequiredError(HTTPException):
             detail=detail,
             headers={"WWW-Authenticate": "Bearer", "X-MFA-Required": "true"},
         )
+
+
+class TenantSuspendedError(HTTPException):
+    def __init__(self, detail: str = "Tenant subscription is suspended") -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "TENANT_SUSPENDED", "message": detail},
+        )
+
+
+class ReadOnlyScopeError(HTTPException):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "READ_ONLY_SCOPE", "message": "Write operations are not allowed in readonly mode"},
+            headers={"X-Impersonation-Banner": "true"},
+        )

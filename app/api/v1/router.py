@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.core.security import get_current_active_user
+from app.core.tenant_auth import get_current_tenant
 from .auth.router import public_router as auth_public_router
 from .auth.router import router as auth_router
 from .reception.router import router as reception_router
@@ -19,7 +20,7 @@ from .endpoints.users import router as users_router
 from .endpoints.patients import router as patients_router
 
 router = APIRouter()
-protected_router = APIRouter(dependencies=[Depends(get_current_active_user)])
+protected_router = APIRouter(dependencies=[Depends(get_current_tenant)])
 
 router.include_router(auth_public_router, prefix="/auth", tags=["auth"])
 router.include_router(health_router, tags=["health"])
