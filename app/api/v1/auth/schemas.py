@@ -75,6 +75,18 @@ class SignupRequest(BaseModel):
     admin_full_name: str = Field(default="", max_length=255)
 
 
+class SuperAdminLoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=50)
+    password: str = Field(..., min_length=1)
+
+
+class SuperAdminTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: int = 1800
+    scope: str = "full"
+
+
 class SignupResponse(BaseModel):
     tenant_id: str
     hospital_name: str

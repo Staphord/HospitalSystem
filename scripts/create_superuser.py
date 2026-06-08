@@ -8,8 +8,10 @@ Usage:
 import argparse
 import asyncio
 import os
+import secrets
 import sys
 
+import bcrypt
 import httpx
 from dotenv import load_dotenv
 from keycloak import KeycloakAdmin
@@ -181,6 +183,8 @@ def create_user(
         if hospital_id:
             create_payload["attributes"] = {"tenant_id": [hospital_id]}
         user_id = kc_admin.create_user(create_payload)
+        # Explicitly clear any auto-added required actions
+        kc_admin.update_user(user_id=user_id, payload=create_payload)
         print(f"  Created Keycloak user (ID: {user_id})")
 
     kc_admin.set_user_password(user_id=user_id, password=password, temporary=False)
@@ -218,6 +222,36 @@ def create_user(
             )
             print(f"  Created local user record for hospital: {hospital_id or 'ALL (super_admin)'}")
 
+        # Insert into super_admins table for super_admin role
+        if "super_admin" in roles:
+            password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
+            mfa_secret = secrets.token_hex(16)
+            full_name = username.capitalize() + " User"
+            db.execute(
+                text(
+                    """
+                    INSERT INTO super_admins (username, email, password_hash, full_name, role, mfa_secret, is_active)
+                    VALUES (:username, :email, :password_hash, :full_name, :role, :mfa_secret, true)
+                    ON CONFLICT (username) DO UPDATE SET
+                        email = EXCLUDED.email,
+                        password_hash = EXCLUDED.password_hash,
+                        full_name = EXCLUDED.full_name,
+                        role = EXCLUDED.role,
+                        mfa_secret = EXCLUDED.mfa_secret,
+                        is_active = true
+                    """
+                ),
+                {
+                    "username": username,
+                    "email": email,
+                    "password_hash": password_hash,
+                    "full_name": full_name,
+                    "role": "super_admin",
+                    "mfa_secret": mfa_secret,
+                },
+            )
+            print(f"  Created/updated super_admins record for '{username}'")
+
         db.commit()
     finally:
         db.close()
@@ -248,9 +282,14 @@ def delete_user(username: str) -> None:
             text("DELETE FROM users WHERE keycloak_sub = :sub"),
             {"sub": user_id},
         )
+        db.execute(
+            text("DELETE FROM super_admins WHERE username = :username"),
+            {"username": username},
+        )
         db.commit()
         if result.rowcount:
             print(f"Deleted local user record for '{username}'")
+        print(f"Deleted super_admins record for '{username}' if present")
     finally:
         db.close()
 

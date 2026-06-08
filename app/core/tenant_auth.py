@@ -63,12 +63,13 @@ async def _decode_token(token: str) -> dict[str, Any]:
 
     kid = headers.get("kid", "")
 
-    if kid == "impersonation-key":
+    if kid == "impersonation-key" or not kid:
         try:
-            return jwt.decode(
+            payload = jwt.decode(
                 token, settings.secret_key, algorithms=["HS256"],
                 options={"verify_exp": True, "verify_aud": False},
             )
+            return payload
         except jwt.ExpiredSignatureError as e:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Token has expired") from e
         except Exception as e:
@@ -99,6 +100,28 @@ async def get_current_tenant(
         )
 
     payload = await _decode_token(credentials.credentials)
+
+    # Local superadmin token handling
+    if payload.get("type") == "superadmin":
+        ctx = TenantContext(
+            tenant_id=None,
+            user_sub=payload.get("super_admin_id"),
+            preferred_username=payload.get("username"),
+            email=None,
+            roles=[payload.get("role", "super_admin")],
+            is_super_admin=True,
+            scope="full",
+            raw_token=payload,
+        )
+        request.state.tenant = ctx
+        request.state.user_sub = ctx.user_sub
+        request.state.user = {
+            "super_admin_id": payload.get("super_admin_id"),
+            "username": payload.get("username"),
+            "role": payload.get("role", "super_admin"),
+        }
+        return ctx
+
     raw_roles = payload.get("realm_access", {}).get("roles", [])
     is_super = payload.get("is_super_admin", False) or "super_admin" in raw_roles
     tenant_id: str | None = payload.get("tenant_id", None)

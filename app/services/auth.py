@@ -39,7 +39,8 @@ async def login(username: str, password: str, db: Session) -> Dict[str, Any]:
     if response.status_code == 429:
         raise BadRequestError("Too many login attempts. Please try again later.")
     if not response.is_success:
-        raise BadRequestError("Authentication service unavailable")
+        detail = response.text or "Authentication service unavailable"
+        raise BadRequestError(f"Keycloak error ({response.status_code}): {detail}")
 
     token_data = response.json()
     session_id = _store_refresh_token(

@@ -12,25 +12,36 @@ from app.services.keycloak_admin import (
     update_local_user,
     delete_local_user,
 )
-from app.api.v1.superadmin.schemas import UserCreate, UserUpdate, UserOut, UserDelete, TenantOut, TenantCreate, TenantUpdate, RoleCreate
+from app.services import superadmin_auth as superadmin_auth_service
+from app.api.v1.superadmin.schemas import (
+    SuperAdminCreate,
+    SuperAdminUpdate,
+    SuperAdminOut,
+    SuperAdminDelete,
+    TenantOut,
+    TenantCreate,
+    TenantUpdate,
+    RoleCreate,
+)
 from app.models.user import User
+from app.models.admin import SuperAdmin
 from app.models.master import Tenant
 
 router = APIRouter(dependencies=[Depends(require_role("super_admin"))])
 
 
-@router.post("/users", response_model=UserOut, status_code=201)
+@router.post("/users", response_model=SuperAdminOut, status_code=201)
 @limiter.limit("30/minute")
 async def create_user(
     request: Request,
-    body: UserCreate,
+    body: SuperAdminCreate,
     db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
-) -> UserOut:
-    if body.role != "super_admin":
+) -> SuperAdminOut:
+    if body.role not in ("super_admin", "billing_manager", "support"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Superadmin can only create other super_admin users. "
+            detail="Superadmin can only create users with valid superadmin roles. "
                    "Use /admin/users for hospital-level user creation.",
         )
 
@@ -52,111 +63,98 @@ async def create_user(
             detail=f"Failed to create user in Keycloak: {e}",
         )
 
-    if body.hospital_id:
-        from app.services.keycloak_admin import set_user_attribute
-        await set_user_attribute(kc_sub, "tenant_id", body.hospital_id)
-
-    user = create_local_user(
+    create_local_user(
         db=db,
         keycloak_sub=kc_sub,
         username=body.username,
         full_name=body.full_name or None,
         email=body.email,
         role=body.role,
-        hospital_id=body.hospital_id,
+        hospital_id=None,
     )
 
-    return UserOut(
-        keycloak_sub=user.keycloak_sub,
-        username=user.username,
-        full_name=user.full_name,
-        email=user.email,
-        role=user.role,
-        hospital_id=user.hospital_id,
+    admin = superadmin_auth_service.create_superadmin(
+        db=db,
+        username=body.username,
+        email=body.email,
+        password=body.password,
+        full_name=body.full_name,
+        role=body.role,
+        mfa_secret=body.mfa_secret,
     )
 
+    return SuperAdminOut.model_validate(admin)
 
-@router.patch("/users/{sub}", response_model=UserOut)
+
+@router.patch("/users/{super_admin_id}", response_model=SuperAdminOut)
 @limiter.limit("30/minute")
 async def update_user(
     request: Request,
-    sub: str,
-    body: UserUpdate,
+    super_admin_id: str,
+    body: SuperAdminUpdate,
     db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
-) -> UserOut:
-    user = db.query(User).filter(User.keycloak_sub == sub).first()
-    if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
+) -> SuperAdminOut:
+    admin = db.query(SuperAdmin).filter(SuperAdmin.super_admin_id == super_admin_id).first()
+    if not admin:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Super admin not found")
 
-    from app.services.keycloak_admin import update_keycloak_user, set_user_attribute, set_user_password
+    from app.services.keycloak_admin import update_keycloak_user, set_user_password
     if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()):
         await update_keycloak_user(
-            user.keycloak_sub,
+            str(admin.super_admin_id),
             username=body.username,
             email=body.email,
             full_name=body.full_name,
         )
     if body.password is not None:
-        await set_user_password(user.keycloak_sub, body.password)
-    if body.hospital_id is not None:
-        await set_user_attribute(user.keycloak_sub, "tenant_id", body.hospital_id)
+        superadmin_auth_service.update_superadmin_password(db, admin, body.password)
 
-    updated = update_local_user(
-        db=db,
-        keycloak_sub=sub,
-        username=body.username,
-        full_name=body.full_name,
-        email=body.email,
-        role=body.role,
-        hospital_id=body.hospital_id,
-    )
-    return UserOut(
-        keycloak_sub=updated.keycloak_sub,
-        username=updated.username,
-        full_name=updated.full_name,
-        email=updated.email,
-        role=updated.role,
-        hospital_id=updated.hospital_id,
-    )
+    if body.username is not None:
+        admin.username = body.username
+    if body.email is not None:
+        admin.email = body.email
+    if body.full_name is not None:
+        admin.full_name = body.full_name
+    if body.role is not None:
+        admin.role = body.role
+    if body.mfa_secret is not None:
+        admin.mfa_secret = body.mfa_secret
+    if body.is_active is not None:
+        admin.is_active = body.is_active
+
+    db.commit()
+    db.refresh(admin)
+    return SuperAdminOut.model_validate(admin)
 
 
 @router.delete("/users", status_code=204)
 @limiter.limit("30/minute")
 async def delete_user(
     request: Request,
-    body: UserDelete,
+    body: SuperAdminDelete,
     db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
 ) -> None:
     kc_sub = await delete_keycloak_user(body.username)
-    if not kc_sub:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User '{body.username}' not found in Keycloak",
-        )
-    delete_local_user(db, kc_sub)
+    if kc_sub:
+        delete_local_user(db, kc_sub)
+
+    admin = db.query(SuperAdmin).filter(SuperAdmin.username == body.username).first()
+    if admin:
+        db.delete(admin)
+        db.commit()
 
 
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=list[SuperAdminOut])
 @limiter.limit("30/minute")
 async def list_users(
     request: Request,
     db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
-) -> list[UserOut]:
-    users = db.query(User).filter(User.role == "super_admin").all()
-    return [
-        UserOut(
-            keycloak_sub=u.keycloak_sub,
-            username=u.username,
-            full_name=u.full_name,
-            email=u.email,
-            role=u.role,
-            hospital_id=u.hospital_id,
-        )
-        for u in users
-    ]
+) -> list[SuperAdminOut]:
+    admins = db.query(SuperAdmin).all()
+    return [SuperAdminOut.model_validate(a) for a in admins]
 
 
 @router.get("/tenants", response_model=list[TenantOut])

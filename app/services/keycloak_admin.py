@@ -76,6 +76,10 @@ async def create_keycloak_user(
             users2 = search2.json()
             user_id = users2[0]["id"] if users2 else None
 
+        # Explicitly clear any auto-added required actions (e.g. VERIFY_EMAIL)
+        if user_id:
+            await c.put(f"{url}/{user_id}", json=payload, headers=hdrs)
+
     await set_user_password(user_id, password)
     await assign_user_roles(user_id, roles)
     return user_id

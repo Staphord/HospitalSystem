@@ -61,10 +61,10 @@ async def create_hospital_user(
     kc_roles_map = {
         "hospital_admin": ["hospital_admin", "hospital_user"],
         "hospital_user": ["hospital_user"],
-        "nurse": ["hospital_user"],
-        "clinician": ["hospital_user"],
-        "doctor": ["hospital_user"],
-        "patient": ["hospital_user"],
+        "nurse": ["nurse", "hospital_user"],
+        "clinician": ["clinician", "hospital_user"],
+        "doctor": ["doctor", "hospital_user"],
+        "patient": ["patient", "hospital_user"],
     }
     kc_roles = kc_roles_map.get(body.role, ["hospital_user"])
 
@@ -128,7 +128,15 @@ async def update_hospital_user(
         from app.services.keycloak_admin import set_user_password
         await set_user_password(user.keycloak_sub, body.password)
     if body.role is not None:
-        target_roles = ["hospital_admin", "hospital_user"] if body.role == "hospital_admin" else ["hospital_user"]
+        role_map = {
+            "hospital_admin": ["hospital_admin", "hospital_user"],
+            "hospital_user": ["hospital_user"],
+            "nurse": ["nurse", "hospital_user"],
+            "clinician": ["clinician", "hospital_user"],
+            "doctor": ["doctor", "hospital_user"],
+            "patient": ["patient", "hospital_user"],
+        }
+        target_roles = role_map.get(body.role, ["hospital_user"])
         from app.services.keycloak_admin import assign_user_roles
         await assign_user_roles(user.keycloak_sub, target_roles)
 

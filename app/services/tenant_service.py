@@ -44,23 +44,33 @@ def decrypt_dsn(encrypted: str) -> str:
 
 
 async def is_tenant_suspended(tenant_id: str) -> bool:
-    r = await _get_redis()
-    blocklist_key = f"suspended_tenant:{tenant_id}"
-    cached = await r.get(blocklist_key)
-    if cached is not None:
-        return cached == "1"
+    try:
+        r = await _get_redis()
+        blocklist_key = f"suspended_tenant:{tenant_id}"
+        cached = await r.get(blocklist_key)
+        if cached is not None:
+            return cached == "1"
+    except Exception:
+        # Redis unreachable — fall through to DB check (not cached)
+        pass
     return False
 
 
 async def cache_tenant_suspension(tenant_id: str, ttl: int | None = None) -> None:
-    r = await _get_redis()
-    key = f"suspended_tenant:{tenant_id}"
-    await r.set(key, "1", ex=ttl or settings.suspended_tenant_blocklist_ttl)
+    try:
+        r = await _get_redis()
+        key = f"suspended_tenant:{tenant_id}"
+        await r.set(key, "1", ex=ttl or settings.suspended_tenant_blocklist_ttl)
+    except Exception:
+        pass
 
 
 async def remove_tenant_suspension_cache(tenant_id: str) -> None:
-    r = await _get_redis()
-    await r.delete(f"suspended_tenant:{tenant_id}")
+    try:
+        r = await _get_redis()
+        await r.delete(f"suspended_tenant:{tenant_id}")
+    except Exception:
+        pass
 
 
 async def check_tenant_subscription(db: Session, tenant_id: str) -> str:

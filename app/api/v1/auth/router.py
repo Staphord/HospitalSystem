@@ -15,6 +15,8 @@ from app.api.v1.auth.schemas import (
     RefreshRequest,
     SignupRequest,
     SignupResponse,
+    SuperAdminLoginRequest,
+    SuperAdminTokenResponse,
     TokenResponse,
 )
 from app.core.database import get_db
@@ -25,6 +27,7 @@ from app.core.security import TokenPayload, get_current_active_user
 from app.exceptions import BadRequestError
 from app.models.master import GlobalAuditLog, Tenant
 from app.services import auth as auth_service
+from app.services import superadmin_auth as superadmin_auth_service
 from app.services.impersonation import create_impersonation_token, log_impersonation_event
 from app.services.keycloak_admin import (
     create_keycloak_user,
@@ -107,6 +110,49 @@ async def signup(
         "expires_in": result["expires_in"],
         "refresh_expires_in": result["refresh_expires_in"],
         "token_type": "Bearer",
+    }
+
+
+@public_router.post("/superadmin/login", response_model=SuperAdminTokenResponse)
+@limiter.limit("10/minute")
+async def superadmin_login(
+    request: Request,
+    body: SuperAdminLoginRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    admin = superadmin_auth_service.authenticate_superadmin(
+        db=db,
+        username=body.username,
+        password=body.password,
+    )
+    token = superadmin_auth_service.create_access_token(
+        super_admin_id=str(admin.super_admin_id),
+        username=admin.username,
+        role=admin.role,
+    )
+
+    ip = request.client.host if request.client else None
+    try:
+        audit_db = get_session_local()()
+        record = GlobalAuditLog(
+            user_sub=str(admin.super_admin_id),
+            action="SUPERADMIN_LOGIN",
+            detail=f"SuperAdmin '{admin.username}' logged in",
+            ip_address=ip,
+        )
+        audit_db.add(record)
+        audit_db.commit()
+    except Exception:
+        pass
+    finally:
+        if audit_db:
+            audit_db.close()
+
+    return {
+        "access_token": token,
+        "token_type": "Bearer",
+        "expires_in": 1800,
+        "scope": "full",
     }
 
 

@@ -1,38 +1,42 @@
-from pydantic import BaseModel, EmailStr
+from uuid import UUID
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
 
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
+class SuperAdminCreate(BaseModel):
+    username: str = Field(..., max_length=50)
+    password: str = Field(..., min_length=8)
     email: EmailStr
-    full_name: str = ""
-    role: str = "super_admin"
-    hospital_id: str | None = None
+    full_name: str = Field(..., max_length=200)
+    role: str = Field(default="super_admin", max_length=50)
+    mfa_secret: str | None = Field(default=None, max_length=100)
 
 
-class UserUpdate(BaseModel):
-    username: str | None = None
-    password: str | None = None
+class SuperAdminUpdate(BaseModel):
+    username: str | None = Field(default=None, max_length=50)
+    password: str | None = Field(default=None, min_length=8)
     email: EmailStr | None = None
-    full_name: str | None = None
-    role: str | None = None
-    hospital_id: str | None = None
+    full_name: str | None = Field(default=None, max_length=200)
+    role: str | None = Field(default=None, max_length=50)
+    mfa_secret: str | None = Field(default=None, max_length=100)
+    is_active: bool | None = None
 
 
-class UserOut(BaseModel):
-    keycloak_sub: str
-    username: str | None
-    full_name: str | None
-    email: str | None
-    role: str | None
-    hospital_id: str | None
+class SuperAdminOut(BaseModel):
+    super_admin_id: UUID
+    username: str
+    email: str
+    full_name: str
+    role: str
+    is_active: bool
+    last_login_at: datetime | None = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
 
 
-class UserDelete(BaseModel):
+class SuperAdminDelete(BaseModel):
     username: str
 
 
