@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Generator, Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
@@ -12,11 +12,62 @@ from app.core.config import settings
 _engine: Optional[object] = None
 _SessionLocal: Optional[sessionmaker] = None
 
+# Cache for tenant database engines
+_tenant_engine_cache: dict[str, tuple] = {}
+
+
+def _ensure_database_exists() -> None:
+    """Ensure the master database exists, auto-create if not."""
+    import urllib.parse
+    from sqlalchemy.exc import OperationalError
+    
+    try:
+        # Try to connect to see if database exists
+        test_engine = create_engine(settings.database_url, pool_pre_ping=True)
+        with test_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        test_engine.dispose()
+        return  # Database exists, nothing to do
+    except OperationalError:
+        # Database doesn't exist, create it using admin connection
+        pass
+    
+    # Parse database name from URL
+    parsed = urllib.parse.urlparse(settings.database_url)
+    db_name = parsed.path.lstrip("/")
+    
+    if not db_name:
+        raise ValueError("Cannot determine database name from DATABASE_URL")
+    
+    # Create database using admin connection
+    admin_engine = create_engine(
+        settings.db_admin_url,
+        pool_pre_ping=True,
+        isolation_level="AUTOCOMMIT",
+    )
+    
+    with admin_engine.connect() as conn:
+        # Check if database exists
+        result = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
+            {"db_name": db_name},
+        )
+        if not result.scalar():
+            # Create database
+            conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+            print(f"[AUTO-CREATE] Database '{db_name}' created successfully")
+    
+    admin_engine.dispose()
+
 
 def _init_engine() -> None:
     global _engine, _SessionLocal
     if _engine is not None:
         return
+    
+    # Ensure database exists before creating engine
+    _ensure_database_exists()
+    
     _engine = create_engine(settings.database_url, pool_pre_ping=True)
     _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
@@ -87,7 +138,51 @@ class DefaultDatabaseRouter(DatabaseRouter):
         return get_session_local()()
 
 
-_router = DefaultDatabaseRouter()
+class TenantDatabaseRouter(DatabaseRouter):
+    """Routes to tenant-specific databases based on hospital_id.
+    
+    Looks up the tenant database DSN from the master database and creates
+    an isolated connection for that tenant.
+    """
+    
+    def get_session(self, hospital_id: str) -> Session:
+        if not hospital_id:
+            return get_session_local()()
+        
+        # Check if we have a cached engine for this tenant
+        if hospital_id in _tenant_engine_cache:
+            engine, SessionLocal = _tenant_engine_cache[hospital_id]
+            return SessionLocal()
+        
+        # Query master database for tenant DSN
+        from cryptography.fernet import Fernet
+        
+        master_db = get_session_local()()
+        try:
+            result = master_db.execute(
+                text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+                {"tid": hospital_id},
+            )
+            row = result.scalar()
+            if not row:
+                # Tenant not found or not active, fall back to master database
+                return get_session_local()()
+            
+            # Decrypt DSN
+            cipher = Fernet(settings.tenant_db_encryption_key.encode())
+            dsn = cipher.decrypt(row.encode()).decode()
+        finally:
+            master_db.close()
+        
+        # Create engine for tenant database
+        engine = create_engine(dsn, pool_pre_ping=True, pool_size=5, max_overflow=10)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        _tenant_engine_cache[hospital_id] = (engine, SessionLocal)
+        return SessionLocal()
+
+
+# Use TenantDatabaseRouter for multi-tenant database isolation
+_router = TenantDatabaseRouter()
 
 
 @dataclass
@@ -98,6 +193,18 @@ class HospitalContext:
 
 def get_db() -> Generator[Session, None, None]:
     db = get_session_local()()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_tenant_db(hospital_id: str) -> Generator[Session, None, None]:
+    """Get a database session for a specific tenant.
+    
+    This routes to the tenant-specific database instead of the master database.
+    """
+    db = _router.get_session(hospital_id)
     try:
         yield db
     finally:

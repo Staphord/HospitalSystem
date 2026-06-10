@@ -86,15 +86,37 @@ async def signup(
 
     await set_user_attribute(kc_sub, "tenant_id", tenant_id)
 
-    create_local_user(
-        db=db,
-        keycloak_sub=kc_sub,
-        username=body.admin_username,
-        full_name=body.admin_full_name or None,
-        email=body.admin_email,
-        role="hospital_admin",
-        hospital_id=tenant_id,
-    )
+    # Create tenant database synchronously and store user in tenant DB
+    try:
+        from app.services.provision import provision_tenant_database_sync, get_tenant_db_session
+        dsn = provision_tenant_database_sync(tenant_id, body.hospital_name)
+        
+        # Create local user in the tenant database (not master DB)
+        tenant_db = get_tenant_db_session(tenant_id)
+        try:
+            create_local_user(
+                db=tenant_db,
+                keycloak_sub=kc_sub,
+                username=body.admin_username,
+                full_name=body.admin_full_name or None,
+                email=body.admin_email,
+                role="hospital_admin",
+                hospital_id=tenant_id,
+            )
+        finally:
+            tenant_db.close()
+    except Exception as e:
+        logger.error("Failed to provision tenant database or create local user: %s", e)
+        # Fallback: create in master DB
+        create_local_user(
+            db=db,
+            keycloak_sub=kc_sub,
+            username=body.admin_username,
+            full_name=body.admin_full_name or None,
+            email=body.admin_email,
+            role="hospital_admin",
+            hospital_id=tenant_id,
+        )
 
     result = await auth_service.login(
         username=body.admin_username,

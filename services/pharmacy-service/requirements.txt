@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+asyncpg
+httpx
+python-jose[cryptography]
+cachetools
+slowapi
+redis
+cryptography
+pytest
+pytest-asyncio
+aio-pika

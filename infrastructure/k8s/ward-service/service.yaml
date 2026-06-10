@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ward-service
+spec:
+  selector:
+    app: ward-service
+  ports:
+    - protocol: TCP
+      port: 8017
+      targetPort: 8017
+  type: ClusterIP

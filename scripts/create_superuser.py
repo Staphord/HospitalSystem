@@ -10,6 +10,7 @@ import asyncio
 import os
 import secrets
 import sys
+import uuid
 
 import bcrypt
 import httpx
@@ -227,11 +228,13 @@ def create_user(
             password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
             mfa_secret = secrets.token_hex(16)
             full_name = username.capitalize() + " User"
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc)
             db.execute(
                 text(
                     """
-                    INSERT INTO super_admins (username, email, password_hash, full_name, role, mfa_secret, is_active)
-                    VALUES (:username, :email, :password_hash, :full_name, :role, :mfa_secret, true)
+                    INSERT INTO super_admins (super_admin_id, username, email, password_hash, full_name, role, mfa_secret, is_active, created_at)
+                    VALUES (:super_admin_id, :username, :email, :password_hash, :full_name, :role, :mfa_secret, true, :created_at)
                     ON CONFLICT (username) DO UPDATE SET
                         email = EXCLUDED.email,
                         password_hash = EXCLUDED.password_hash,
@@ -242,12 +245,14 @@ def create_user(
                     """
                 ),
                 {
+                    "super_admin_id": str(uuid.uuid4()),
                     "username": username,
                     "email": email,
                     "password_hash": password_hash,
                     "full_name": full_name,
                     "role": "super_admin",
                     "mfa_secret": mfa_secret,
+                    "created_at": now,
                 },
             )
             print(f"  Created/updated super_admins record for '{username}'")
@@ -256,7 +261,7 @@ def create_user(
     finally:
         db.close()
 
-    print(f"\n✅ User '{username}' is ready.")
+    print(f"\n[OK] User '{username}' is ready.")
     print(f"   Keycloak ID: {user_id}")
     print(f"   Roles: {roles}")
     print(f"   Hospital: {hospital_id or 'ALL (super_admin)'}")

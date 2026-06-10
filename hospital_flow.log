@@ -6052,3 +6052,1567 @@
 2026-06-08 16:59:03,450 [DEBUG] httpcore.connection: close.started
 2026-06-08 16:59:03,451 [DEBUG] httpcore.connection: close.complete
 2026-06-08 20:13:56,147 [INFO] hospital: Suspension background task stopped
+2026-06-08 21:48:29,338 [INFO] hospital: Suspension background task started
+2026-06-08 21:48:29,355 [INFO] hospital.suspension: Suspension check: 3 tenants checked, none suspended
+2026-06-08 21:49:01,202 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 21:49:01,207 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1F9F2790>
+2026-06-08 21:49:01,213 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 21:49:01,215 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 21:49:01,215 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 21:49:01,217 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 21:49:01,218 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 21:49:03,371 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2326'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 21:49:03,372 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 21:49:03,374 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 21:49:03,378 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 21:49:03,380 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 21:49:03,382 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 21:49:03,393 [DEBUG] httpcore.connection: close.started
+2026-06-08 21:49:03,397 [DEBUG] httpcore.connection: close.complete
+2026-06-08 21:49:05,691 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 21:49:05,701 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FB60F10>
+2026-06-08 21:49:05,705 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 21:49:05,707 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 21:49:05,708 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 21:49:05,709 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 21:49:05,709 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 21:49:05,778 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 21:49:05,778 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 21:49:05,779 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 21:49:05,780 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 21:49:05,787 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 21:49:05,797 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 21:49:05,810 [DEBUG] httpcore.connection: close.started
+2026-06-08 21:49:05,812 [DEBUG] httpcore.connection: close.complete
+2026-06-08 21:49:16,775 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 21:49:16,783 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FB0AC90>
+2026-06-08 21:49:16,788 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 21:49:16,789 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 21:49:16,791 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 21:49:16,791 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 21:49:16,792 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 21:49:16,808 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 21:49:16,809 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 21:49:16,809 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 21:49:16,810 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 21:49:16,811 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 21:49:16,813 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 21:49:16,817 [DEBUG] httpcore.connection: close.started
+2026-06-08 21:49:16,817 [DEBUG] httpcore.connection: close.complete
+2026-06-08 21:49:16,869 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-08 21:49:16,885 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FBD0F50>
+2026-06-08 21:49:16,890 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 21:49:16,893 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 21:49:16,896 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 21:49:16,900 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 21:49:16,901 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 21:49:16,990 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 21:49:16,990 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-08 21:49:16,990 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 21:49:16,991 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 21:49:16,993 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 21:49:16,995 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 21:49:16,999 [DEBUG] httpcore.connection: close.started
+2026-06-08 21:49:17,000 [DEBUG] httpcore.connection: close.complete
+2026-06-08 21:49:37,268 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 21:49:37,281 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FA2E550>
+2026-06-08 21:49:37,287 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 21:49:37,288 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 21:49:37,289 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 21:49:37,289 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 21:49:37,290 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 21:49:37,789 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2314'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 21:49:37,790 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 21:49:37,790 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 21:49:37,792 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 21:49:37,801 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 21:49:37,803 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 21:49:37,807 [DEBUG] httpcore.connection: close.started
+2026-06-08 21:49:37,809 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:13:39,031 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:13:39,044 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FB4FF10>
+2026-06-08 22:13:39,048 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 22:13:39,055 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:13:39,056 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 22:13:39,059 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:13:39,060 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 22:13:39,376 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:13:39,383 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 22:13:39,387 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 22:13:39,391 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:13:39,393 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:13:39,393 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:13:39,399 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:13:39,400 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:13:41,686 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:13:41,695 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FB97B10>
+2026-06-08 22:13:41,697 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:13:41,699 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:13:41,699 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:13:41,700 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:13:41,701 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:13:42,137 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2314'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:13:42,138 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 22:13:42,138 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:13:42,139 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:13:42,140 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:13:42,142 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:13:42,146 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:13:42,146 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:13:46,431 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:13:46,440 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FA57690>
+2026-06-08 22:13:46,446 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 22:13:46,447 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:13:46,448 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 22:13:46,449 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:13:46,449 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 22:13:46,459 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:13:46,461 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 22:13:46,461 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 22:13:46,462 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:13:46,463 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:13:46,463 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:13:46,465 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:13:46,466 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:13:46,496 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-08 22:13:46,501 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1F9C2450>
+2026-06-08 22:13:46,503 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:13:46,504 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:13:46,505 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:13:46,506 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:13:46,507 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:13:46,598 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:13:46,599 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-08 22:13:46,600 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:13:46,600 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:13:46,608 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:13:46,609 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:13:46,614 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:13:46,614 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:14:31,055 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:14:31,064 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FBAB950>
+2026-06-08 22:14:31,067 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:14:31,071 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:14:31,071 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:14:31,074 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:14:31,075 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:14:31,353 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2327'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:14:31,354 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 22:14:31,354 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:14:31,354 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:14:31,359 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:14:31,359 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:14:31,363 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:14:31,364 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:16:25,863 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-08 22:16:25,872 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FBF1050>
+2026-06-08 22:16:25,874 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:16:25,876 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:16:25,876 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:16:25,876 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:16:25,877 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:16:25,923 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:16:25,924 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-08 22:16:25,925 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:16:25,927 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:16:25,930 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:16:25,934 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:16:25,936 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:16:25,937 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:16:52,974 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:16:52,984 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FC00ED0>
+2026-06-08 22:16:52,987 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:16:52,990 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:16:52,993 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:16:52,994 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:16:52,994 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:16:53,315 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'72'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:16:53,316 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 400 Bad Request"
+2026-06-08 22:16:53,317 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:16:53,318 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:16:53,320 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:16:53,322 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:16:53,323 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:16:53,324 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:17:03,911 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:17:03,919 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FC16B90>
+2026-06-08 22:17:03,924 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:17:03,925 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:17:03,925 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:17:03,926 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:17:03,928 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:17:04,106 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2353'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:17:04,107 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 22:17:04,108 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:17:04,109 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:17:04,114 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:17:04,115 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:17:04,120 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:17:04,121 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:17:31,981 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-08 22:17:31,989 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000015E1FC132D0>
+2026-06-08 22:17:31,991 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:17:31,992 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:17:31,993 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:17:31,994 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:17:31,995 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:17:32,024 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:17:32,024 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-08 22:17:32,025 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:17:32,026 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:17:32,029 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:17:32,030 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:17:32,035 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:17:32,037 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:18:23,855 [INFO] hospital: Suspension background task stopped
+2026-06-08 22:18:37,819 [INFO] hospital: Suspension background task started
+2026-06-08 22:18:37,856 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-08 22:28:36,106 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:28:36,114 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC0163A10>
+2026-06-08 22:28:36,118 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:28:36,121 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:28:36,122 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:28:36,123 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:28:36,126 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:28:38,372 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'72'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:28:38,383 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 400 Bad Request"
+2026-06-08 22:28:38,387 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:28:38,388 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:28:38,389 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:28:38,391 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:28:38,393 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:28:38,395 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:29:05,673 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:29:05,681 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC01AE510>
+2026-06-08 22:29:05,685 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:29:05,688 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:29:05,689 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:29:05,690 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:29:05,690 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:29:06,125 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2327'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:29:06,125 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 22:29:06,126 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:29:06,126 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:29:06,131 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:29:06,132 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:29:06,134 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:29:06,137 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:29:08,371 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:29:08,379 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC02B7DD0>
+2026-06-08 22:29:08,383 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 22:29:08,385 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:29:08,386 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 22:29:08,387 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:29:08,389 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 22:29:08,423 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:29:08,423 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 22:29:08,424 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 22:29:08,425 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:29:08,428 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:29:08,429 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:29:08,432 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:29:08,433 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:29:10,600 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 22:29:10,610 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC02F97D0>
+2026-06-08 22:29:10,612 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 22:29:10,613 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:29:10,614 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 22:29:10,616 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:29:10,616 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 22:29:10,626 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:29:10,628 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 22:29:10,629 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 22:29:10,631 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:29:10,633 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:29:10,633 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:29:10,636 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:29:10,638 [DEBUG] httpcore.connection: close.complete
+2026-06-08 22:29:50,728 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-08 22:29:50,747 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC022AC90>
+2026-06-08 22:29:50,766 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 22:29:50,779 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 22:29:50,783 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 22:29:50,794 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 22:29:50,799 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 22:29:50,982 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 22:29:50,991 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-08 22:29:50,995 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 22:29:50,995 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 22:29:51,016 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 22:29:51,030 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 22:29:51,061 [DEBUG] httpcore.connection: close.started
+2026-06-08 22:29:51,063 [DEBUG] httpcore.connection: close.complete
+2026-06-08 23:00:41,480 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 23:00:41,514 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDBFB43650>
+2026-06-08 23:00:41,551 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 23:00:41,578 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 23:00:41,584 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 23:00:41,601 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 23:00:41,601 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 23:00:43,744 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2326'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 23:00:43,753 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 23:00:43,757 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 23:00:43,778 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 23:00:43,793 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 23:00:43,798 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 23:00:43,821 [DEBUG] httpcore.connection: close.started
+2026-06-08 23:00:43,831 [DEBUG] httpcore.connection: close.complete
+2026-06-08 23:00:46,556 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 23:00:46,566 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC0313610>
+2026-06-08 23:00:46,571 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 23:00:46,573 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 23:00:46,579 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 23:00:46,579 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 23:00:46,579 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 23:00:46,604 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 23:00:46,606 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 23:00:46,606 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 23:00:46,606 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 23:00:46,611 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 23:00:46,612 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 23:00:46,616 [DEBUG] httpcore.connection: close.started
+2026-06-08 23:00:46,617 [DEBUG] httpcore.connection: close.complete
+2026-06-08 23:01:18,408 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 23:01:18,423 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC030CE10>
+2026-06-08 23:01:18,434 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-08 23:01:18,441 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 23:01:18,447 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-08 23:01:18,457 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 23:01:18,458 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-08 23:01:18,479 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 23:01:18,481 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-08 23:01:18,485 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-08 23:01:18,485 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 23:01:18,487 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 23:01:18,492 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 23:01:18,496 [DEBUG] httpcore.connection: close.started
+2026-06-08 23:01:18,498 [DEBUG] httpcore.connection: close.complete
+2026-06-08 23:01:18,602 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-08 23:01:18,609 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC030F6D0>
+2026-06-08 23:01:18,613 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 23:01:18,615 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 23:01:18,615 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 23:01:18,616 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 23:01:18,618 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 23:01:18,894 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 23:01:18,895 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-08 23:01:18,896 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 23:01:18,901 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 23:01:18,908 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 23:01:18,910 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 23:01:18,912 [DEBUG] httpcore.connection: close.started
+2026-06-08 23:01:18,913 [DEBUG] httpcore.connection: close.complete
+2026-06-08 23:01:42,375 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-08 23:01:42,385 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CDC018D6D0>
+2026-06-08 23:01:42,392 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-08 23:01:42,393 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-08 23:01:42,395 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-08 23:01:42,397 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-08 23:01:42,398 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-08 23:01:42,817 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2327'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-08 23:01:42,818 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-08 23:01:42,819 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-08 23:01:42,819 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-08 23:01:42,824 [DEBUG] httpcore.http11: response_closed.started
+2026-06-08 23:01:42,826 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-08 23:01:42,830 [DEBUG] httpcore.connection: close.started
+2026-06-08 23:01:42,831 [DEBUG] httpcore.connection: close.complete
+2026-06-09 16:50:07,878 [INFO] hospital: Suspension background task started
+2026-06-09 16:50:07,894 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 16:50:55,447 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 16:50:55,451 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000026FA18C6510>
+2026-06-09 16:50:55,455 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-09 16:50:55,456 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 16:50:55,457 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-09 16:50:55,457 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 16:50:55,458 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-09 16:51:05,071 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2327'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 16:51:05,076 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-09 16:51:05,077 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-09 16:51:05,079 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 16:51:05,079 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 16:51:05,081 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 16:51:05,082 [DEBUG] httpcore.connection: close.started
+2026-06-09 16:51:05,084 [DEBUG] httpcore.connection: close.complete
+2026-06-09 16:51:07,392 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 16:51:07,402 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000026FA1950C50>
+2026-06-09 16:51:07,408 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-09 16:51:07,408 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 16:51:07,410 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-09 16:51:07,410 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 16:51:07,410 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-09 16:51:07,779 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 16:51:07,781 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-09 16:51:07,782 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-09 16:51:07,783 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 16:51:07,784 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 16:51:07,785 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 16:51:07,788 [DEBUG] httpcore.connection: close.started
+2026-06-09 16:51:07,789 [DEBUG] httpcore.connection: close.complete
+2026-06-09 16:51:10,086 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 16:51:10,093 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000026FA1967DD0>
+2026-06-09 16:51:10,097 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-09 16:51:10,098 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 16:51:10,099 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-09 16:51:10,099 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 16:51:10,100 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-09 16:51:10,126 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 16:51:10,126 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-09 16:51:10,128 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-09 16:51:10,128 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 16:51:10,128 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 16:51:10,128 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 16:51:10,134 [DEBUG] httpcore.connection: close.started
+2026-06-09 16:51:10,135 [DEBUG] httpcore.connection: close.complete
+2026-06-09 16:57:44,849 [INFO] hospital: Suspension background task stopped
+2026-06-09 19:33:44,687 [INFO] hospital: Suspension background task started
+2026-06-09 19:33:44,705 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 19:34:21,441 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 19:34:21,446 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000021C97B80810>
+2026-06-09 19:34:21,447 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-09 19:34:21,449 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 19:34:21,450 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-09 19:34:21,450 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 19:34:21,454 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-09 19:34:22,348 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2327'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 19:34:22,348 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-09 19:34:22,348 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-09 19:34:22,348 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 19:34:22,348 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 19:34:22,348 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 19:34:22,348 [DEBUG] httpcore.connection: close.started
+2026-06-09 19:34:22,354 [DEBUG] httpcore.connection: close.complete
+2026-06-09 19:34:24,528 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 19:34:24,532 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000021C98621610>
+2026-06-09 19:34:24,540 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-09 19:34:24,543 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 19:34:24,543 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-09 19:34:24,543 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 19:34:24,543 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-09 19:34:24,613 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 19:34:24,614 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-09 19:34:24,614 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-09 19:34:24,615 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 19:34:24,617 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 19:34:24,620 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 19:34:24,624 [DEBUG] httpcore.connection: close.started
+2026-06-09 19:34:24,624 [DEBUG] httpcore.connection: close.complete
+2026-06-09 19:34:26,775 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 19:34:26,783 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000021C98658950>
+2026-06-09 19:34:26,785 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-09 19:34:26,787 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 19:34:26,788 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-09 19:34:26,788 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 19:34:26,789 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-09 19:34:26,810 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 19:34:26,811 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-09 19:34:26,811 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-09 19:34:26,813 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 19:34:26,814 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 19:34:26,815 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 19:34:26,817 [DEBUG] httpcore.connection: close.started
+2026-06-09 19:34:26,818 [DEBUG] httpcore.connection: close.complete
+2026-06-09 19:34:38,029 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-09 19:34:38,034 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000021C9866B810>
+2026-06-09 19:34:38,039 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-09 19:34:38,039 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 19:34:38,039 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-09 19:34:38,039 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 19:34:38,042 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-09 19:34:38,909 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 19:34:38,915 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-09 19:34:38,915 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-09 19:34:38,915 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 19:34:38,915 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 19:34:38,915 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 19:34:38,920 [DEBUG] httpcore.connection: close.started
+2026-06-09 19:34:38,921 [DEBUG] httpcore.connection: close.complete
+2026-06-09 19:41:27,490 [INFO] hospital: Suspension background task stopped
+2026-06-09 19:41:33,491 [INFO] hospital: Suspension background task started
+2026-06-09 19:41:33,504 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 19:42:36,450 [INFO] hospital: Suspension background task stopped
+2026-06-09 19:42:44,184 [INFO] hospital: Suspension background task started
+2026-06-09 19:42:44,199 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 19:42:47,830 [INFO] hospital: Suspension background task stopped
+2026-06-09 19:42:54,795 [INFO] hospital: Suspension background task started
+2026-06-09 19:42:54,808 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 19:43:02,946 [INFO] hospital: Suspension background task stopped
+2026-06-09 19:43:09,671 [INFO] hospital: Suspension background task started
+2026-06-09 19:43:09,677 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 19:45:14,216 [INFO] hospital: Suspension background task stopped
+2026-06-09 19:45:19,257 [INFO] hospital: Suspension background task started
+2026-06-09 19:45:19,273 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 20:03:28,561 [INFO] hospital: Suspension background task stopped
+2026-06-09 20:03:36,392 [INFO] hospital: Suspension background task started
+2026-06-09 20:03:36,413 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 20:03:39,590 [INFO] hospital: Suspension background task stopped
+2026-06-09 20:03:45,261 [INFO] hospital: Suspension background task started
+2026-06-09 20:03:45,275 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 20:07:08,979 [INFO] hospital: Suspension background task stopped
+2026-06-09 20:07:15,226 [INFO] hospital: Suspension background task started
+2026-06-09 20:07:15,240 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 20:07:39,817 [INFO] hospital: Suspension background task stopped
+2026-06-09 20:07:46,008 [INFO] hospital: Suspension background task started
+2026-06-09 20:07:46,022 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-09 20:17:30,111 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 20:17:30,118 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000023ED1AB98D0>
+2026-06-09 20:17:30,126 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-09 20:17:30,128 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 20:17:30,128 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-09 20:17:30,131 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 20:17:30,132 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-09 20:17:30,290 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2321'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 20:17:30,292 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-09 20:17:30,293 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-09 20:17:30,295 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 20:17:30,296 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 20:17:30,297 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 20:17:30,299 [DEBUG] httpcore.connection: close.started
+2026-06-09 20:17:30,300 [DEBUG] httpcore.connection: close.complete
+2026-06-09 20:17:32,480 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 20:17:32,489 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000023ED1BC1450>
+2026-06-09 20:17:32,491 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-09 20:17:32,491 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 20:17:32,492 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-09 20:17:32,493 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 20:17:32,493 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-09 20:17:32,525 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 20:17:32,526 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-09 20:17:32,526 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-09 20:17:32,527 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 20:17:32,530 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 20:17:32,530 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 20:17:32,533 [DEBUG] httpcore.connection: close.started
+2026-06-09 20:17:32,538 [DEBUG] httpcore.connection: close.complete
+2026-06-09 20:17:34,690 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-09 20:17:34,690 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000023ED1BF8790>
+2026-06-09 20:17:34,698 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-09 20:17:34,698 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-09 20:17:34,701 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-09 20:17:34,701 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-09 20:17:34,701 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-09 20:17:34,711 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-09 20:17:34,712 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-09 20:17:34,712 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-09 20:17:34,712 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-09 20:17:34,712 [DEBUG] httpcore.http11: response_closed.started
+2026-06-09 20:17:34,712 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-09 20:17:34,712 [DEBUG] httpcore.connection: close.started
+2026-06-09 20:17:34,718 [DEBUG] httpcore.connection: close.complete
+2026-06-10 10:52:38,567 [INFO] hospital: Suspension background task stopped
+2026-06-10 14:07:55,813 [INFO] hospital: Suspension background task started
+2026-06-10 14:07:55,829 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-10 14:08:30,638 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:08:30,643 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D823ADE10>
+2026-06-10 14:08:30,648 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:08:30,652 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:08:30,655 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:08:30,660 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:08:30,661 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:08:31,904 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'72'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:08:31,905 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 400 Bad Request"
+2026-06-10 14:08:31,905 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:08:31,906 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:08:31,910 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:08:31,912 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:08:31,914 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:08:31,916 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:08:58,869 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:08:58,888 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D82396610>
+2026-06-10 14:08:58,890 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:08:58,892 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:08:58,896 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:08:58,897 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:08:58,899 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:08:59,817 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2314'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:08:59,818 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 14:08:59,818 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:08:59,819 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:08:59,820 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:08:59,822 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:08:59,828 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:08:59,828 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:09:02,102 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:09:02,107 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D824B2650>
+2026-06-10 14:09:02,114 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 14:09:02,114 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:09:02,118 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 14:09:02,118 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:09:02,122 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 14:09:02,183 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:09:02,186 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 14:09:02,187 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 14:09:02,187 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:09:02,189 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:09:02,189 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:09:02,193 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:09:02,193 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:09:16,378 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:09:16,384 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D824E6790>
+2026-06-10 14:09:16,389 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 14:09:16,390 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:09:16,390 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 14:09:16,391 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:09:16,392 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 14:09:16,458 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:09:16,458 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 14:09:16,458 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 14:09:16,458 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:09:16,462 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:09:16,466 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:09:16,469 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:09:16,471 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:09:16,538 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-10 14:09:16,543 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D82509710>
+2026-06-10 14:09:16,552 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:09:16,555 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:09:16,558 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:09:16,561 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:09:16,564 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:09:16,735 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:09:16,735 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-10 14:09:16,736 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:09:16,736 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:09:16,737 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:09:16,738 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:09:16,740 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:09:16,741 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:09:34,989 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:09:34,998 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D824E78D0>
+2026-06-10 14:09:35,004 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:09:35,005 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:09:35,006 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:09:35,007 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:09:35,008 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:09:35,278 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'72'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:09:35,278 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 400 Bad Request"
+2026-06-10 14:09:35,279 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:09:35,279 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:09:35,280 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:09:35,281 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:09:35,287 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:09:35,289 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:09:50,040 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:09:50,053 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D8250A790>
+2026-06-10 14:09:50,058 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:09:50,062 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:09:50,063 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:09:50,064 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:09:50,066 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:09:50,713 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'72'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:09:50,717 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 400 Bad Request"
+2026-06-10 14:09:50,719 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:09:50,726 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:09:50,736 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:09:50,745 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:09:50,756 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:09:50,769 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:21:24,520 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:21:24,537 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D8250A990>
+2026-06-10 14:21:24,544 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:21:24,552 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:21:24,557 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:21:24,568 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:21:24,568 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:21:25,488 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2321'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:21:25,498 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 14:21:25,498 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:21:25,498 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:21:25,498 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:21:25,505 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:21:25,506 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:21:25,511 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:21:28,110 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:21:28,113 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D82525190>
+2026-06-10 14:21:28,122 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 14:21:28,128 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:21:28,129 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 14:21:28,131 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:21:28,133 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 14:21:28,187 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:21:28,187 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 14:21:28,188 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 14:21:28,189 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:21:28,190 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:21:28,192 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:21:28,203 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:21:28,203 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:21:30,427 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:21:30,433 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D824A53D0>
+2026-06-10 14:21:30,441 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 14:21:30,444 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:21:30,445 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 14:21:30,445 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:21:30,445 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 14:21:30,472 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:21:30,474 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 14:21:30,475 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 14:21:30,475 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:21:30,476 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:21:30,477 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:21:30,480 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:21:30,481 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:23:59,302 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-10 14:23:59,315 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D82340A90>
+2026-06-10 14:23:59,323 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:23:59,326 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:23:59,326 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:23:59,328 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:23:59,329 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:24:00,271 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:24:00,273 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-10 14:24:00,276 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:24:00,278 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:24:00,285 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:24:00,285 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:24:00,287 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:24:00,289 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:24:25,744 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 14:24:25,755 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x0000024D82509D50>
+2026-06-10 14:24:25,763 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 14:24:25,764 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 14:24:25,764 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 14:24:25,764 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 14:24:25,767 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 14:24:26,258 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2351'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 14:24:26,260 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 14:24:26,260 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 14:24:26,263 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 14:24:26,268 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 14:24:26,270 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 14:24:26,272 [DEBUG] httpcore.connection: close.started
+2026-06-10 14:24:26,273 [DEBUG] httpcore.connection: close.complete
+2026-06-10 14:41:29,537 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:18:08,003 [INFO] hospital: Suspension background task started
+2026-06-10 15:18:08,018 [INFO] hospital.suspension: Suspension check: 1 tenants checked, none suspended
+2026-06-10 15:18:44,982 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:18:44,993 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70CD7110>
+2026-06-10 15:18:44,995 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:18:44,998 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:18:45,000 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:18:45,002 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:18:45,005 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:18:47,119 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 400, b'Bad Request', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'72'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:18:47,120 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 400 Bad Request"
+2026-06-10 15:18:47,121 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:18:47,122 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:18:47,126 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:18:47,127 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:18:47,130 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:18:47,130 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:19:07,526 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:19:07,531 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC706518D0>
+2026-06-10 15:19:07,537 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:19:07,539 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:19:07,539 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:19:07,541 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:19:07,543 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:19:08,166 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2321'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:19:08,168 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:19:08,168 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:19:08,170 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:19:08,177 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:19:08,178 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:19:08,180 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:19:08,182 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:19:10,420 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:19:10,427 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70DEF010>
+2026-06-10 15:19:10,431 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:19:10,434 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:19:10,434 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:19:10,434 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:19:10,434 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:19:10,503 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:19:10,504 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 15:19:10,505 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:19:10,506 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:19:10,508 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:19:10,509 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:19:10,514 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:19:10,515 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:19:12,680 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:19:12,690 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70DFAE50>
+2026-06-10 15:19:12,695 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:19:12,698 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:19:12,699 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:19:12,699 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:19:12,701 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:19:12,716 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:19:12,716 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 15:19:12,717 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:19:12,720 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:19:12,724 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:19:12,725 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:19:12,728 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:19:12,729 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:05,687 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:05,699 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E510D0>
+2026-06-10 15:21:05,705 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:05,710 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:05,711 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:05,711 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:05,713 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:06,545 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:06,547 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:21:06,548 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:06,550 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:06,554 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:06,557 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:06,559 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:06,559 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:06,595 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:06,599 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E74910>
+2026-06-10 15:21:06,607 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:06,613 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:06,617 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:21:06,626 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:06,627 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:06,796 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'174'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:06,797 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_user "HTTP/1.1 200 OK"
+2026-06-10 15:21:06,798 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:21:06,798 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:06,798 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:06,800 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:06,809 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:06,814 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:06,821 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:21:06,825 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:06,827 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:06,846 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'175'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:06,847 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_admin "HTTP/1.1 200 OK"
+2026-06-10 15:21:06,848 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:21:06,848 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:06,850 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:06,850 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:06,856 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:06,856 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:06,892 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:06,896 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E77650>
+2026-06-10 15:21:06,899 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:06,901 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:06,902 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:06,906 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:06,908 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:07,144 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:07,145 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:21:07,146 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:07,146 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:07,146 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:07,148 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:07,150 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:07,152 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:07,175 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:07,183 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E81290>
+2026-06-10 15:21:07,187 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:07,190 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:07,191 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:07,192 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:07,193 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:07,484 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 201, b'Created', [(b'Location', b'http://127.0.0.1:8080/admin/realms/hospital-realm/users/a31b3de6-672b-4e3a-a01d-c92965bac7d6'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none'), (b'content-length', b'0')])
+2026-06-10 15:21:07,484 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/admin/realms/hospital-realm/users "HTTP/1.1 201 Created"
+2026-06-10 15:21:07,485 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:07,485 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:07,490 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:07,490 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:07,494 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 15:21:07,495 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:07,497 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 15:21:07,498 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:07,501 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 15:21:07,841 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:07,850 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/a31b3de6-672b-4e3a-a01d-c92965bac7d6 "HTTP/1.1 204 No Content"
+2026-06-10 15:21:07,852 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 15:21:07,853 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:07,877 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:07,890 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:07,908 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:07,913 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:08,032 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:08,103 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E880D0>
+2026-06-10 15:21:08,123 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:08,143 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:08,159 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:08,183 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:08,195 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:08,642 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:08,644 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:21:08,646 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:08,649 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:08,660 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:08,661 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:08,663 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:08,665 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:08,707 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:08,726 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E83810>
+2026-06-10 15:21:08,728 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 15:21:08,730 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:08,737 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 15:21:08,741 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:08,745 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 15:21:09,247 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:09,248 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/a31b3de6-672b-4e3a-a01d-c92965bac7d6/reset-password "HTTP/1.1 204 No Content"
+2026-06-10 15:21:09,250 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 15:21:09,251 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:09,259 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:09,260 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:09,263 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:09,263 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:09,298 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:09,305 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E82150>
+2026-06-10 15:21:09,306 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:09,311 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:09,312 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:09,315 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:09,317 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:09,622 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:09,622 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:21:09,623 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:09,623 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:09,625 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:09,626 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:09,629 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:09,629 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:09,673 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:09,676 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E765D0>
+2026-06-10 15:21:09,678 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:09,680 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:09,681 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:21:09,684 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:09,688 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:09,784 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'175'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:09,786 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_admin "HTTP/1.1 200 OK"
+2026-06-10 15:21:09,788 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:21:09,790 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:09,792 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:09,793 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:09,798 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:09,800 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:09,802 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:21:09,808 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:09,809 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:09,830 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'174'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:09,830 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_user "HTTP/1.1 200 OK"
+2026-06-10 15:21:09,831 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:21:09,832 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:09,834 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:09,835 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:09,842 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:09,842 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:09,843 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:09,844 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:09,846 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:09,955 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:09,957 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/admin/realms/hospital-realm/users/a31b3de6-672b-4e3a-a01d-c92965bac7d6/role-mappings/realm "HTTP/1.1 204 No Content"
+2026-06-10 15:21:09,957 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:09,959 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:09,963 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:09,966 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:09,974 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:09,977 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:10,023 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:10,028 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70650810>
+2026-06-10 15:21:10,031 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:10,037 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:10,041 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:10,042 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:10,047 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:10,480 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:10,481 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:21:10,481 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:10,481 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:10,485 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:10,491 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:10,499 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:10,504 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:10,545 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:21:10,565 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E883D0>
+2026-06-10 15:21:10,572 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:10,574 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:10,576 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:21:10,580 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:10,582 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:21:10,704 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'404'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:10,705 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/users/a31b3de6-672b-4e3a-a01d-c92965bac7d6 "HTTP/1.1 200 OK"
+2026-06-10 15:21:10,705 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:21:10,706 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:10,707 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:10,707 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:10,713 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 15:21:10,713 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:10,714 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 15:21:10,715 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:10,716 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 15:21:10,989 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:10,990 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/a31b3de6-672b-4e3a-a01d-c92965bac7d6 "HTTP/1.1 204 No Content"
+2026-06-10 15:21:10,991 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 15:21:10,991 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:10,999 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:11,004 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:11,015 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:11,021 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:21:51,196 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-10 15:21:51,200 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E6A790>
+2026-06-10 15:21:51,204 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:51,207 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:21:51,208 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:21:51,209 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:21:51,210 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:21:51,264 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:21:51,264 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-10 15:21:51,265 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:21:51,265 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:21:51,266 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:21:51,267 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:21:51,270 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:21:51,274 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:22:10,018 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:22:10,023 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70EFD390>
+2026-06-10 15:22:10,032 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:22:10,035 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:22:10,036 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:22:10,038 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:22:10,040 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:22:10,350 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2342'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:22:10,351 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:22:10,351 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:22:10,351 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:22:10,362 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:22:10,365 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:22:10,367 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:22:10,369 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:25:44,812 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:25:44,840 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC708DE150>
+2026-06-10 15:25:44,857 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:25:44,870 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:25:44,872 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:25:44,885 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:25:44,885 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:25:46,416 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:25:46,433 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 15:25:46,435 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:25:46,443 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:25:46,460 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:25:46,465 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:25:46,477 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:25:46,487 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:25:49,749 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:25:49,758 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E83D90>
+2026-06-10 15:25:49,764 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:25:49,765 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:25:49,767 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:25:49,769 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:25:49,773 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:25:49,797 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:25:49,799 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 15:25:49,801 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:25:49,803 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:25:49,809 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:25:49,813 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:25:49,826 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:25:49,828 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:18,684 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:18,688 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E50690>
+2026-06-10 15:26:18,695 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:18,701 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:18,704 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:26:18,706 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:18,707 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:19,697 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:19,697 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:26:19,697 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:26:19,697 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:19,699 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:19,699 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:19,712 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:19,714 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:19,752 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:19,756 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E88390>
+2026-06-10 15:26:19,760 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:19,764 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:19,766 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:19,768 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:19,769 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:19,873 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'175'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:19,873 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_admin "HTTP/1.1 200 OK"
+2026-06-10 15:26:19,875 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:19,875 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:19,881 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:19,883 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:19,888 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:19,890 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:19,894 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:19,900 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:19,904 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:19,922 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'174'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:19,923 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_user "HTTP/1.1 200 OK"
+2026-06-10 15:26:19,926 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:19,927 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:19,931 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:19,933 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:19,938 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:19,939 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:19,942 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:19,947 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:19,950 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:20,245 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'166'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:20,247 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/nurse "HTTP/1.1 200 OK"
+2026-06-10 15:26:20,249 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:20,249 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:20,251 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:20,251 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:20,256 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:20,256 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:20,259 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:20,266 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:20,268 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:20,303 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'170'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:20,304 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/clinician "HTTP/1.1 200 OK"
+2026-06-10 15:26:20,308 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:20,309 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:20,312 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:20,316 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:20,323 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:20,324 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:20,331 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:20,333 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:20,335 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:20,373 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'167'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:20,374 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/doctor "HTTP/1.1 200 OK"
+2026-06-10 15:26:20,374 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:20,375 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:20,377 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:20,380 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:20,385 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:20,386 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:20,387 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:20,387 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:20,389 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:20,427 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'168'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:20,431 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/patient "HTTP/1.1 200 OK"
+2026-06-10 15:26:20,431 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:20,432 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:20,434 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:20,435 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:20,439 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:20,439 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:20,482 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:20,489 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70DEFA90>
+2026-06-10 15:26:20,502 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:20,503 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:20,505 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:26:20,506 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:20,508 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:21,108 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:21,109 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:26:21,110 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:26:21,111 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:21,117 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:21,128 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:21,138 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:21,144 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:21,243 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:21,259 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70F1C810>
+2026-06-10 15:26:21,281 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:21,283 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:21,286 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:26:21,295 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:21,312 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:21,830 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 201, b'Created', [(b'Location', b'http://127.0.0.1:8080/admin/realms/hospital-realm/users/f5613d5b-f385-450b-a83e-54be68797138'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none'), (b'content-length', b'0')])
+2026-06-10 15:26:21,831 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/admin/realms/hospital-realm/users "HTTP/1.1 201 Created"
+2026-06-10 15:26:21,831 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:26:21,831 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:21,833 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:21,834 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:21,847 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 15:26:21,849 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:21,849 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 15:26:21,850 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:21,852 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 15:26:21,929 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:21,929 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/f5613d5b-f385-450b-a83e-54be68797138 "HTTP/1.1 204 No Content"
+2026-06-10 15:26:21,931 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 15:26:21,932 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:21,933 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:21,934 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:21,937 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:21,940 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:21,979 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:21,990 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70DCF410>
+2026-06-10 15:26:21,993 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:21,995 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:21,996 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:26:21,996 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:21,998 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:22,216 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:22,216 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:26:22,217 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:26:22,217 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:22,218 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:22,219 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:22,222 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:22,223 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:22,242 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:22,248 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70C74FD0>
+2026-06-10 15:26:22,251 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 15:26:22,252 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:22,252 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 15:26:22,254 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:22,256 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 15:26:22,434 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:22,434 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/f5613d5b-f385-450b-a83e-54be68797138/reset-password "HTTP/1.1 204 No Content"
+2026-06-10 15:26:22,434 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 15:26:22,434 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:22,436 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:22,438 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:22,445 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:22,445 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:22,476 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:22,482 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70E88390>
+2026-06-10 15:26:22,483 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:22,486 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:22,486 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:26:22,488 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:22,490 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:22,650 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:22,651 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:26:22,651 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:26:22,652 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:22,653 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:22,654 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:22,660 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:22,661 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:22,693 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:22,702 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70F07310>
+2026-06-10 15:26:22,707 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:22,711 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:22,713 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:22,714 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:22,715 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:22,734 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'167'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:22,735 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/doctor "HTTP/1.1 200 OK"
+2026-06-10 15:26:22,736 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:22,736 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:22,737 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:22,738 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:22,745 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:22,746 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:22,746 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:22,746 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:22,747 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:22,779 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'174'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:22,780 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_user "HTTP/1.1 200 OK"
+2026-06-10 15:26:22,781 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:22,781 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:22,782 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:22,782 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:22,786 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:22,787 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:22,788 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:26:22,792 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:22,794 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:22,879 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:22,880 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/admin/realms/hospital-realm/users/f5613d5b-f385-450b-a83e-54be68797138/role-mappings/realm "HTTP/1.1 204 No Content"
+2026-06-10 15:26:22,881 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:26:22,881 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:22,883 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:22,883 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:22,886 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:22,887 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:22,928 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:22,932 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70653FD0>
+2026-06-10 15:26:22,933 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:22,934 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:22,935 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 15:26:22,935 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:22,936 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 15:26:23,198 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:23,199 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 15:26:23,203 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 15:26:23,205 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:23,210 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:23,210 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:23,213 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:23,213 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:26:23,244 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 15:26:23,247 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001CC70F1DD10>
+2026-06-10 15:26:23,251 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:23,254 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:23,254 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 15:26:23,255 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:23,257 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 15:26:23,347 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'398'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:23,348 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/users/f5613d5b-f385-450b-a83e-54be68797138 "HTTP/1.1 200 OK"
+2026-06-10 15:26:23,349 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 15:26:23,351 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:23,353 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:23,359 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:23,369 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 15:26:23,370 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 15:26:23,370 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 15:26:23,371 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 15:26:23,372 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 15:26:23,501 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 15:26:23,502 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/f5613d5b-f385-450b-a83e-54be68797138 "HTTP/1.1 204 No Content"
+2026-06-10 15:26:23,502 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 15:26:23,503 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 15:26:23,504 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 15:26:23,505 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 15:26:23,512 [DEBUG] httpcore.connection: close.started
+2026-06-10 15:26:23,514 [DEBUG] httpcore.connection: close.complete
+2026-06-10 15:34:06,747 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:34:16,224 [INFO] hospital: Suspension background task started
+2026-06-10 15:34:16,248 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:36:43,260 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:36:56,903 [INFO] hospital: Suspension background task started
+2026-06-10 15:36:56,931 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:36:59,833 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:37:09,060 [INFO] hospital: Suspension background task started
+2026-06-10 15:37:09,080 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:37:12,711 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:37:20,557 [INFO] hospital: Suspension background task started
+2026-06-10 15:37:20,577 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:37:25,178 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:37:32,052 [INFO] hospital: Suspension background task started
+2026-06-10 15:37:32,075 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:37:44,136 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:37:53,395 [INFO] hospital: Suspension background task started
+2026-06-10 15:37:53,414 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:38:12,690 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:38:21,906 [INFO] hospital: Suspension background task started
+2026-06-10 15:38:21,931 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:38:26,054 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:38:33,639 [INFO] hospital: Suspension background task started
+2026-06-10 15:38:33,663 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:38:41,736 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:39:09,199 [INFO] hospital: Suspension background task started
+2026-06-10 15:39:09,241 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:40:45,888 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:41:26,510 [INFO] hospital: Suspension background task started
+2026-06-10 15:41:26,570 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:41:40,430 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:42:06,096 [INFO] hospital: Suspension background task started
+2026-06-10 15:42:06,172 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:42:17,881 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:42:30,538 [INFO] hospital: Suspension background task started
+2026-06-10 15:42:30,563 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:42:36,780 [INFO] hospital: Suspension background task stopped
+2026-06-10 15:42:52,209 [INFO] hospital: Suspension background task started
+2026-06-10 15:42:52,249 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 15:59:52,414 [INFO] hospital: Suspension background task stopped
+2026-06-10 16:00:10,359 [INFO] hospital: Suspension background task started
+2026-06-10 16:00:10,388 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 16:27:37,116 [INFO] hospital: Suspension background task stopped
+2026-06-10 16:28:20,953 [INFO] hospital: Suspension background task started
+2026-06-10 16:28:20,984 [INFO] hospital.suspension: Suspension check: 2 tenants checked, none suspended
+2026-06-10 16:28:27,166 [INFO] hospital: Suspension background task stopped
+2026-06-10 16:37:29,951 [INFO] hospital: Suspension background task started
+2026-06-10 16:37:29,969 [INFO] hospital.suspension: Suspension check: 0 tenants checked, none suspended
+2026-06-10 16:41:58,608 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:41:58,623 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C04255FCD0>
+2026-06-10 16:41:58,625 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 16:41:58,627 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:41:58,628 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 16:41:58,629 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:41:58,631 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 16:42:01,548 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2327'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:42:01,579 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 16:42:01,595 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 16:42:01,598 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:42:01,602 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:42:01,602 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:42:01,612 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:42:01,629 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:42:05,530 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:42:05,537 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C04264EC10>
+2026-06-10 16:42:05,550 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 16:42:05,551 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:42:05,552 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 16:42:05,554 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:42:05,562 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 16:42:05,634 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:42:05,635 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 16:42:05,636 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 16:42:05,636 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:42:05,639 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:42:05,643 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:42:05,664 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:42:05,664 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:42:08,012 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:42:08,017 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C0426733D0>
+2026-06-10 16:42:08,025 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 16:42:08,028 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:42:08,029 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 16:42:08,029 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:42:08,030 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 16:42:08,208 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'2957'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:42:08,210 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/certs "HTTP/1.1 200 OK"
+2026-06-10 16:42:08,211 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 16:42:08,212 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:42:08,217 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:42:08,218 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:42:08,232 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:42:08,233 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:43:56,342 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:43:56,358 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C0426CB9D0>
+2026-06-10 16:43:56,369 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:56,373 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:56,375 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 16:43:56,382 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:56,389 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:57,146 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:57,149 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 16:43:57,153 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 16:43:57,158 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:57,163 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:57,163 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:57,163 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:43:57,168 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:43:57,204 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:43:57,213 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C0426D7450>
+2026-06-10 16:43:57,216 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 16:43:57,217 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:57,218 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 16:43:57,219 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:57,219 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 16:43:57,295 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'174'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:57,295 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_user "HTTP/1.1 200 OK"
+2026-06-10 16:43:57,296 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 16:43:57,297 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:57,298 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:57,299 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:57,303 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 16:43:57,303 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:57,304 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 16:43:57,304 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:57,305 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 16:43:57,319 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'175'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:57,319 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/roles/hospital_admin "HTTP/1.1 200 OK"
+2026-06-10 16:43:57,321 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 16:43:57,322 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:57,322 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:57,326 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:57,330 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:43:57,330 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:43:57,373 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:43:57,380 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C0426DE090>
+2026-06-10 16:43:57,385 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:57,386 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:57,387 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 16:43:57,388 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:57,390 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:57,646 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:57,647 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 16:43:57,647 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 16:43:57,647 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:57,649 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:57,649 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:57,652 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:43:57,653 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:43:57,696 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:43:57,700 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C0426DFCD0>
+2026-06-10 16:43:57,703 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:57,704 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:57,706 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 16:43:57,710 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:57,710 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:58,662 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 409, b'Conflict', [(b'content-length', b'49'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:58,662 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/admin/realms/hospital-realm/users "HTTP/1.1 409 Conflict"
+2026-06-10 16:43:58,663 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 16:43:58,663 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:58,666 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:58,667 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:58,678 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 16:43:58,678 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:58,680 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 16:43:58,680 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:58,680 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 16:43:58,910 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'1719'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:58,910 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/users?username=adminnasri "HTTP/1.1 200 OK"
+2026-06-10 16:43:58,910 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 16:43:58,910 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:58,912 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:58,912 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:58,924 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 16:43:58,925 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:58,931 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 16:43:58,937 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:58,944 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 16:43:59,067 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:59,068 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/beffe66e-d2e6-47ff-89cd-0130faa1647c "HTTP/1.1 204 No Content"
+2026-06-10 16:43:59,068 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 16:43:59,069 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:59,070 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:59,071 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:59,078 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:43:59,078 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:43:59,105 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:43:59,122 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C042660890>
+2026-06-10 16:43:59,125 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:59,128 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:59,128 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 16:43:59,131 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:59,132 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 16:43:59,763 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'1514'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:43:59,764 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/master/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 16:43:59,764 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 16:43:59,765 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:43:59,774 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:43:59,779 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:43:59,782 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:43:59,785 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:43:59,861 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:43:59,878 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C0426DE410>
+2026-06-10 16:43:59,880 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'GET']>
+2026-06-10 16:43:59,882 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:43:59,892 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'GET']>
+2026-06-10 16:43:59,899 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:43:59,903 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'GET']>
+2026-06-10 16:44:00,207 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'content-length', b'457'), (b'Cache-Control', b'no-cache'), (b'Content-Type', b'application/json;charset=UTF-8'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:44:00,208 [INFO] httpx: HTTP Request: GET http://127.0.0.1:8080/admin/realms/hospital-realm/users/beffe66e-d2e6-47ff-89cd-0130faa1647c "HTTP/1.1 200 OK"
+2026-06-10 16:44:00,209 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'GET']>
+2026-06-10 16:44:00,210 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:44:00,218 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:44:00,221 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:44:00,246 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'PUT']>
+2026-06-10 16:44:00,262 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:44:00,266 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'PUT']>
+2026-06-10 16:44:00,273 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:44:00,281 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'PUT']>
+2026-06-10 16:44:00,538 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:44:00,538 [INFO] httpx: HTTP Request: PUT http://127.0.0.1:8080/admin/realms/hospital-realm/users/beffe66e-d2e6-47ff-89cd-0130faa1647c "HTTP/1.1 204 No Content"
+2026-06-10 16:44:00,539 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'PUT']>
+2026-06-10 16:44:00,540 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:44:00,541 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:44:00,542 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:44:00,550 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:44:00,552 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:44:32,554 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=5.0 socket_options=None
+2026-06-10 16:44:32,562 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C042704550>
+2026-06-10 16:44:32,564 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 16:44:32,567 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:44:32,568 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 16:44:32,570 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:44:32,570 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 16:44:32,618 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 204, b'No Content', [(b'Cache-Control', b'no-cache'), (b'Content-Security-Policy', b"frame-src 'self'; frame-ancestors 'self'; object-src 'none';"), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:44:32,619 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/logout "HTTP/1.1 204 No Content"
+2026-06-10 16:44:32,619 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 16:44:32,620 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:44:32,621 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:44:32,622 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:44:32,629 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:44:32,630 [DEBUG] httpcore.connection: close.complete
+2026-06-10 16:44:55,982 [DEBUG] httpcore.connection: connect_tcp.started host='127.0.0.1' port=8080 local_address=None timeout=10.0 socket_options=None
+2026-06-10 16:44:55,991 [DEBUG] httpcore.connection: connect_tcp.complete return_value=<httpcore._backends.anyio.AnyIOStream object at 0x000001C042704510>
+2026-06-10 16:44:56,000 [DEBUG] httpcore.http11: send_request_headers.started request=<Request [b'POST']>
+2026-06-10 16:44:56,003 [DEBUG] httpcore.http11: send_request_headers.complete
+2026-06-10 16:44:56,004 [DEBUG] httpcore.http11: send_request_body.started request=<Request [b'POST']>
+2026-06-10 16:44:56,009 [DEBUG] httpcore.http11: send_request_body.complete
+2026-06-10 16:44:56,012 [DEBUG] httpcore.http11: receive_response_headers.started request=<Request [b'POST']>
+2026-06-10 16:44:56,216 [DEBUG] httpcore.http11: receive_response_headers.complete return_value=(b'HTTP/1.1', 200, b'OK', [(b'Cache-Control', b'no-store'), (b'Pragma', b'no-cache'), (b'content-length', b'2358'), (b'Content-Type', b'application/json'), (b'Referrer-Policy', b'no-referrer'), (b'Strict-Transport-Security', b'max-age=31536000; includeSubDomains'), (b'X-Content-Type-Options', b'nosniff'), (b'X-Frame-Options', b'SAMEORIGIN'), (b'X-Robots-Tag', b'none')])
+2026-06-10 16:44:56,216 [INFO] httpx: HTTP Request: POST http://127.0.0.1:8080/realms/hospital-realm/protocol/openid-connect/token "HTTP/1.1 200 OK"
+2026-06-10 16:44:56,217 [DEBUG] httpcore.http11: receive_response_body.started request=<Request [b'POST']>
+2026-06-10 16:44:56,218 [DEBUG] httpcore.http11: receive_response_body.complete
+2026-06-10 16:44:56,223 [DEBUG] httpcore.http11: response_closed.started
+2026-06-10 16:44:56,226 [DEBUG] httpcore.http11: response_closed.complete
+2026-06-10 16:44:56,231 [DEBUG] httpcore.connection: close.started
+2026-06-10 16:44:56,232 [DEBUG] httpcore.connection: close.complete

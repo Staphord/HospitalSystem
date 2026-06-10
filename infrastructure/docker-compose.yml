@@ -1,0 +1,396 @@
+version: "3.8"
+
+networks:
+  hospital-network:
+    driver: bridge
+
+services:
+  postgres-master:
+    image: postgres:16-alpine
+    container_name: hospital-postgres-master
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hospital_master
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-master-data:/var/lib/postgresql/data
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hospital_master"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hospital-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: hospital-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: hospital-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_URL=http://localhost
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: hospital-auth-service
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  master-service:
+    build:
+      context: ./services/master-service
+      dockerfile: Dockerfile
+    container_name: hospital-master-service
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  reception-service:
+    build:
+      context: ./services/reception-service
+      dockerfile: Dockerfile
+    container_name: hospital-reception-service
+    ports:
+      - "8010:8010"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  triage-service:
+    build:
+      context: ./services/triage-service
+      dockerfile: Dockerfile
+    container_name: hospital-triage-service
+    ports:
+      - "8011:8011"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  consultation-service:
+    build:
+      context: ./services/consultation-service
+      dockerfile: Dockerfile
+    container_name: hospital-consultation-service
+    ports:
+      - "8012:8012"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  laboratory-service:
+    build:
+      context: ./services/laboratory-service
+      dockerfile: Dockerfile
+    container_name: hospital-laboratory-service
+    ports:
+      - "8013:8013"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  radiology-service:
+    build:
+      context: ./services/radiology-service
+      dockerfile: Dockerfile
+    container_name: hospital-radiology-service
+    ports:
+      - "8014:8014"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8014/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  pharmacy-service:
+    build:
+      context: ./services/pharmacy-service
+      dockerfile: Dockerfile
+    container_name: hospital-pharmacy-service
+    ports:
+      - "8015:8015"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8015/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  billing-service:
+    build:
+      context: ./services/billing-service
+      dockerfile: Dockerfile
+    container_name: hospital-billing-service
+    ports:
+      - "8016:8016"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8016/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ward-service:
+    build:
+      context: ./services/ward-service
+      dockerfile: Dockerfile
+    container_name: hospital-ward-service
+    ports:
+      - "8017:8017"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8017/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  admin-service:
+    build:
+      context: ./services/admin-service
+      dockerfile: Dockerfile
+    container_name: hospital-admin-service
+    ports:
+      - "8018:8018"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8018/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: hospital-notification-service
+    ports:
+      - "8019:8019"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  report-service:
+    build:
+      context: ./services/report-service
+      dockerfile: Dockerfile
+    container_name: hospital-report-service
+    ports:
+      - "8020:8020"
+    env_file:
+      - .env
+    depends_on:
+      postgres-master:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-master-data:

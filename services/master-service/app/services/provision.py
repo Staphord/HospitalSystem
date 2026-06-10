@@ -1,0 +1,142 @@
+"""Tenant provisioning service — creates isolated PostgreSQL databases for new hospitals.
+
+Usage:
+    Called by the master-service event subscriber when a `tenant.created` event is received.
+"""
+
+from __future__ import annotations
+
+import logging
+import subprocess
+from datetime import datetime, timezone
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.db.master import get_master_db
+from app.models.master import Tenant
+from app.services.tenant_service import encrypt_dsn
+
+logger = logging.getLogger(__name__)
+
+
+def _get_admin_engine():
+    """Create a SQLAlchemy engine using the admin connection (with CREATEDB privilege)."""
+    return create_engine(settings.db_admin_url, pool_pre_ping=True, isolation_level="AUTOCOMMIT")
+
+
+def _build_tenant_dsn(tenant_id: str) -> str:
+    """Build the connection string for a tenant database using the template."""
+    return settings.tenant_db_template.format(tenant_id=tenant_id)
+
+
+def _create_database(tenant_id: str) -> str:
+    """Create a new PostgreSQL database for the tenant.
+
+    Returns the DSN connection string.
+    """
+    db_name = f"tenant_{tenant_id}"
+    dsn = _build_tenant_dsn(tenant_id)
+    admin_engine = _get_admin_engine()
+
+    logger.info("Creating tenant database '%s' for tenant %s", db_name, tenant_id)
+
+    with admin_engine.connect() as conn:
+        # Check if database already exists
+        result = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
+            {"db_name": db_name},
+        )
+        if result.scalar():
+            logger.warning("Database '%s' already exists — skipping creation", db_name)
+        else:
+            # Create database (quote identifier to handle hyphens in tenant_id)
+            conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+            logger.info("Database '%s' created successfully", db_name)
+
+    admin_engine.dispose()
+    return dsn
+
+
+def _run_alembic_migrations(tenant_id: str, db_name: str) -> None:
+    """Run tenant migrations on the newly created database."""
+    import os
+    import sys
+    logger.info("Running tenant migrations for database '%s'...", db_name)
+    try:
+        dsn = _build_tenant_dsn(tenant_id)
+        # Use the same Python interpreter that is running this service
+        # so alembic is found when the app runs inside a virtualenv
+        python_executable = sys.executable
+        result = subprocess.run(
+            [
+                python_executable, "-m", "alembic",
+                "-c", "migrations/tenant/alembic.ini",
+                "upgrade", "head",
+            ],
+            env={
+                **dict(os.environ),
+                "TENANT_DB_URL": dsn,
+            },
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        logger.info("Migrations completed for '%s'", db_name)
+        if result.stdout:
+            logger.debug("Alembic output: %s", result.stdout.strip())
+    except subprocess.CalledProcessError as exc:
+        logger.error("Migration failed for '%s': %s\n%s", db_name, exc.stderr, exc.stdout)
+        raise RuntimeError(f"Tenant migration failed for {db_name}: {exc.stderr}") from exc
+
+
+def _update_tenant_record(tenant_id: str, dsn: str) -> None:
+    """Encrypt the tenant DSN and update the master DB tenants record."""
+    db: Session = get_master_db()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        if not tenant:
+            logger.error("Tenant record %s not found in master DB — cannot update DSN", tenant_id)
+            return
+
+        tenant.db_dsn_encrypted = encrypt_dsn(dsn)
+        tenant.status = "active"
+        tenant.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        logger.info("Updated tenant %s with encrypted DSN", tenant_id)
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+async def provision_tenant_database(tenant_id: str, name: str) -> str:
+    """Provision a new isolated PostgreSQL database for a tenant.
+
+    Steps:
+        1. Create the database
+        2. Run tenant migrations
+        3. Update the tenant record with the encrypted DSN
+        4. Return the DSN
+
+    Raises:
+        RuntimeError: If any step fails.
+    """
+    db_name = f"tenant_{tenant_id}"
+    try:
+        # 1. Create database
+        dsn = _create_database(tenant_id)
+
+        # 2. Run migrations
+        _run_alembic_migrations(tenant_id, db_name)
+
+        # 3. Update tenant record
+        _update_tenant_record(tenant_id, dsn)
+
+        logger.info("[OK] Tenant '%s' database provisioned: %s", tenant_id, db_name)
+        return dsn
+    except Exception as exc:
+        logger.error("[FAIL] Tenant provisioning failed for '%s': %s", tenant_id, exc)
+        raise

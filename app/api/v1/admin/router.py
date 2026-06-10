@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.core.database import get_db, get_tenant_db
 from app.core.security import get_current_active_user, require_role, TokenPayload
 from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.core.limiter import limiter
@@ -22,11 +22,24 @@ from app.models.user import User
 router = APIRouter(dependencies=[Depends(require_role("hospital_admin"))])
 
 
+def get_tenant_db_for_request(ctx: TenantContext = Depends(get_current_tenant)):
+    """Get a database session for the tenant from the JWT context.
+    
+    This routes to the tenant-specific database instead of the master database.
+    """
+    if not ctx.tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenant association found in token",
+        )
+    yield from get_tenant_db(ctx.tenant_id)
+
+
 @router.get("/users", response_model=list[HospitalUserOut])
 @limiter.limit("30/minute")
 async def list_hospital_users(
     request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db_for_request),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> list[HospitalUserOut]:
     if not ctx.tenant_id:
@@ -50,7 +63,7 @@ async def list_hospital_users(
 async def create_hospital_user(
     request: Request,
     body: HospitalUserCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db_for_request),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> HospitalUserOut:
     if not ctx.tenant_id:
@@ -110,7 +123,7 @@ async def update_hospital_user(
     request: Request,
     sub: str,
     body: HospitalUserUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db_for_request),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> HospitalUserOut:
     user = db.query(User).filter(User.keycloak_sub == sub).first()
@@ -163,7 +176,7 @@ async def update_hospital_user(
 async def delete_hospital_user(
     request: Request,
     sub: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db_for_request),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> None:
     user = db.query(User).filter(User.keycloak_sub == sub).first()

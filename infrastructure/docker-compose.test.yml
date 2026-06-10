@@ -1,0 +1,389 @@
+version: "3.8"
+
+networks:
+  hospital-network-test:
+    driver: bridge
+
+services:
+  postgres-master-test:
+    image: postgres:16-alpine
+    container_name: hospital-postgres-master-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hospital_master_test
+    ports:
+      - "15432:5432"
+    networks:
+      - hospital-network-test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hospital_master_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis-test:
+    image: redis:7-alpine
+    container_name: hospital-redis-test
+    ports:
+      - "16379:6379"
+    networks:
+      - hospital-network-test
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq-test:
+    image: rabbitmq:3.13-management-alpine
+    container_name: hospital-rabbitmq-test
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "15672:15672"
+      - "25672:25672"
+    networks:
+      - hospital-network-test
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    image: ghcr.io/your-org/api-gateway:latest
+    container_name: hospital-api-gateway-test
+    ports:
+      - "18000:8000"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    image: ghcr.io/your-org/auth-service:latest
+    container_name: hospital-auth-service-test
+    ports:
+      - "18001:8001"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  master-service:
+    image: ghcr.io/your-org/master-service:latest
+    container_name: hospital-master-service-test
+    ports:
+      - "18002:8002"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  reception-service:
+    image: ghcr.io/your-org/reception-service:latest
+    container_name: hospital-reception-service-test
+    ports:
+      - "18010:8010"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  triage-service:
+    image: ghcr.io/your-org/triage-service:latest
+    container_name: hospital-triage-service-test
+    ports:
+      - "18011:8011"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  consultation-service:
+    image: ghcr.io/your-org/consultation-service:latest
+    container_name: hospital-consultation-service-test
+    ports:
+      - "18012:8012"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  laboratory-service:
+    image: ghcr.io/your-org/laboratory-service:latest
+    container_name: hospital-laboratory-service-test
+    ports:
+      - "18013:8013"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  radiology-service:
+    image: ghcr.io/your-org/radiology-service:latest
+    container_name: hospital-radiology-service-test
+    ports:
+      - "18014:8014"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8014/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  pharmacy-service:
+    image: ghcr.io/your-org/pharmacy-service:latest
+    container_name: hospital-pharmacy-service-test
+    ports:
+      - "18015:8015"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8015/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  billing-service:
+    image: ghcr.io/your-org/billing-service:latest
+    container_name: hospital-billing-service-test
+    ports:
+      - "18016:8016"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8016/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ward-service:
+    image: ghcr.io/your-org/ward-service:latest
+    container_name: hospital-ward-service-test
+    ports:
+      - "18017:8017"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8017/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  admin-service:
+    image: ghcr.io/your-org/admin-service:latest
+    container_name: hospital-admin-service-test
+    ports:
+      - "18018:8018"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8018/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  notification-service:
+    image: ghcr.io/your-org/notification-service:latest
+    container_name: hospital-notification-service-test
+    ports:
+      - "18019:8019"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  report-service:
+    image: ghcr.io/your-org/report-service:latest
+    container_name: hospital-report-service-test
+    ports:
+      - "18020:8020"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
