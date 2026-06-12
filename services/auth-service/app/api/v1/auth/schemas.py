@@ -82,8 +82,12 @@ class SuperAdminLoginRequest(BaseModel):
 
 class SuperAdminTokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
+    expires_in: int
+    refresh_expires_in: int
     token_type: str = "Bearer"
-    expires_in: int = 1800
+    session_id: str
+    not_before_policy: int = 0
     scope: str = "full"
 
 

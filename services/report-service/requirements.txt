@@ -9,6 +9,7 @@ python-jose[cryptography]
 cachetools
 slowapi
 redis
+psycopg2-binary
 cryptography
 pytest
 pytest-asyncio

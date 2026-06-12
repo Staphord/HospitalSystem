@@ -233,7 +233,11 @@ def _create_tenant(hospital_name: str, admin_username: str, admin_password: str,
     })
     if r.status_code == 201:
         return r.json()
-    detail = r.json().get("detail", r.text) if r.text else f"HTTP {r.status_code}"
+    try:
+        body = r.json()
+        detail = body.get("detail", r.text) if isinstance(body, dict) else r.text
+    except Exception:
+        detail = r.text if r.text else f"HTTP {r.status_code}"
     return detail
 
 
@@ -263,43 +267,49 @@ def _show_login():
     st.title("Hospital Flow")
     st.subheader("Sign In")
 
+    login_type = st.radio("Portal", ["Hospital Portal", "Super Admin Portal"], horizontal=True)
+
     with st.form("login_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        col1, col2 = st.columns(2)
-        with col1:
-            submitted = st.form_submit_button("Sign In", use_container_width=True)
-        with col2:
-            st.form_submit_button("Sign Up", use_container_width=True, on_click=lambda: st.session_state.update(page="signup"))
+        username = st.text_input("Username", key="login_username")
+        password = st.text_input("Password", type="password", key="login_password")
+        submitted = st.form_submit_button("Sign In", use_container_width=True, key="login_signin_btn")
 
     if submitted:
         if not username or not password:
             st.error("Please enter username and password")
             return
-        result = _login(username, password)
-        if isinstance(result, str):
-            # Regular login returned an error string; try superadmin
-            sa_result = _login_superadmin(username, password)
-            if isinstance(sa_result, dict):
-                result = sa_result
+
+        if login_type == "Super Admin Portal":
+            result = _login_superadmin(username, password)
+            if isinstance(result, dict):
+                st.session_state["access_token"] = result["access_token"]
+                st.session_state["refresh_token"] = result.get("refresh_token", "")
+                st.session_state["username"] = username
+                st.session_state["session_id"] = ""
+                st.session_state["tenant_id"] = None
+                st.rerun()
             else:
-                st.error(result)
+                st.error(result if isinstance(result, str) else "Invalid superadmin credentials")
                 return
-        if isinstance(result, dict):
-            st.session_state["access_token"] = result["access_token"]
-            st.session_state["refresh_token"] = result.get("refresh_token", "")
-            st.session_state["username"] = username
-            st.session_state["session_id"] = result.get("session_id", "")
-            st.session_state["tenant_id"] = result.get("tenant_id")
-            st.rerun()
         else:
-            st.error("Invalid credentials")
+            result = _login(username, password)
+            if isinstance(result, dict):
+                st.session_state["access_token"] = result["access_token"]
+                st.session_state["refresh_token"] = result.get("refresh_token", "")
+                st.session_state["username"] = username
+                st.session_state["session_id"] = result.get("session_id", "")
+                st.session_state["tenant_id"] = result.get("tenant_id")
+                st.rerun()
+            else:
+                st.error(result if isinstance(result, str) else "Invalid credentials")
+                return
 
     st.markdown("---")
-    st.markdown("Don't have an account?")
-    if st.button("Register a new hospital"):
-        st.session_state["page"] = "signup"
-        st.rerun()
+    if login_type == "Hospital Portal":
+        st.markdown("Don't have an account?")
+        if st.button("Register a new hospital"):
+            st.session_state["page"] = "signup"
+            st.rerun()
 
 
 def _show_signup():
@@ -316,9 +326,13 @@ def _show_signup():
 
         col1, col2 = st.columns(2)
         with col1:
-            submitted = st.form_submit_button("Register", use_container_width=True)
+            submitted = st.form_submit_button("Register", use_container_width=True, key="signup_register_btn")
         with col2:
-            st.form_submit_button("Back to Login", use_container_width=True, on_click=lambda: st.session_state.update(page="login"))
+            back_to_login = st.form_submit_button("Back to Login", use_container_width=True, key="signup_back_btn")
+
+    if back_to_login:
+        st.session_state["page"] = "login"
+        st.rerun()
 
     if submitted:
         if not all([hospital_name, admin_username, admin_email, admin_password]):
@@ -343,10 +357,6 @@ def _show_signup():
             st.rerun()
         else:
             st.error(f"Registration failed: {result}")
-
-    if st.button("Back to Login"):
-        st.session_state["page"] = "login"
-        st.rerun()
 
 
 ALL_ROLES = ["hospital_admin", "nurse", "clinician", "doctor", "patient"]

@@ -26,7 +26,7 @@ services:
     image: redis:7-alpine
     container_name: hospital-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     networks:
       - hospital-network
     healthcheck:
@@ -60,9 +60,31 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SERVICE_URL=http://localhost
-    env_file:
-      - .env
+      ENVIRONMENT: dev
+      MASTER_DB_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      AUTH_SERVICE_URL: http://auth-service:8001
+      MASTER_SERVICE_URL: http://master-service:8002
+      RECEPTION_SERVICE_URL: http://reception-service:8010
+      TRIAGE_SERVICE_URL: http://triage-service:8011
+      CONSULTATION_SERVICE_URL: http://consultation-service:8012
+      LABORATORY_SERVICE_URL: http://laboratory-service:8013
+      RADIOLOGY_SERVICE_URL: http://radiology-service:8014
+      PHARMACY_SERVICE_URL: http://pharmacy-service:8015
+      BILLING_SERVICE_URL: http://billing-service:8016
+      WARD_SERVICE_URL: http://ward-service:8017
+      ADMIN_SERVICE_URL: http://admin-service:8018
+      NOTIFICATION_SERVICE_URL: http://notification-service:8019
+      REPORT_SERVICE_URL: http://report-service:8020
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -73,7 +95,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -85,8 +107,28 @@ services:
     container_name: hospital-auth-service
     ports:
       - "8001:8001"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      DB_ADMIN_URL: postgresql://postgres:postgres@postgres-master:5432/postgres
+      TENANT_DB_TEMPLATE: postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}
+      IMPERSONATION_TOKEN_TTL: 900
+      SUSPENSION_CHECK_INTERVAL: 86400
+      SUSPENDED_BLOCKLIST_TTL: 3600
+      PASSWORD_RESET_TOKEN_TTL: 3600
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -94,10 +136,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ./migrations:/app/migrations:ro
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -109,8 +153,28 @@ services:
     container_name: hospital-master-service
     ports:
       - "8002:8002"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      DB_ADMIN_URL: postgresql://postgres:postgres@postgres-master:5432/postgres
+      TENANT_DB_TEMPLATE: postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}
+      IMPERSONATION_TOKEN_TTL: 900
+      SUSPENSION_CHECK_INTERVAL: 86400
+      SUSPENDED_BLOCKLIST_TTL: 3600
+      PASSWORD_RESET_TOKEN_TTL: 3600
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -118,10 +182,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ./migrations:/app/migrations:ro
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -133,8 +199,22 @@ services:
     container_name: hospital-reception-service
     ports:
       - "8010:8010"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -145,7 +225,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8010/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -157,8 +237,22 @@ services:
     container_name: hospital-triage-service
     ports:
       - "8011:8011"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -169,7 +263,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8011/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -181,8 +275,22 @@ services:
     container_name: hospital-consultation-service
     ports:
       - "8012:8012"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -193,7 +301,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8012/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -205,8 +313,22 @@ services:
     container_name: hospital-laboratory-service
     ports:
       - "8013:8013"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -217,7 +339,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8013/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -229,8 +351,22 @@ services:
     container_name: hospital-radiology-service
     ports:
       - "8014:8014"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -241,7 +377,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8014/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8014/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -253,8 +389,22 @@ services:
     container_name: hospital-pharmacy-service
     ports:
       - "8015:8015"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -265,7 +415,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8015/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8015/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -277,8 +427,22 @@ services:
     container_name: hospital-billing-service
     ports:
       - "8016:8016"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -289,7 +453,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8016/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8016/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -301,8 +465,22 @@ services:
     container_name: hospital-ward-service
     ports:
       - "8017:8017"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -313,7 +491,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8017/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8017/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -325,8 +503,22 @@ services:
     container_name: hospital-admin-service
     ports:
       - "8018:8018"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -337,7 +529,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8018/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8018/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -349,8 +541,22 @@ services:
     container_name: hospital-notification-service
     ports:
       - "8019:8019"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -361,7 +567,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8019/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -373,8 +579,22 @@ services:
     container_name: hospital-report-service
     ports:
       - "8020:8020"
-    env_file:
-      - .env
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
+      REDIS_URL: redis://redis:6379/0
+      KEYCLOAK_URL: http://host.docker.internal:8080
+      KEYCLOAK_REALM: hospital-realm
+      KEYCLOAK_CLIENT_ID: hospital-api
+      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_INTROSPECT: "false"
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      DEFAULT_HOSPITAL_ID: default-hospital
+      TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -385,7 +605,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8020/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8020/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5

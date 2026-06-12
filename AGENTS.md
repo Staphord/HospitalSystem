@@ -57,18 +57,18 @@ Build multi-tenant hospital management system with FastAPI backend (Keycloak OID
 - Rate limiting on all endpoints
 - README with role hierarchy, security rules, API endpoint tables, test users
 
-### Key Files (Legacy Monolith — preserved in `app/`)
-- `app/models/user.py` — User SQLAlchemy model
-- `app/core/database.py` — DB engine + auto-migration
-- `app/services/keycloak_admin.py` — Keycloak admin API wrapper
-- `app/api/v1/admin/router.py` — Hospital admin user CRUD
-- `app/api/v1/superadmin/router.py` — Superadmin user/tenant/role management
-- `app/api/v1/auth/router.py` — Login/signup/password-reset/logout
+### Key Files
+- `services/auth-service/app/api/v1/auth/router.py` — All auth endpoints
+- `services/auth-service/app/events/publisher.py` — Publishes tenant.created event on signup
+- `services/master-service/app/api/v1/superadmin/router.py` — Superadmin endpoints
+- `services/master-service/app/services/provision.py` — Automatic tenant database provisioning
+- `services/master-service/app/events/subscriber.py` — Consumes tenant.created event and triggers provisioning
+- `services/admin-service/app/api/v1/admin/router.py` — Hospital admin endpoints
+- `services/api-gateway/app/proxy.py` — Route table and reverse-proxy logic
+- `services/api-gateway/app/tenant.py` — Tenant DB URL resolution with Redis caching
 - `streamlit_app/app.py` — Streamlit frontend
 
-> **Note:** The `app/` directory is the **legacy monolith** — preserved for reference but no longer running. The active system is in `services/`. Key files for the live architecture are listed in the Session 2 summary below.
-
-### Test Users (from README)
+### Test Users
 - Super Admin: `superadmin` / `superadmin123`
 - Hospital Admin: `hadmin1` / `admin12345`
 - Hospital User: `staff1` / `staff1234`
@@ -78,9 +78,9 @@ Build multi-tenant hospital management system with FastAPI backend (Keycloak OID
 ## Context Summary (Session 2)
 
 ### Goal
-Restructured the monolith into a 14-microservice architecture as defined in `microservicearchitecture.md` while preserving all existing working functionality in `app/`.
+Restructured the monolith into a 14-microservice architecture as defined in `microservicearchitecture.md`.
 
-### New Repository Structure
+### Repository Structure
 ```
 hospital-flow/
 ├── services/                     # 14 independent microservices
@@ -112,27 +112,24 @@ hospital-flow/
 │       └── events.py             # RabbitMQ event payloads (15 Pydantic models)
 ├── scripts/                      # provision_tenant, migrate_tenant, seed_dev, run_all_tests
 ├── docs/
-├── app/                          # ORIGINAL MONOLITH — preserved, untouched
-└── streamlit_app/                # ORIGINAL STREAMLIT — preserved, untouched
+└── streamlit_app/                # Streamlit frontend
 ```
 
 ### Architecture Notes
 - **API Gateway** reverse-proxies requests to downstream services by path prefix and injects `X-Tenant-DB` header after resolving tenant DB URL from Master DB (cached in Redis).
-- **Auth** and **Admin** functionality were fully migrated; existing `app/api/v1/auth/router.py`, `app/api/v1/admin/router.py`, `app/api/v1/superadmin/router.py` remain intact in `app/`.
-- **RabbitMQ** is fully wired: `app/messaging/` module in each service provides `publish_event()` and `start_consumer()`. All `events/publisher.py` and `events/subscriber.py` files call real messaging code. Consumers are started as background tasks in each service's FastAPI lifespan.
+- **Auth** and **Admin** functionality are fully migrated into dedicated services.
+- **RabbitMQ** is fully wired: each service has its own `app/messaging/` module providing `publish_event()` and `start_consumer()`. All `events/publisher.py` and `events/subscriber.py` files call real messaging code. Consumers are started as background tasks in each service's FastAPI lifespan.
 - Each service is self-contained with its own `app/` package, `Dockerfile`, and `requirements.txt`.
-- **No existing files in `app/` or `streamlit_app/` were deleted or modified.**
 
-### Key Files (New)
+### Key Files
 - `services/api-gateway/app/proxy.py` — Route table and reverse-proxy logic
 - `services/api-gateway/app/tenant.py` — Tenant DB URL resolution with Redis caching
-- `services/auth-service/app/api/v1/auth/router.py` — All auth endpoints (preserved from monolith)
+- `services/auth-service/app/api/v1/auth/router.py` — All auth endpoints
 - `services/auth-service/app/events/publisher.py` — Publishes tenant.created event on signup
-- `services/master-service/app/api/v1/superadmin/router.py` — Superadmin endpoints (preserved from monolith)
-- `services/master-service/app/services/provision.py` — Automatic tenant database provisioning (CREATE DATABASE + alembic migrations)
+- `services/master-service/app/api/v1/superadmin/router.py` — Superadmin endpoints
+- `services/master-service/app/services/provision.py` — Automatic tenant database provisioning
 - `services/master-service/app/events/subscriber.py` — Consumes tenant.created event and triggers provisioning
-- `services/admin-service/app/api/v1/admin/router.py` — Hospital admin endpoints (preserved from monolith)
-- `shared/messaging/connection.py`, `publisher.py`, `subscriber.py` — Reusable RabbitMQ helpers
+- `services/admin-service/app/api/v1/admin/router.py` — Hospital admin endpoints
 - `infrastructure/docker-compose.yml` — Full local dev stack
 
 ### Automatic Tenant Provisioning

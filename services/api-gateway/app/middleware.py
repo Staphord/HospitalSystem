@@ -10,6 +10,7 @@ from jose import jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
+from app.tenant import is_tenant_suspended
 
 _bearer_scheme = None
 _jwks_cache: dict[str, Any] = {}
@@ -107,8 +108,20 @@ class JWTVerificationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
         path = request.url.path
 
-        # Skip health and docs
-        if path in ("/health", "/docs", "/openapi.json", "/redoc"):
+        # Skip health, docs, and public auth endpoints (login, signup, refresh, password reset)
+        PUBLIC_PREFIXES = (
+            "/health",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+            "/api/v1/auth/login",
+            "/api/v1/auth/superadmin/login",
+            "/api/v1/auth/signup",
+            "/api/v1/auth/refresh",
+            "/api/v1/auth/password-reset",
+            "/api/v1/auth/password-reset/confirm",
+        )
+        if path.startswith(PUBLIC_PREFIXES):
             return await call_next(request)
 
         auth = request.headers.get("authorization", "")

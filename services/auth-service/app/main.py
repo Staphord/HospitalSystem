@@ -97,4 +97,8 @@ app.add_middleware(ReadOnlyScopeMiddleware)
 app.add_middleware(ImpersonationBannerMiddleware)
 app.add_middleware(AuditLogMiddleware)
 
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "auth-service"}
+
 app.include_router(api_v1_router, prefix="/api/v1")

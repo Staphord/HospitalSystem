@@ -133,20 +133,15 @@ hospital-flow/
 │   ├── migrate_all_tenants.py      # Run tenant migrations across all hospitals
 │   ├── run_all_tests.sh           # Run pytest across all 14 services
 │   └── seed_dev.py                # Seed local dev data
-├── docs/
+ ├── docs/
 │   ├── architecture_guide.docx
 │   ├── database_schema.pdf
 │   └── srs.docx
-├── app/                            # LEGACY MONOLITH (preserved, not running)
-│   ├── Dockerfile.legacy
-│   └── requirements.txt
-├── streamlit_app/                  # Original Streamlit frontend
+├── streamlit_app/                  # Streamlit frontend
 ├── .env.example
 ├── .gitignore
 └── README.md
 ```
-
-> **Note:** The `app/` directory at the project root is the **legacy monolith** — preserved for reference and rollback, but it is **no longer the active system**. All running code is inside `services/`. The root `docker-compose.yml` and `Dockerfile` now launch the 14 microservices, not the old monolith.
 
 ---
 

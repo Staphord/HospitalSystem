@@ -14,10 +14,10 @@ def _get_kc_admin() -> KeycloakAdmin:
     admin_password = os.getenv("KEYCLOAK_ADMIN_PASSWORD", "admin")
 
     try:
-        requests.get(f"{keycloak_url}/.well-known/openid-configuration", timeout=3)
-    except requests.ConnectionError:
-        print(f"ERROR: Cannot reach Keycloak at {keycloak_url}")
-        print("Start it with: docker-compose up -d keycloak keycloak-db")
+        requests.get(f"{keycloak_url}/realms/master/.well-known/openid-configuration", timeout=30)
+    except (requests.ConnectionError, requests.Timeout) as e:
+        print(f"ERROR: Cannot reach Keycloak at {keycloak_url}: {e}")
+        print("Start it with: docker run -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin quay.io/keycloak/keycloak:26.6.2 start-dev")
         sys.exit(1)
 
     return KeycloakAdmin(
@@ -151,11 +151,15 @@ def main() -> None:
     test_password = os.getenv("KEYCLOAK_TEST_PASSWORD", "testpassword")
     admin_username = os.getenv("KEYCLOAK_ADMIN_TEST_USERNAME", "adminuser")
     admin_password_user = os.getenv("KEYCLOAK_ADMIN_TEST_PASSWORD", "adminpassword")
+    superadmin_username = os.getenv("KEYCLOAK_SUPERADMIN_TEST_USERNAME", "superadmin")
+    superadmin_password = os.getenv("KEYCLOAK_SUPERADMIN_TEST_PASSWORD", "superadmin123")
 
     _ensure_user(kc_admin, test_username, test_password, ["hospital_user"])
     print(f"  User '{test_username}' ready")
     _ensure_user(kc_admin, admin_username, admin_password_user, ["hospital_admin"])
     print(f"  User '{admin_username}' ready")
+    _ensure_user(kc_admin, superadmin_username, superadmin_password, ["super_admin"])
+    print(f"  User '{superadmin_username}' ready")
 
 
 def _ensure_user(kc_admin: KeycloakAdmin, username: str, password: str, roles: list[str]) -> None:

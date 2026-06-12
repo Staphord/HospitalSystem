@@ -100,15 +100,21 @@ async def update_user(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Super admin not found")
 
     from app.services.keycloak_admin import update_keycloak_user, set_user_password
+    # Look up the Keycloak user ID via the local User record
+    user_record = db.query(User).filter(User.username == admin.username).first()
+    kc_sub = user_record.keycloak_sub if user_record else None
     if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()):
-        await update_keycloak_user(
-            str(admin.super_admin_id),
-            username=body.username,
-            email=body.email,
-            full_name=body.full_name,
-        )
+        if kc_sub:
+            await update_keycloak_user(
+                kc_sub,
+                username=body.username,
+                email=body.email,
+                full_name=body.full_name,
+            )
     if body.password is not None:
         superadmin_auth_service.update_superadmin_password(db, admin, body.password)
+        if kc_sub:
+            await set_user_password(kc_sub, body.password)
 
     if body.username is not None:
         admin.username = body.username
@@ -122,6 +128,17 @@ async def update_user(
         admin.mfa_secret = body.mfa_secret
     if body.is_active is not None:
         admin.is_active = body.is_active
+
+    # Sync local User record with updated fields
+    if user_record:
+        if body.username is not None:
+            user_record.username = body.username
+        if body.email is not None:
+            user_record.email = body.email
+        if body.full_name is not None:
+            user_record.full_name = body.full_name
+        if body.role is not None:
+            user_record.role = body.role
 
     db.commit()
     db.refresh(admin)
@@ -218,27 +235,25 @@ async def create_tenant(
     from app.services.keycloak_admin import set_user_attribute
     await set_user_attribute(kc_sub, "tenant_id", tenant_id)
 
-    create_local_user(
-        db=db,
-        keycloak_sub=kc_sub,
-        username=body.admin_username,
-        full_name=body.admin_full_name or None,
-        email=body.admin_email,
-        role="hospital_admin",
-        hospital_id=tenant_id,
-    )
-
-    # Publish event to trigger async tenant database provisioning
+    # Create tenant database synchronously and store user in tenant DB
+    # NO FALLBACK: tenant database MUST be created, or tenant creation fails
+    from app.services.provision import provision_tenant_database_sync, get_tenant_db_session
+    dsn = provision_tenant_database_sync(tenant_id, body.hospital_name)
+    
+    # Create local user in the tenant database (not master DB)
+    tenant_db = get_tenant_db_session(tenant_id)
     try:
-        from app.events.publisher import publish_tenant_created
-        await publish_tenant_created(
-            tenant_id=tenant_id,
-            name=body.hospital_name,
-            admin_email=body.admin_email,
-            admin_username=body.admin_username,
+        create_local_user(
+            db=tenant_db,
+            keycloak_sub=kc_sub,
+            username=body.admin_username,
+            full_name=body.admin_full_name or None,
+            email=body.admin_email,
+            role="hospital_admin",
+            hospital_id=tenant_id,
         )
-    except Exception as exc:
-        pass
+    finally:
+        tenant_db.close()
 
     return TenantOut.model_validate(tenant)
 

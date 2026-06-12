@@ -5,7 +5,7 @@ import subprocess
 from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
 from app.core.database import get_session_local

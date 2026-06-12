@@ -1,187 +1,377 @@
-# Hospital Management System - First-Time Setup Guide
+# Hospital Management System - Microservices Setup Guide
+
+> **Note**: This guide covers the **microservices architecture** (14 services in Docker).
+
+---
 
 ## Architecture Overview
 
-This system uses **multi-tenant database architecture**:
+The system is split into **14 independent microservices** orchestrated by Docker Compose:
 
-- **Master Database**: Stores global data (tenants, super_admins, global_audit_logs, etc.)
-- **Tenant Databases**: Each hospital gets its own isolated database for user data
+| Service | Port | Role |
+|---------|------|------|
+| **api-gateway** | 8000 | JWT verification, tenant resolution, reverse-proxy to downstream services |
+| **auth-service** | 8001 | Login, signup, refresh, MFA, password reset, impersonation |
+| **master-service** | 8002 | Superadmin portal, tenant management, suspension jobs |
+| **reception-service** | 8010 | Patient registration, appointments, check-in |
+| **triage-service** | 8011 | Patient triage, priority scoring |
+| **consultation-service** | 8012 | Doctor consultations, clinical notes |
+| **laboratory-service** | 8013 | Lab orders and results |
+| **radiology-service** | 8014 | Imaging orders and reports |
+| **pharmacy-service** | 8015 | Prescriptions, medication dispensing |
+| **billing-service** | 8016 | Invoices, payments, insurance claims |
+| **ward-service** | 8017 | Bed management, admissions, discharges |
+| **admin-service** | 8018 | Hospital admin user CRUD within a tenant |
+| **notification-service** | 8019 | Email, SMS, push notifications |
+| **report-service** | 8020 | Analytics, dashboards, PDF exports |
 
+**Infrastructure**
+| Service | Port | Role |
+|---------|------|------|
+| postgres-master | 5432 | Global PostgreSQL (tenants, super_admins, audit logs) |
+| redis | 6380 | Caching, tenant DSN cache, rate-limit storage |
+| rabbitmq | 5672 / 15672 | Async messaging between services |
+
+---
+
+## Prerequisites
+
+1. **Docker Desktop** installed and running (Windows / macOS / Linux)
+2. **Keycloak** running on the host at `http://localhost:8080`
+   - Realm: `hospital-realm`
+   - Client: `hospital-api`
+   - Make sure the client secret matches your environment config
+3. **No other services** on ports **5432**, **6380**, **5672**, **15672**, or **8000–8020**
+   - If you have a local Redis on port 6379, the Docker Compose now maps Redis to **6380** to avoid the conflict.
+
+---
+
+## Quick Start (Docker Compose)
+
+### 1. Build and start everything
+
+```bash
+docker-compose up --build -d
 ```
-Master DB (hospital-master)
-  ├── tenants table (all hospitals)
-  ├── super_admins table
-  ├── global_audit_logs table
-  └── ... (other global tables)
 
-Tenant DB (tenant_hosp-xxx)
-  ├── users table (only this hospital's users)
-  ├── patients table
-  ├── visits table
-  └── ... (other clinical tables)
+This will:
+- Build all 14 service images
+- Start `postgres-master`, `redis`, and `rabbitmq`
+- Wait for infrastructure health checks to pass
+- Start all microservices in dependency order
+
+### 2. Check service health
+
+```bash
+# Gateway
+curl http://localhost:8000/health
+
+# Auth
+curl http://localhost:8001/health
+
+# Master
+curl http://localhost:8002/health
+
+# Reception
+curl http://localhost:8010/health
+
+# Triage
+curl http://localhost:8011/health
+
+# Consultation
+curl http://localhost:8012/health
+
+# Laboratory
+curl http://localhost:8013/health
+
+# Radiology
+curl http://localhost:8014/health
+
+# Pharmacy
+curl http://localhost:8015/health
+
+# Billing
+curl http://localhost:8016/health
+
+# Ward
+curl http://localhost:8017/health
+
+# Admin
+curl http://localhost:8018/health
+
+# Notification
+curl http://localhost:8019/health
+
+# Report
+curl http://localhost:8020/health
 ```
+
+All should return: `{"status":"ok","service":"..."}`
+
+### 3. Watch logs
+
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f api-gateway
+docker-compose logs -f auth-service
+docker-compose logs -f master-service
+```
+
+### 4. Stop everything
+
+```bash
+docker-compose down
+```
+
+To also remove the PostgreSQL volume (wipe data):
+
+```bash
+docker-compose down -v
+```
+
+---
+
+## Service URLs (via API Gateway)
+
+All external requests go through the **API Gateway** on port 8000. The gateway resolves the tenant, verifies the JWT, and proxies to the correct downstream service.
+
+| Endpoint | Downstream Service |
+|----------|-------------------|
+| `POST /api/v1/auth/login` | auth-service |
+| `POST /api/v1/auth/signup` | auth-service |
+| `GET /api/v1/superadmin/tenants` | master-service |
+| `POST /api/v1/admin/users` | admin-service |
+| `GET /api/v1/reception/patients` | reception-service |
+| `GET /api/v1/triage/...` | triage-service |
+| `GET /api/v1/consultation/...` | consultation-service |
+| `GET /api/v1/laboratory/...` | laboratory-service |
+| `GET /api/v1/radiology/...` | radiology-service |
+| `GET /api/v1/pharmacy/...` | pharmacy-service |
+| `GET /api/v1/billing/...` | billing-service |
+| `GET /api/v1/ward/...` | ward-service |
+| `GET /api/v1/notifications/...` | notification-service |
+| `GET /api/v1/reports/...` | report-service |
+
+## Swagger UI & API Documentation
+
+### Why the Gateway docs only show `/health` and `/{full_path}`
+
+The API Gateway's job is to **proxy** requests to downstream services. It does not import the actual endpoint definitions from `auth-service`, `master-service`, etc. — they run as separate containers. Therefore, the gateway's OpenAPI schema only documents its own routes:
+- `GET /health` — Gateway health check
+- `GET/POST/PUT/PATCH/DELETE /{full_path}` — Proxy catch-all
+
+**The real endpoints** (login, signup, tenant management, user CRUD, etc.) are defined inside each downstream service.
+
+### How to see the real endpoints
+
+You have two options:
+
+#### Option A: Access each service's Swagger directly (recommended)
+
+Each service exposes its own interactive docs when `ENVIRONMENT=dev`:
+
+| Service | Swagger UI URL |
+|---------|----------------|
+| Auth Service | http://localhost:8001/docs |
+| Master Service | http://localhost:8002/docs |
+| Admin Service | http://localhost:8018/docs |
+| Reception Service | http://localhost:8010/docs |
+| Triage Service | http://localhost:8011/docs |
+| Consultation Service | http://localhost:8012/docs |
+| Laboratory Service | http://localhost:8013/docs |
+| Radiology Service | http://localhost:8014/docs |
+| Pharmacy Service | http://localhost:8015/docs |
+| Billing Service | http://localhost:8016/docs |
+| Ward Service | http://localhost:8017/docs |
+| Notification Service | http://localhost:8019/docs |
+| Report Service | http://localhost:8020/docs |
+
+> **Tip**: Bookmark `http://localhost:8001/docs` for auth endpoints (login, signup, refresh, password reset) and `http://localhost:8002/docs` for superadmin endpoints (tenant management, role creation).
+
+#### Option B: Use the Gateway paths directly (for scripts / Postman)
+
+All endpoints are reachable through the **gateway on port 8000** using the same path prefixes:
+
+```bash
+# Auth endpoints (proxied to auth-service:8001)
+POST http://localhost:8000/api/v1/auth/login
+POST http://localhost:8000/api/v1/auth/signup
+POST http://localhost:8000/api/v1/auth/refresh
+POST http://localhost:8000/api/v1/auth/logout
+POST http://localhost:8000/api/v1/auth/forgot-password
+POST http://localhost:8000/api/v1/auth/reset-password
+
+# Superadmin endpoints (proxied to master-service:8002)
+POST   http://localhost:8000/api/v1/superadmin/users
+GET    http://localhost:8000/api/v1/superadmin/users
+PATCH  http://localhost:8000/api/v1/superadmin/users/{id}
+DELETE http://localhost:8000/api/v1/superadmin/users
+GET    http://localhost:8000/api/v1/superadmin/tenants
+POST   http://localhost:8000/api/v1/superadmin/tenants
+PATCH  http://localhost:8000/api/v1/superadmin/tenants/{tenant_id}
+POST   http://localhost:8000/api/v1/superadmin/roles
+
+# Hospital admin endpoints (proxied to admin-service:8018)
+POST   http://localhost:8000/api/v1/admin/users
+GET    http://localhost:8000/api/v1/admin/users
+PATCH  http://localhost:8000/api/v1/admin/users/{id}
+DELETE http://localhost:8000/api/v1/admin/users
+
+# Clinical endpoints (reception, triage, etc.)
+GET/POST http://localhost:8000/api/v1/reception/patients
+GET/POST http://localhost:8000/api/v1/triage/...
+GET/POST http://localhost:8000/api/v1/consultation/...
+GET/POST http://localhost:8000/api/v1/laboratory/...
+GET/POST http://localhost:8000/api/v1/radiology/...
+GET/POST http://localhost:8000/api/v1/pharmacy/...
+GET/POST http://localhost:8000/api/v1/billing/...
+GET/POST http://localhost:8000/api/v1/ward/...
+GET/POST http://localhost:8000/api/v1/notifications/...
+GET/POST http://localhost:8000/api/v1/reports/...
+```
+
+---
 
 ## Database Setup
 
-### 1. Create the Master Database (Optional - Auto-Creation Enabled)
+### Master Database (auto-created)
 
-The application **automatically creates the master database** if it doesn't exist. However, if you want to create it manually:
+The `master-service` and `auth-service` automatically create tables on startup using their lifespan hooks. You do **not** need to run `alembic` manually before the first `docker-compose up`.
 
-```sql
-CREATE DATABASE hospital_master;
-```
-
-**How auto-creation works:**
-- When you run `uvicorn app.main:app --reload`, the app checks if the database in `DATABASE_URL` exists
-- If not, it uses the `DB_ADMIN_URL` connection to create the database automatically
-- You'll see `[AUTO-CREATE] Database 'hospital-master' created successfully` in the console
-
-**Note**: This is the global database that stores tenant registry and super admin data.
-
-### 2. Configure Environment Variables
-
-Create a `.env` file in the project root with these values:
-
-```env
-# === Master Database (Global) ===
-DATABASE_URL=postgresql://postgres:nasr@localhost:5432/hospital-master
-
-# === Keycloak ===
-KEYCLOAK_URL=http://127.0.0.1:8080
-KEYCLOAK_REALM=hospital-realm
-KEYCLOAK_CLIENT_ID=hospital-api
-KEYCLOAK_CLIENT_SECRET=HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
-KEYCLOAK_ADMIN_USERNAME=admin
-KEYCLOAK_ADMIN_PASSWORD=admin
-KEYCLOAK_INTROSPECT=false
-
-# === Redis (Caching) ===
-REDIS_URL=redis://localhost:6379/0
-
-# === Security ===
-SECRET_KEY=6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
-TENANT_DB_ENCRYPTION_KEY=RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
-
-# === PostgreSQL Admin (for creating new tenant databases) ===
-DB_ADMIN_URL=postgresql://postgres:nasr@localhost:5432/postgres
-TENANT_DB_TEMPLATE=postgresql://postgres:nasr@localhost:5432/tenant_{tenant_id}
-
-# === Application Settings ===
-ENVIRONMENT=dev
-ALLOWED_ORIGINS=http://localhost:8000,http://localhost:8501
-DEFAULT_HOSPITAL_ID=default-hospital
-
-# === Optional ===
-PASSWORD_RESET_TOKEN_TTL=3600
-IMPERSONATION_TOKEN_TTL=900
-SUSPENSION_CHECK_INTERVAL=86400
-SUSPENDED_BLOCKLIST_TTL=3600
-```
-
-**Important**: The `DB_ADMIN_URL` must connect to a database where the user has **CREATEDB** privilege. We use `postgres` (the default PostgreSQL database) because the admin user needs to create new databases.
-
-### 3. Initialize the Master Database
-
-Run these commands to create all tables in the master database:
+However, if you want to run migrations manually against the Docker Postgres:
 
 ```bash
-# Using alembic (recommended)
+# Master migrations
 alembic -c migrations/master/alembic.ini upgrade head
 
-# Or using the application (auto-creates tables)
-uvicorn app.main:app --reload
+# Tenant migrations (run after a tenant is created)
+alembic -c migrations/tenant/alembic.ini upgrade head
 ```
 
-**What happens when you run uvicorn:**
-1. FastAPI starts and loads the app
-2. `init_db()` is called automatically
-3. It creates all tables (users, tenants, super_admins, etc.) in the **master database** defined in `DATABASE_URL`
-4. The application is ready to serve requests
+### Tenant Database Provisioning
 
-### 4. Verify Master Database
+When a new hospital signs up:
+1. `auth-service` creates the tenant record in `postgres-master`
+2. Publishes `tenant.created` event to RabbitMQ
+3. `master-service` consumer creates the physical database `tenant_{tenant_id}`
+4. Runs `alembic upgrade head` on the new database
+5. Encrypts the DSN and updates the tenant record
 
-Check that tables were created in pgAdmin:
-```sql
--- Run in hospital-master database
-SELECT table_name FROM information_schema.tables 
-WHERE table_schema = 'public' 
-ORDER BY table_name;
+---
+
+## Environment Variables (Docker)
+
+The `docker-compose.yml` already contains the correct **Docker-network** values for all services. You do **not** need a `.env` file to run the Docker stack.
+
+Key overridden values:
+
+| Variable | Docker Value | Why |
+|----------|--------------|-----|
+| `DATABASE_URL` | `postgresql://postgres:postgres@postgres-master:5432/hospital_master` | Internal Docker DNS |
+| `REDIS_URL` | `redis://redis:6379/0` | Internal Docker DNS |
+| `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672/` | Internal Docker DNS |
+| `KEYCLOAK_URL` | `http://host.docker.internal:8080` | Reach host Keycloak from inside containers |
+| `DB_ADMIN_URL` | `postgresql://postgres:postgres@postgres-master:5432/postgres` | Internal Docker DNS |
+| `TENANT_DB_TEMPLATE` | `postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}` | Internal Docker DNS |
+| `AUTH_SERVICE_URL` | `http://auth-service:8001` | Gateway → service internal routing |
+| `MASTER_SERVICE_URL` | `http://master-service:8002` | Gateway → service internal routing |
+| `ADMIN_SERVICE_URL` | `http://admin-service:8018` | Gateway → service internal routing |
+| ... | ... | ... |
+
+If you want to tweak secrets or passwords, edit the `environment` blocks in `docker-compose.yml` directly.
+
+---
+
+## Common Issues
+
+### Port already allocated (Redis 6379)
+
+**Fixed**: Redis is now mapped to host port `6380` instead of `6379`:
+
+```yaml
+redis:
+  ports:
+    - "6380:6379"
 ```
 
-You should see: `alembic_version`, `global_audit_logs`, `password_reset_tokens`, `refresh_tokens`, `super_admins`, `tenants`, `users`
-
-### 5. Create a Super Admin
-
-Create the first super admin user:
+If you still see port conflicts on other services, check what is listening:
 
 ```bash
-venv\Scripts\python.exe scripts/create_superuser.py --username=superadmin --password=Nassir_05 --email=admin@hosp.com --role=super_admin
+# Windows
+netstat -ano | findstr :PORT
+
+# macOS / Linux
+lsof -i :PORT
 ```
 
-Or manually:
+### Container cannot reach Keycloak
 
-```sql
--- In hospital-master database
-INSERT INTO super_admins (super_admin_id, username, email, password_hash, full_name, role, mfa_secret, is_active, created_at)
-VALUES (
-    gen_random_uuid(),
-    'superadmin',
-    'superadmin@hospital.com',
-    '$2b$12$...',  -- bcrypt hash of password
-    'Super Admin',
-    'super_admin',
-    'placeholder',
-    true,
-    NOW()
-);
+Make sure Keycloak is running on the **host** at `http://localhost:8080`.  
+Docker containers use `host.docker.internal` to reach the host. On Windows this works automatically; on Linux you may need to add it to `/etc/hosts`:
+
+```
+127.0.0.1 host.docker.internal
 ```
 
-## How Tenant Databases Work
+### Service unhealthy / stuck
 
-### When a New Hospital Signs Up
+If a service keeps restarting, check its logs:
 
-**Flow:**
-1. User fills signup form (hospital name, admin username, email, password)
-2. Backend generates a `tenant_id` (e.g., `hosp-a1b2c3d4`)
-3. Backend creates a tenant record in the **master database** with a placeholder DSN
-4. Backend **creates a new PostgreSQL database** named `tenant_hosp-a1b2c3d4`
-5. Backend runs `alembic upgrade head` on the new database to create tables
-6. Backend updates the tenant record with the **real encrypted DSN**
-7. Backend creates the admin user in **Keycloak** and sets the `tenant_id` attribute
-8. Backend creates the admin user in the **tenant database** (NOT the master database)
+```bash
+docker-compose logs --tail 50 <service-name>
+```
 
-**Where is the user stored?**
-- The hospital admin is stored in `tenant_hosp-a1b2c3d4.users` table
-- The tenant record is stored in `hospital-master.tenants` table
-- The user is NOT stored in `hospital-master.users` table
+Common causes:
+- `postgres-master` is still initializing (health check timing)
+- RabbitMQ is not ready yet
+- A service is missing a required env variable
 
-### When Super Admin Creates a Tenant
+### Database tables not created
 
-**Flow:**
-1. Super admin calls `POST /api/v1/superadmin/tenants`
-2. Backend creates a tenant record in the **master database**
-3. Backend **creates a new PostgreSQL database** for the tenant
-4. Backend runs migrations on the new database
-5. Backend updates the tenant record with the real encrypted DSN
-6. Backend creates the hospital admin in **Keycloak** with the tenant_id attribute
-7. Backend creates the hospital admin in the **tenant database**
+Run the initialization manually inside the container:
 
-### When Hospital Admin Creates a User
+```bash
+docker-compose exec master-service python -c "from app.core.database import init_db; init_db()"
+```
 
-**Flow:**
-1. Hospital admin logs in and gets a JWT with `tenant_id` claim
-2. Admin calls `POST /api/v1/admin/users` to create Dr. John
-3. Backend extracts `tenant_id` from the JWT
-4. Backend looks up the tenant's database DSN from the master database
-5. Backend connects to the **tenant database** (e.g., `tenant_hosp-a1b2c3d4`)
-6. Backend creates the user in the **tenant database** (NOT the master database)
-7. Backend also creates the user in **Keycloak** with the tenant_id attribute
+---
 
-**Result:** Dr. John exists in `tenant_hosp-a1b2c3d4.users` table, NOT in `hospital-master.users` table.
+## Test Users
 
-## How to Verify It's Working
+`setup_keycloak.py` creates three test users in **Keycloak** automatically:
 
-### Test 1: Sign Up a New Hospital
+| Username | Password | Role | Portal |
+|----------|----------|------|--------|
+| `testuser` | `testpassword` | `hospital_user` | Hospital Portal |
+| `adminuser` | `adminpassword` | `hospital_admin` | Hospital Portal |
+| `superadmin` | `superadmin123` | `super_admin` | Super Admin Portal |
+
+> **Note**: All users (including superadmins) authenticate through **Keycloak**. The superadmin login endpoint (`/api/v1/auth/superadmin/login`) verifies the `super_admin` realm role before issuing a token.
+>
+> `setup_keycloak.py` only creates Keycloak users. To create a fully synced superadmin (Keycloak + local DB record), use `scripts/create_superuser.py`:
+
+```bash
+python scripts/create_superuser.py \
+  --username=superadmin \
+  --password=superadmin123 \
+  --email=admin@hosp.com \
+  --role=super_admin
+```
+
+You can also create a super admin inside the Docker container:
+
+```bash
+docker-compose exec master-service python scripts/create_superuser.py \
+  --username=superadmin2 \
+  --password=superadmin123 \
+  --email=admin2@hosp.com \
+  --role=super_admin
+```
+
+Or test the signup flow directly:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/signup \
@@ -195,123 +385,41 @@ curl -X POST http://localhost:8000/api/v1/auth/signup \
   }'
 ```
 
-**Expected result:**
-- A new database `tenant_hosp-xxx` appears in pgAdmin
-- The tenant record in `hospital-master.tenants` has a real encrypted DSN
-- The user `testadmin` is in `tenant_hosp-xxx.users` table, NOT in `hospital-master.users`
+---
 
-### Test 2: Create a User in the Hospital
+## Local Development (without Docker)
 
-```bash
-curl -X POST http://localhost:8000/api/v1/admin/users \
-  -H "Authorization: Bearer <hospital_admin_token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "drjohn",
-    "email": "drjohn@hospital.com",
-    "password": "password123",
-    "role": "doctor",
-    "full_name": "Dr John"
-  }'
-```
-
-**Expected result:**
-- User `drjohn` is in `tenant_hosp-xxx.users` table
-- User `drjohn` is NOT in `hospital-master.users` table
-
-### Test 3: Check Database Isolation
-
-```sql
--- In master database (hospital-master)
-SELECT COUNT(*) FROM users WHERE hospital_id = 'hosp-xxx';
--- Expected: 0 (users are in tenant database, not master)
-
--- In tenant database (tenant_hosp-xxx)
-SELECT * FROM users;
--- Expected: Shows the hospital admin and Dr. John
-```
-
-## Important Notes
-
-### Database Connection Flow
-
-```
-App (FastAPI)
-  ↓
-  ├─→ Master Database (hospital-master) - for tenant registry, super admins
-  │
-  └─→ Tenant Database (tenant_hosp-xxx) - for hospital users, patients, visits
-        ↑
-        DSN is looked up from master database, decrypted, and cached
-```
-
-### Keycloak Integration
-
-- All users are stored in **Keycloak** (single realm: `hospital-realm`)
-- Each user has a `tenant_id` attribute in Keycloak
-- The `keycloak_sub` in the local database matches the Keycloak UUID
-
-### Migration Files
-
-- `migrations/master/` - For master database tables (tenants, super_admins, etc.)
-- `migrations/tenant/` - For tenant database tables (users, patients, visits, etc.)
-- Both use `alembic.ini` and `env.py` to read connection URLs from environment variables
-
-### Common Issues
-
-1. **ValidationError for extra fields**: Fixed by adding `extra = "ignore"` to all config files
-2. **Database not created**: Check that `DB_ADMIN_URL` user has CREATEDB privilege
-3. **Users in wrong database**: Check that the admin router is using `get_tenant_db` not `get_db`
-4. **pgAdmin not showing databases**: Refresh the database list in pgAdmin
-
-## Quick Start Commands
+If you want to run individual services locally (not in Docker), use the `.env` file in the project root and start each service with:
 
 ```bash
-# 1. Start PostgreSQL (make sure it's running)
-# 2. Start Redis (make sure it's running)
-# 3. Start Keycloak (make sure it's running)
+# Auth service
+uvicorn services.auth-service.app.main:app --reload --port 8001
 
-# 4. Configure .env file with your database URLs
-# DATABASE_URL=postgresql://postgres:nasr@localhost:5432/hospital-master
-# DB_ADMIN_URL=postgresql://postgres:nasr@localhost:5432/postgres
+# Master service
+uvicorn services.master-service.app.main:app --reload --port 8002
 
-# 5. Start the application (auto-creates master database if needed)
-uvicorn app.main:app --reload
-
-# 6. Create super admin
-python scripts/create_superuser.py
-
-# 7. Test signup
-# Use Swagger UI at http://localhost:8000/docs
+# etc.
 ```
 
-**Note**: The application automatically:
-- Creates the master database if it doesn't exist
-- Creates all required tables on startup
-- Creates tenant databases when new hospitals sign up
-- Runs tenant migrations on new tenant databases
+Make sure your local `.env` points to `localhost` for Postgres, Redis, and Keycloak.
 
-## Migration from Old Single-Database Setup
+---
 
-If you previously had all users in `hospital-db`:
+## Files Reference
 
-1. The old `hospital-db` users can still login (backward compatible)
-2. New tenants get their own database
-3. The old `hospital-db` remains as the default for existing users
-4. To migrate old users, you would need to move them to their respective tenant databases
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Root Docker Compose stack (use this) |
+| `infrastructure/docker-compose.yml` | Copy of the root compose (for CI/CD reference) |
+| `services/<service>/Dockerfile` | Individual service image build |
+| `services/<service>/app/main.py` | FastAPI entry point |
+| `services/<service>/app/api/v1/...` | Business routes |
+| `services/api-gateway/app/proxy.py` | Route table and reverse-proxy logic |
+| `services/<service>/app/messaging/...` | RabbitMQ connection, publisher, subscriber per service |
+| `migrations/master/...` | Alembic for global DB |
+| `migrations/tenant/...` | Alembic for per-hospital DBs |
 
-## .env Variable Reference
+---
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `DATABASE_URL` | Master database connection | `postgresql://postgres:nasr@localhost:5432/hospital-master` |
-| `DB_ADMIN_URL` | PostgreSQL admin connection (for creating DBs) | `postgresql://postgres:nasr@localhost:5432/postgres` |
-| `TENANT_DB_TEMPLATE` | Template for new tenant databases | `postgresql://postgres:nasr@localhost:5432/tenant_{tenant_id}` |
-| `TENANT_DB_ENCRYPTION_KEY` | Fernet key for encrypting tenant DSNs | `RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=` |
-
-## Support
-
-If you see users in the master database (`hospital-master.users`) after creating a tenant, that means:
-1. The signup/admin endpoint is still using `get_db()` instead of `get_tenant_db()`
-2. The tenant database was not created properly
-3. Check the logs for errors about database creation or connection
+## Create Superadmin
+venv\Scripts\python.exe scripts/create_superuser.py --username=superadmin12 --password=Nassir_05 --email=admin@hosp1.com --role=super_admin

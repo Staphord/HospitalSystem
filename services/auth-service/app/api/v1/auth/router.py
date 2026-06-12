@@ -30,7 +30,6 @@ from app.core.security import TokenPayload, get_current_active_user
 from app.exceptions import BadRequestError
 from app.models.master import GlobalAuditLog, Tenant
 from app.services import auth as auth_service
-from app.services import superadmin_auth as superadmin_auth_service
 from app.services.impersonation import create_impersonation_token, log_impersonation_event
 from app.services.keycloak_admin import (
     create_keycloak_user,
@@ -90,29 +89,15 @@ async def signup(
     await set_user_attribute(kc_sub, "tenant_id", tenant_id)
 
     # Create tenant database synchronously and store user in tenant DB
+    # NO FALLBACK: tenant database MUST be created, or signup fails
+    from app.services.provision import provision_tenant_database_sync, get_tenant_db_session
+    dsn = provision_tenant_database_sync(tenant_id, body.hospital_name)
+    
+    # Create local user in the tenant database (not master DB)
+    tenant_db = get_tenant_db_session(tenant_id)
     try:
-        from app.services.provision import provision_tenant_database_sync, get_tenant_db_session
-        dsn = provision_tenant_database_sync(tenant_id, body.hospital_name)
-        
-        # Create local user in the tenant database (not master DB)
-        tenant_db = get_tenant_db_session(tenant_id)
-        try:
-            create_local_user(
-                db=tenant_db,
-                keycloak_sub=kc_sub,
-                username=body.admin_username,
-                full_name=body.admin_full_name or None,
-                email=body.admin_email,
-                role="hospital_admin",
-                hospital_id=tenant_id,
-            )
-        finally:
-            tenant_db.close()
-    except Exception as e:
-        logger.error("Failed to provision tenant database or create local user: %s", e)
-        # Fallback: create in master DB
         create_local_user(
-            db=db,
+            db=tenant_db,
             keycloak_sub=kc_sub,
             username=body.admin_username,
             full_name=body.admin_full_name or None,
@@ -120,6 +105,8 @@ async def signup(
             role="hospital_admin",
             hospital_id=tenant_id,
         )
+    finally:
+        tenant_db.close()
 
     # Publish event for downstream services
     try:
@@ -158,24 +145,39 @@ async def superadmin_login(
     body: SuperAdminLoginRequest,
     db: Session = Depends(get_db),
 ) -> dict:
-    admin = superadmin_auth_service.authenticate_superadmin(
-        db=db,
+    # Authenticate through Keycloak (all users must use Keycloak)
+    result = await auth_service.login(
         username=body.username,
         password=body.password,
+        db=db,
     )
-    token = superadmin_auth_service.create_access_token(
-        super_admin_id=str(admin.super_admin_id),
-        username=admin.username,
-        role=admin.role,
-    )
+
+    # Decode access token to verify super_admin role
+    try:
+        from jose import jwt as _jwt
+        token = result["access_token"]
+        unverified = _jwt.get_unverified_claims(token)
+        roles = unverified.get("realm_access", {}).get("roles", [])
+        if "super_admin" not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not a super admin",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unable to verify super admin privileges",
+        )
 
     ip = request.client.host if request.client else None
     try:
         audit_db = get_session_local()()
         record = GlobalAuditLog(
-            user_sub=str(admin.super_admin_id),
+            user_sub=result.get("session_id", ""),
             action="SUPERADMIN_LOGIN",
-            detail=f"SuperAdmin '{admin.username}' logged in",
+            detail=f"SuperAdmin '{body.username}' logged in",
             ip_address=ip,
         )
         audit_db.add(record)
@@ -187,9 +189,13 @@ async def superadmin_login(
             audit_db.close()
 
     return {
-        "access_token": token,
+        "access_token": result["access_token"],
+        "refresh_token": result["refresh_token"],
+        "expires_in": result["expires_in"],
+        "refresh_expires_in": result["refresh_expires_in"],
         "token_type": "Bearer",
-        "expires_in": 1800,
+        "session_id": result.get("session_id", ""),
+        "not_before_policy": result.get("not_before_policy", 0),
         "scope": "full",
     }
 
@@ -206,6 +212,22 @@ async def login(
         password=body.password,
         db=db,
     )
+
+    # Decode access token to check role — super_admins must use the superadmin portal
+    try:
+        from jose import jwt as _jwt
+        token = result["access_token"]
+        unverified = _jwt.get_unverified_claims(token)
+        roles = unverified.get("realm_access", {}).get("roles", [])
+        if "super_admin" in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Super admin must use the Super Admin Portal",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
 
     ip = request.client.host if request.client else None
     try:

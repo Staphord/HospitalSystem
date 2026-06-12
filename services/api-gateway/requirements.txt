@@ -6,6 +6,7 @@ pydantic-settings
 python-jose[cryptography]
 redis[hiredis]
 slowapi
+psycopg2-binary
 cachetools
 cryptography
 httpx

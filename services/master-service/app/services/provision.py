@@ -11,7 +11,7 @@ import subprocess
 from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.db.master import get_master_db
@@ -112,8 +112,8 @@ def _update_tenant_record(tenant_id: str, dsn: str) -> None:
         db.close()
 
 
-async def provision_tenant_database(tenant_id: str, name: str) -> str:
-    """Provision a new isolated PostgreSQL database for a tenant.
+def provision_tenant_database_sync(tenant_id: str, name: str) -> str:
+    """Provision a new isolated PostgreSQL database for a tenant (synchronous).
 
     Steps:
         1. Create the database
@@ -140,3 +140,66 @@ async def provision_tenant_database(tenant_id: str, name: str) -> str:
     except Exception as exc:
         logger.error("[FAIL] Tenant provisioning failed for '%s': %s", tenant_id, exc)
         raise
+
+
+async def provision_tenant_database(tenant_id: str, name: str) -> str:
+    """Async wrapper around provision_tenant_database_sync.
+
+    Steps:
+        1. Create the database
+        2. Run tenant migrations
+        3. Update the tenant record with the encrypted DSN
+        4. Return the DSN
+
+    Raises:
+        RuntimeError: If any step fails.
+    """
+    db_name = f"tenant_{tenant_id}"
+    try:
+        # 1. Create database
+        dsn = _create_database(tenant_id)
+
+        # 2. Run migrations
+        _run_alembic_migrations(tenant_id, db_name)
+
+        # 3. Update tenant record
+        _update_tenant_record(tenant_id, dsn)
+
+        logger.info("[OK] Tenant '%s' database provisioned: %s", tenant_id, db_name)
+        return dsn
+    except Exception as exc:
+        logger.error("[FAIL] Tenant provisioning failed for '%s': %s", tenant_id, exc)
+        raise
+
+
+# Cache for tenant engines
+_tenant_engine_cache: dict[str, tuple] = {}
+
+
+def get_tenant_db_session(tenant_id: str) -> Session:
+    """Get a database session for a specific tenant."""
+    if tenant_id in _tenant_engine_cache:
+        engine, SessionLocal = _tenant_engine_cache[tenant_id]
+        return SessionLocal()
+
+    # Query master database for tenant DSN
+    master_db = get_master_db()
+    try:
+        result = master_db.execute(
+            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+            {"tid": tenant_id},
+        )
+        row = result.scalar()
+        if not row:
+            raise ValueError(f"Tenant '{tenant_id}' not found or inactive")
+
+        from app.services.tenant_service import decrypt_dsn
+
+        dsn = decrypt_dsn(str(row))
+    finally:
+        master_db.close()
+
+    engine = create_engine(dsn, pool_pre_ping=True, pool_size=5, max_overflow=10)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    _tenant_engine_cache[tenant_id] = (engine, SessionLocal)
+    return SessionLocal()
