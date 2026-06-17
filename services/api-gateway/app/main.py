@@ -12,6 +12,7 @@ from app.config import settings
 from app.middleware import JWTVerificationMiddleware, AccessLogMiddleware
 from app.rate_limit import limiter
 from app.proxy import proxy_router
+from shared.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -58,6 +59,8 @@ async def security_headers(request: Request, call_next):
 
 app.add_middleware(JWTVerificationMiddleware)
 app.add_middleware(AccessLogMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 @app.get("/health")
 async def health_check():

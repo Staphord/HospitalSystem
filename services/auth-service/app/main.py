@@ -1,9 +1,11 @@
 import asyncio
 import logging
+import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -16,6 +18,7 @@ from app.core.middleware import (
     ImpersonationBannerMiddleware,
     ReadOnlyScopeMiddleware,
 )
+from shared.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -96,6 +99,22 @@ async def security_headers(request: Request, call_next):
 app.add_middleware(ReadOnlyScopeMiddleware)
 app.add_middleware(ImpersonationBannerMiddleware)
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal Server Error",
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        },
+    )
+
 
 @app.get("/health")
 async def health():

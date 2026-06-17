@@ -51,7 +51,21 @@ async def is_tenant_suspended(tenant_id: str) -> bool:
         if cached is not None:
             return cached == "1"
     except Exception:
-        # Redis unreachable — fall through to DB check (not cached)
+        # Redis unreachable — fall through to DB check
+        pass
+
+    # Fallback: query master DB for authoritative tenant status.
+    try:
+        from sqlalchemy import create_engine, text
+        from app.core.config import settings
+        engine = create_engine(settings.database_url, pool_pre_ping=True)
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT status FROM tenants WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            ).scalar()
+            return row in ("suspended", "terminated")
+    except Exception:
         pass
     return False
 

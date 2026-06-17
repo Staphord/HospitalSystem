@@ -18,6 +18,7 @@ ROUTE_TABLE = {
     "/api/v1/auth": settings.auth_service_url,
     "/api/v1/superadmin": settings.master_service_url,
     "/api/v1/admin": settings.admin_service_url,
+    "/api/v1/tenant": settings.master_service_url,
     "/api/v1/reception": settings.reception_service_url,
     "/api/v1/triage": settings.triage_service_url,
     "/api/v1/consultation": settings.consultation_service_url,

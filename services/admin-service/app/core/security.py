@@ -14,7 +14,7 @@ from app.core.database import get_db
 from app.models.user import User
 
 _bearer_scheme = HTTPBearer(auto_error=False)
-_jwks_cache: TTLCache[str, Dict[str, Any]] = TTLCache(maxsize=1, ttl=300)
+_jwks_cache: TTLCache[str, Dict[str, Any]] = TTLCache(maxsize=10, ttl=300)
 _introspection_cache: TTLCache[str, bool] = TTLCache(maxsize=1024, ttl=60)
 
 
@@ -27,16 +27,28 @@ class TokenPayload:
     raw: Dict[str, Any]
 
 
-def _issuer() -> str:
-    return f"{settings.keycloak_url}/realms/{settings.keycloak_realm}"
+def _issuer(realm: str | None = None) -> str:
+    return f"{settings.keycloak_url}/realms/{realm or settings.keycloak_realm}"
 
 
-async def _fetch_jwks() -> Dict[str, Any]:
-    cache_key = "jwks"
+def _extract_realm_from_iss(token: str) -> str | None:
+    """Extract realm name from the unverified token's iss claim."""
+    try:
+        claims = jwt.get_unverified_claims(token)
+        iss = claims.get("iss", "")
+        if iss.startswith(settings.keycloak_url + "/realms/"):
+            return iss.split("/realms/", 1)[1]
+    except Exception:
+        pass
+    return None
+
+
+async def _fetch_jwks(realm: str | None = None) -> Dict[str, Any]:
+    cache_key = f"jwks:{realm or settings.keycloak_realm}"
     if cache_key in _jwks_cache:
         return _jwks_cache[cache_key]
 
-    url = f"{_issuer()}/protocol/openid-connect/certs"
+    url = f"{_issuer(realm)}/protocol/openid-connect/certs"
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(url)
         response.raise_for_status()
@@ -91,7 +103,9 @@ async def _decode_token(token: str) -> Dict[str, Any]:
                 headers={"WWW-Authenticate": "Bearer"},
             ) from exc
 
-    jwks = await _fetch_jwks()
+    # Multi-realm: derive realm from the token's issuer claim
+    token_realm = _extract_realm_from_iss(token)
+    jwks = await _fetch_jwks(token_realm)
     rsa_key = _build_rsa_key(jwks, kid)
 
     try:
@@ -99,7 +113,7 @@ async def _decode_token(token: str) -> Dict[str, Any]:
             token,
             rsa_key,
             algorithms=["RS256"],
-            issuer=_issuer(),
+            issuer=_issuer(token_realm),
             options={"verify_exp": True, "verify_aud": False},
         )
         return payload
@@ -127,7 +141,8 @@ async def _introspect_token(token: str) -> None:
             )
         return
 
-    url = f"{_issuer()}/protocol/openid-connect/token/introspect"
+    token_realm = _extract_realm_from_iss(token)
+    url = f"{_issuer(token_realm)}/protocol/openid-connect/token/introspect"
     data = {
         "token": token,
         "client_id": settings.keycloak_client_id,

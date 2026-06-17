@@ -2,7 +2,7 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
@@ -46,9 +46,29 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        # Alembic defaults to VARCHAR(32) for version_num, but our
+        # migration IDs are longer (e.g. 0003_add_user_force_password_change).
+        # Pre-create the table with a wider column so migrations don't fail.
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS alembic_version ("
+                "version_num VARCHAR(128) NOT NULL PRIMARY KEY"
+                ")"
+            )
+        )
+        # If the table already exists with the old narrow column, widen it.
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS alembic_version "
+                "ALTER COLUMN version_num TYPE VARCHAR(128)"
+            )
+        )
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
+        # SQLAlchemy 2.0 + Alembic require explicit commit when running
+        # migrations via subprocess or programmatic API.
+        connection.commit()
 
 
 if context.is_offline_mode():

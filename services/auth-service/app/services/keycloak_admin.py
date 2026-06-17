@@ -24,13 +24,60 @@ async def _get_admin_token() -> str:
         return r.json()["access_token"]
 
 
-def _admin_api_url() -> str:
-    return f"{settings.keycloak_url}/admin/realms/{settings.keycloak_realm}"
+def _admin_api_url(realm: str | None = None) -> str:
+    return f"{settings.keycloak_url}/admin/realms/{realm or settings.keycloak_realm}"
 
 
 async def _headers() -> dict[str, str]:
     token = await _get_admin_token()
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+async def find_user_realm_by_username(username: str) -> str | None:
+    """Search for a user across ALL Keycloak realms."""
+    hdrs = await _headers()
+    # Try default realm and master first (fast path)
+    fast_realms = []
+    if settings.keycloak_realm:
+        fast_realms.append(settings.keycloak_realm)
+    if "master" not in fast_realms:
+        fast_realms.insert(0, "master")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for realm in fast_realms:
+            url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
+            r = await client.get(f"{url}?username={username}&maxResults=1", headers=hdrs)
+            if r.is_success and r.json():
+                return realm
+
+        # If not found, search ALL realms
+        try:
+            realms_url = f"{settings.keycloak_url}/admin/realms"
+        except Exception:
+            return None
+
+    # Get all realm names
+    all_realms = await _list_all_realms()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for realm in all_realms:
+            if realm in fast_realms:
+                continue
+            url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
+            r = await client.get(f"{url}?username={username}&maxResults=1", headers=hdrs)
+            if r.is_success and r.json():
+                return realm
+    return None
+
+
+async def _list_all_realms() -> list[str]:
+    """Helper to list all Keycloak realm names."""
+    hdrs = await _headers()
+    url = f"{settings.keycloak_url}/admin/realms"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url, headers=hdrs)
+        if r.is_success:
+            return [rd["realm"] for rd in r.json()]
+    return []
 
 
 async def create_keycloak_user(
@@ -39,9 +86,10 @@ async def create_keycloak_user(
     email: str,
     roles: list[str],
     full_name: str | None = None,
+    realm: str | None = None,
 ) -> str:
     hdrs = await _headers()
-    url = f"{_admin_api_url()}/users"
+    url = f"{_admin_api_url(realm)}/users"
 
     name_parts = (full_name or username).strip().split(None, 1)
     first_name = name_parts[0].capitalize() if name_parts else username.capitalize()
@@ -80,28 +128,28 @@ async def create_keycloak_user(
         if user_id:
             await c.put(f"{url}/{user_id}", json=payload, headers=hdrs)
 
-    await set_user_password(user_id, password)
-    await assign_user_roles(user_id, roles)
+    await set_user_password(user_id, password, realm=realm)
+    await assign_user_roles(user_id, roles, realm=realm)
     return user_id
 
 
-async def set_user_password(user_id: str, password: str) -> None:
+async def set_user_password(user_id: str, password: str, realm: str | None = None) -> None:
     hdrs = await _headers()
-    url = f"{_admin_api_url()}/users/{user_id}/reset-password"
+    url = f"{_admin_api_url(realm)}/users/{user_id}/reset-password"
     payload = {"type": "password", "value": password, "temporary": False}
     async with httpx.AsyncClient(timeout=10.0) as c:
         r = await c.put(url, json=payload, headers=hdrs)
         r.raise_for_status()
 
 
-async def assign_user_roles(user_id: str, roles: list[str]) -> None:
+async def assign_user_roles(user_id: str, roles: list[str], realm: str | None = None) -> None:
     hdrs = await _headers()
-    url = f"{_admin_api_url()}/users/{user_id}/role-mappings/realm"
+    url = f"{_admin_api_url(realm)}/users/{user_id}/role-mappings/realm"
 
     role_reps = []
     async with httpx.AsyncClient(timeout=10.0) as c:
         for role in roles:
-            rr = await c.get(f"{_admin_api_url()}/roles/{role}", headers=hdrs)
+            rr = await c.get(f"{_admin_api_url(realm)}/roles/{role}", headers=hdrs)
             if rr.is_success:
                 role_reps.append(rr.json())
             else:
@@ -118,9 +166,10 @@ async def update_keycloak_user(
     email: str | None = None,
     full_name: str | None = None,
     enabled: bool | None = None,
+    realm: str | None = None,
 ) -> None:
     hdrs = await _headers()
-    url = f"{_admin_api_url()}/users/{user_id}"
+    url = f"{_admin_api_url(realm)}/users/{user_id}"
     async with httpx.AsyncClient(timeout=10.0) as c:
         existing = await c.get(url, headers=hdrs)
         existing.raise_for_status()
@@ -147,9 +196,9 @@ async def update_keycloak_user(
         r.raise_for_status()
 
 
-async def delete_keycloak_user(username: str) -> str | None:
+async def delete_keycloak_user(username: str, realm: str | None = None) -> str | None:
     hdrs = await _headers()
-    url = f"{_admin_api_url()}/users"
+    url = f"{_admin_api_url(realm)}/users"
     async with httpx.AsyncClient(timeout=10.0) as c:
         search = await c.get(f"{url}?username={username}", headers=hdrs)
         search.raise_for_status()
@@ -161,17 +210,39 @@ async def delete_keycloak_user(username: str) -> str | None:
         return user_id
 
 
-async def ensure_roles(roles: list[str]) -> None:
+async def ensure_roles(roles: list[str], realm: str | None = None) -> None:
     hdrs = await _headers()
     async with httpx.AsyncClient(timeout=10.0) as c:
         for role in roles:
-            rr = await c.get(f"{_admin_api_url()}/roles/{role}", headers=hdrs)
+            rr = await c.get(f"{_admin_api_url(realm)}/roles/{role}", headers=hdrs)
             if rr.status_code == 404:
                 await c.post(
-                    f"{_admin_api_url()}/roles",
+                    f"{_admin_api_url(realm)}/roles",
                     json={"name": role},
                     headers=hdrs,
                 )
+
+
+async def set_user_attribute(user_id: str, attr_name: str, attr_value: str, realm: str | None = None) -> None:
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/users/{user_id}"
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        u = await c.get(url, headers=hdrs)
+        u.raise_for_status()
+        user_data = u.json()
+        payload = {
+            "username": user_data.get("username"),
+            "email": user_data.get("email"),
+            "firstName": user_data.get("firstName", ""),
+            "lastName": user_data.get("lastName", ""),
+            "enabled": user_data.get("enabled", True),
+            "emailVerified": user_data.get("emailVerified", True),
+            "requiredActions": user_data.get("requiredActions", []),
+            "attributes": {attr_name: [attr_value]},
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        r = await c.put(url, json=payload, headers=hdrs)
+        r.raise_for_status()
 
 
 def create_local_user(
@@ -236,28 +307,6 @@ def update_local_user(
     db.commit()
     db.refresh(user)
     return user
-
-
-async def set_user_attribute(user_id: str, attr_name: str, attr_value: str) -> None:
-    hdrs = await _headers()
-    url = f"{_admin_api_url()}/users/{user_id}"
-    async with httpx.AsyncClient(timeout=10.0) as c:
-        u = await c.get(url, headers=hdrs)
-        u.raise_for_status()
-        user_data = u.json()
-        payload = {
-            "username": user_data.get("username"),
-            "email": user_data.get("email"),
-            "firstName": user_data.get("firstName", ""),
-            "lastName": user_data.get("lastName", ""),
-            "enabled": user_data.get("enabled", True),
-            "emailVerified": user_data.get("emailVerified", True),
-            "requiredActions": user_data.get("requiredActions", []),
-            "attributes": {attr_name: [attr_value]},
-        }
-        payload = {k: v for k, v in payload.items() if v is not None}
-        r = await c.put(url, json=payload, headers=hdrs)
-        r.raise_for_status()
 
 
 def delete_local_user(db: Session, keycloak_sub: str) -> bool:

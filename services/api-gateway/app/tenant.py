@@ -88,12 +88,45 @@ async def get_tenant_db_url(tenant_id: str) -> str | None:
     return dsn
 
 
+async def get_tenant_realm(tenant_id: str) -> str | None:
+    """Resolve tenant Keycloak realm from Master DB."""
+    if not tenant_id:
+        return None
+    try:
+        db = get_master_db()
+        try:
+            row = db.execute(
+                text("SELECT keycloak_realm FROM tenants WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            ).scalar()
+            return row
+        finally:
+            db.close()
+    except Exception:
+        pass
+    return None
+
+
 async def is_tenant_suspended(tenant_id: str) -> bool:
     try:
         r = await _get_redis()
         cached = await r.get(f"suspended_tenant:{tenant_id}")
         if cached is not None:
             return cached == "1"
+    except Exception:
+        pass
+
+    # Fallback: query master DB for authoritative tenant status.
+    try:
+        db = get_master_db()
+        try:
+            row = db.execute(
+                text("SELECT status FROM tenants WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            ).scalar()
+            return row in ("suspended", "terminated")
+        finally:
+            db.close()
     except Exception:
         pass
     return False

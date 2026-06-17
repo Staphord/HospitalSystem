@@ -19,8 +19,17 @@ from app.services.keycloak_admin import (
 )
 from app.api.v1.admin.schemas import HospitalUserCreate, HospitalUserUpdate, HospitalUserOut
 from app.models.user import User
+from app.models.master import Tenant
 
 router = APIRouter(dependencies=[Depends(require_role("hospital_admin"))])
+
+
+def _get_tenant_realm(db: Session, tenant_id: str) -> str:
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if tenant and tenant.keycloak_realm:
+        return tenant.keycloak_realm
+    from app.config import settings
+    return settings.keycloak_realm
 
 
 @router.get("/users", response_model=list[HospitalUserOut])
@@ -28,6 +37,7 @@ router = APIRouter(dependencies=[Depends(require_role("hospital_admin"))])
 async def list_hospital_users(
     request: Request,
     db: Session = Depends(get_tenant_db_for_request),
+    master_db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> list[HospitalUserOut]:
     if not ctx.tenant_id:
@@ -41,6 +51,8 @@ async def list_hospital_users(
             email=u.email,
             role=u.role,
             hospital_id=u.hospital_id,
+            is_active=u.is_active,
+            force_password_change=u.force_password_change,
         )
         for u in users
     ]
@@ -52,12 +64,14 @@ async def create_hospital_user(
     request: Request,
     body: HospitalUserCreate,
     db: Session = Depends(get_tenant_db_for_request),
+    master_db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> HospitalUserOut:
     if not ctx.tenant_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No tenant association")
 
-    await ensure_roles(["hospital_admin", "hospital_user", "nurse", "clinician", "doctor", "patient"])
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    await ensure_roles(["hospital_admin", "hospital_user", "nurse", "clinician", "doctor", "patient"], realm=realm)
 
     kc_roles_map = {
         "hospital_admin": ["hospital_admin", "hospital_user"],
@@ -76,6 +90,7 @@ async def create_hospital_user(
             email=body.email,
             roles=kc_roles,
             full_name=body.full_name or None,
+            realm=realm,
         )
     except Exception as e:
         raise HTTPException(
@@ -83,7 +98,7 @@ async def create_hospital_user(
             detail=f"Failed to create user in Keycloak: {e}",
         )
 
-    await set_user_attribute(kc_sub, "tenant_id", ctx.tenant_id)
+    await set_user_attribute(kc_sub, "tenant_id", ctx.tenant_id, realm=realm)
 
     user = create_local_user(
         db=db,
@@ -93,6 +108,7 @@ async def create_hospital_user(
         email=body.email,
         role=body.role,
         hospital_id=ctx.tenant_id,
+        force_password_change=False,
     )
 
     return HospitalUserOut(
@@ -102,6 +118,8 @@ async def create_hospital_user(
         email=user.email,
         role=user.role,
         hospital_id=user.hospital_id,
+        is_active=user.is_active,
+        force_password_change=user.force_password_change,
     )
 
 
@@ -112,22 +130,26 @@ async def update_hospital_user(
     sub: str,
     body: HospitalUserUpdate,
     db: Session = Depends(get_tenant_db_for_request),
+    master_db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> HospitalUserOut:
     user = db.query(User).filter(User.keycloak_sub == sub).first()
     if not user or user.hospital_id != ctx.tenant_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found in this hospital")
 
-    if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()):
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()) or body.is_active is not None:
         await update_keycloak_user(
             user.keycloak_sub,
             username=body.username,
             email=body.email,
             full_name=body.full_name,
+            enabled=body.is_active,
+            realm=realm,
         )
     if body.password is not None:
         from app.services.keycloak_admin import set_user_password
-        await set_user_password(user.keycloak_sub, body.password)
+        await set_user_password(user.keycloak_sub, body.password, realm=realm)
     if body.role is not None:
         role_map = {
             "hospital_admin": ["hospital_admin", "hospital_user"],
@@ -139,7 +161,7 @@ async def update_hospital_user(
         }
         target_roles = role_map.get(body.role, ["hospital_user"])
         from app.services.keycloak_admin import assign_user_roles
-        await assign_user_roles(user.keycloak_sub, target_roles)
+        await assign_user_roles(user.keycloak_sub, target_roles, realm=realm)
 
     updated = update_local_user(
         db=db,
@@ -148,6 +170,8 @@ async def update_hospital_user(
         full_name=body.full_name,
         email=body.email,
         role=body.role,
+        is_active=body.is_active,
+        force_password_change=body.force_password_change,
     )
     return HospitalUserOut(
         keycloak_sub=updated.keycloak_sub,
@@ -156,6 +180,8 @@ async def update_hospital_user(
         email=updated.email,
         role=updated.role,
         hospital_id=updated.hospital_id,
+        is_active=updated.is_active,
+        force_password_change=updated.force_password_change,
     )
 
 
@@ -165,13 +191,15 @@ async def delete_hospital_user(
     request: Request,
     sub: str,
     db: Session = Depends(get_tenant_db_for_request),
+    master_db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> None:
     user = db.query(User).filter(User.keycloak_sub == sub).first()
     if not user or user.hospital_id != ctx.tenant_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found in this hospital")
 
-    kc_deleted = await delete_keycloak_user(user.username or user.email or "")
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    kc_deleted = await delete_keycloak_user(user.username or user.email or "", realm=realm)
     if not kc_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found in Keycloak")
     delete_local_user(db, sub)

@@ -15,15 +15,17 @@ from app.exceptions import BadRequestError, UnauthorizedError
 from app.models.auth import PasswordResetToken, RefreshToken
 
 
-def _keycloak_token_endpoint() -> str:
-    return f"{settings.keycloak_url}/realms/{settings.keycloak_realm}/protocol/openid-connect/token"
+def _keycloak_token_endpoint(realm: str | None = None) -> str:
+    realm = realm or settings.keycloak_realm
+    return f"{settings.keycloak_url}/realms/{realm}/protocol/openid-connect/token"
 
 
-def _keycloak_logout_endpoint() -> str:
-    return f"{settings.keycloak_url}/realms/{settings.keycloak_realm}/protocol/openid-connect/logout"
+def _keycloak_logout_endpoint(realm: str | None = None) -> str:
+    realm = realm or settings.keycloak_realm
+    return f"{settings.keycloak_url}/realms/{realm}/protocol/openid-connect/logout"
 
 
-async def login(username: str, password: str, db: Session) -> Dict[str, Any]:
+async def login(username: str, password: str, db: Session, realm: str | None = None) -> Dict[str, Any]:
     data = {
         "grant_type": "password",
         "client_id": settings.keycloak_client_id,
@@ -32,7 +34,7 @@ async def login(username: str, password: str, db: Session) -> Dict[str, Any]:
         "password": password,
     }
     async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.post(_keycloak_token_endpoint(), data=data)
+        response = await client.post(_keycloak_token_endpoint(realm), data=data)
 
     if response.status_code == 401:
         raise UnauthorizedError("Invalid username or password")
@@ -115,7 +117,7 @@ async def refresh_access_token(refresh_token: str, db: Session) -> Dict[str, Any
     }
 
 
-async def logout(refresh_token: str, db: Session) -> None:
+async def logout(refresh_token: str, db: Session, realm: str | None = None) -> None:
     db_record = db.query(RefreshToken).filter(
         RefreshToken.refresh_token_hash == _hash_token(refresh_token),
         RefreshToken.is_revoked == False,
@@ -132,7 +134,7 @@ async def logout(refresh_token: str, db: Session) -> None:
             "refresh_token": refresh_token,
         }
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(_keycloak_logout_endpoint(), data=data)
+            await client.post(_keycloak_logout_endpoint(realm), data=data)
     except httpx.RequestError:
         pass
 

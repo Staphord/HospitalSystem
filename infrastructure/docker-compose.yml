@@ -8,7 +8,7 @@ services:
     container_name: hospital-postgres-master
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: nasr
       POSTGRES_DB: hospital_master
     ports:
       - "5432:5432"
@@ -38,30 +38,35 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     container_name: hospital-rabbitmq
+    user: "0:0"
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_ERLANG_COOKIE: hospital-flow-cookie
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
     networks:
       - hospital-network
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   api-gateway:
     build:
-      context: ./services/api-gateway
+      context: ../services/api-gateway
       dockerfile: Dockerfile
     container_name: hospital-api-gateway
     ports:
       - "8000:8000"
     environment:
       ENVIRONMENT: dev
-      MASTER_DB_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      MASTER_DB_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -92,6 +97,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -102,14 +109,14 @@ services:
 
   auth-service:
     build:
-      context: ./services/auth-service
+      context: ../services/auth-service
       dockerfile: Dockerfile
     container_name: hospital-auth-service
     ports:
       - "8001:8001"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -122,8 +129,8 @@ services:
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
-      DB_ADMIN_URL: postgresql://postgres:postgres@postgres-master:5432/postgres
-      TENANT_DB_TEMPLATE: postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}
+      DB_ADMIN_URL: postgresql://postgres:nasr@postgres-master:5432/postgres
+      TENANT_DB_TEMPLATE: postgresql://postgres:nasr@postgres-master:5432/tenant_{tenant_id}
       IMPERSONATION_TOKEN_TTL: 900
       SUSPENSION_CHECK_INTERVAL: 86400
       SUSPENDED_BLOCKLIST_TTL: 3600
@@ -137,7 +144,8 @@ services:
       rabbitmq:
         condition: service_healthy
     volumes:
-      - ./migrations:/app/migrations:ro
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -148,14 +156,14 @@ services:
 
   master-service:
     build:
-      context: ./services/master-service
+      context: ../services/master-service
       dockerfile: Dockerfile
     container_name: hospital-master-service
     ports:
       - "8002:8002"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -168,13 +176,28 @@ services:
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
-      DB_ADMIN_URL: postgresql://postgres:postgres@postgres-master:5432/postgres
-      TENANT_DB_TEMPLATE: postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}
+      DB_ADMIN_URL: postgresql://postgres:nasr@postgres-master:5432/postgres
+      TENANT_DB_TEMPLATE: postgresql://postgres:nasr@postgres-master:5432/tenant_{tenant_id}
       IMPERSONATION_TOKEN_TTL: 900
       SUSPENSION_CHECK_INTERVAL: 86400
       SUSPENDED_BLOCKLIST_TTL: 3600
       PASSWORD_RESET_TOKEN_TTL: 3600
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      # Downstream service URLs for health checks
+      API_GATEWAY_URL: http://api-gateway:8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      MASTER_SERVICE_URL: http://master-service:8002
+      ADMIN_SERVICE_URL: http://admin-service:8018
+      RECEPTION_SERVICE_URL: http://reception-service:8010
+      TRIAGE_SERVICE_URL: http://triage-service:8011
+      CONSULTATION_SERVICE_URL: http://consultation-service:8012
+      LABORATORY_SERVICE_URL: http://laboratory-service:8013
+      RADIOLOGY_SERVICE_URL: http://radiology-service:8014
+      PHARMACY_SERVICE_URL: http://pharmacy-service:8015
+      BILLING_SERVICE_URL: http://billing-service:8016
+      WARD_SERVICE_URL: http://ward-service:8017
+      NOTIFICATION_SERVICE_URL: http://notification-service:8019
+      REPORT_SERVICE_URL: http://report-service:8020
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -183,7 +206,8 @@ services:
       rabbitmq:
         condition: service_healthy
     volumes:
-      - ./migrations:/app/migrations:ro
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -194,14 +218,14 @@ services:
 
   reception-service:
     build:
-      context: ./services/reception-service
+      context: ../services/reception-service
       dockerfile: Dockerfile
     container_name: hospital-reception-service
     ports:
       - "8010:8010"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -232,14 +256,14 @@ services:
 
   triage-service:
     build:
-      context: ./services/triage-service
+      context: ../services/triage-service
       dockerfile: Dockerfile
     container_name: hospital-triage-service
     ports:
       - "8011:8011"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -270,14 +294,14 @@ services:
 
   consultation-service:
     build:
-      context: ./services/consultation-service
+      context: ../services/consultation-service
       dockerfile: Dockerfile
     container_name: hospital-consultation-service
     ports:
       - "8012:8012"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -308,14 +332,14 @@ services:
 
   laboratory-service:
     build:
-      context: ./services/laboratory-service
+      context: ../services/laboratory-service
       dockerfile: Dockerfile
     container_name: hospital-laboratory-service
     ports:
       - "8013:8013"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -346,14 +370,14 @@ services:
 
   radiology-service:
     build:
-      context: ./services/radiology-service
+      context: ../services/radiology-service
       dockerfile: Dockerfile
     container_name: hospital-radiology-service
     ports:
       - "8014:8014"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -384,14 +408,14 @@ services:
 
   pharmacy-service:
     build:
-      context: ./services/pharmacy-service
+      context: ../services/pharmacy-service
       dockerfile: Dockerfile
     container_name: hospital-pharmacy-service
     ports:
       - "8015:8015"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -422,14 +446,14 @@ services:
 
   billing-service:
     build:
-      context: ./services/billing-service
+      context: ../services/billing-service
       dockerfile: Dockerfile
     container_name: hospital-billing-service
     ports:
       - "8016:8016"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -460,14 +484,14 @@ services:
 
   ward-service:
     build:
-      context: ./services/ward-service
+      context: ../services/ward-service
       dockerfile: Dockerfile
     container_name: hospital-ward-service
     ports:
       - "8017:8017"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -498,14 +522,14 @@ services:
 
   admin-service:
     build:
-      context: ./services/admin-service
+      context: ../services/admin-service
       dockerfile: Dockerfile
     container_name: hospital-admin-service
     ports:
       - "8018:8018"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -526,6 +550,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -536,14 +562,14 @@ services:
 
   notification-service:
     build:
-      context: ./services/notification-service
+      context: ../services/notification-service
       dockerfile: Dockerfile
     container_name: hospital-notification-service
     ports:
       - "8019:8019"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -574,14 +600,14 @@ services:
 
   report-service:
     build:
-      context: ./services/report-service
+      context: ../services/report-service
       dockerfile: Dockerfile
     container_name: hospital-report-service
     ports:
       - "8020:8020"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:nasr@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -612,3 +638,4 @@ services:
 
 volumes:
   postgres-master-data:
+  rabbitmq-data:

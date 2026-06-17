@@ -74,19 +74,24 @@ async def remove_tenant_suspension_cache(tenant_id: str) -> None:
 
 
 async def check_tenant_subscription(db: Session, tenant_id: str) -> str:
+    from app.services.subscription_plans import SubscriptionStatus
+
     row = db.execute(
         text(
-            "SELECT status, subscription_end FROM tenants "
-            "WHERE tenant_id = :tid AND is_active = true"
+            "SELECT status, subscription_end, grace_period_end FROM tenants "
+            "WHERE tenant_id = :tid"
         ),
         {"tid": tenant_id},
     ).one_or_none()
     if not row:
         return "not_found"
-    status, sub_end = row
+    status, sub_end, grace_end = row
     if status == "suspended":
         return "suspended"
-    if sub_end and sub_end < datetime.now(timezone.utc):
+    now = datetime.now(timezone.utc)
+    if sub_end and now > sub_end:
+        if grace_end and now <= grace_end:
+            return "past_due"
         return "expired"
     return "active"
 
@@ -95,33 +100,58 @@ async def check_and_update_tenant_status(
     db: Session,
     tenant_id: str,
 ) -> str:
+    from app.services.subscription_plans import SubscriptionStatus
+    from app.services.subscription_service import _ensure_aware
+
     row = db.execute(
         text(
-            "SELECT status, subscription_end, id FROM tenants "
-            "WHERE tenant_id = :tid AND is_active = true"
+            "SELECT status, subscription_end, grace_period_end, id, subscription_status FROM tenants "
+            "WHERE tenant_id = :tid"
         ),
         {"tid": tenant_id},
     ).one_or_none()
     if not row:
         return "not_found"
-    status, sub_end, pk_id = row
+    status, sub_end, grace_end, pk_id, subscription_status = row
 
-    if status == "suspended":
+    if status == "suspended" or subscription_status == SubscriptionStatus.SUSPENDED.value:
         await cache_tenant_suspension(tenant_id)
         return "suspended"
 
-    if sub_end and sub_end < datetime.now(timezone.utc):
-        days_overdue = (datetime.now(timezone.utc) - sub_end).days
-        if days_overdue >= 30:
-            db.execute(
-                text("UPDATE tenants SET status = 'suspended', is_active = false WHERE id = :id"),
-                {"id": pk_id},
-            )
-            db.commit()
-            await cache_tenant_suspension(tenant_id)
-            await _revoke_keycloak_sessions(tenant_id)
-            return "suspended"
-        return "expired"
+    now = datetime.now(timezone.utc)
+    sub_end = _ensure_aware(sub_end)
+    grace_end = _ensure_aware(grace_end)
+    if sub_end and now > sub_end:
+        if grace_end and now <= grace_end:
+            if subscription_status != SubscriptionStatus.PAST_DUE.value:
+                db.execute(
+                    text(
+                        "UPDATE tenants SET subscription_status = :past_due "
+                        "WHERE id = :id"
+                    ),
+                    {"past_due": SubscriptionStatus.PAST_DUE.value, "id": pk_id},
+                )
+                db.commit()
+            return "past_due"
+
+        # Beyond grace period -> auto-suspend
+        db.execute(
+            text(
+                "UPDATE tenants SET status = 'suspended', is_active = false, "
+                "subscription_status = :suspended, suspended_at = :now, "
+                "suspended_reason = :reason WHERE id = :id"
+            ),
+            {
+                "suspended": SubscriptionStatus.SUSPENDED.value,
+                "id": pk_id,
+                "now": now,
+                "reason": "Subscription expired beyond grace period",
+            },
+        )
+        db.commit()
+        await cache_tenant_suspension(tenant_id)
+        await _revoke_keycloak_sessions(tenant_id)
+        return "suspended"
 
     return "active"
 

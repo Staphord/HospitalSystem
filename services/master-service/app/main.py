@@ -16,6 +16,7 @@ from app.core.middleware import (
     ImpersonationBannerMiddleware,
     ReadOnlyScopeMiddleware,
 )
+from shared.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -28,10 +29,147 @@ logging.basicConfig(
 logger = logging.getLogger("master_service")
 
 
+def _find_migrations_dir() -> str | None:
+    """Return the absolute path to the master migrations directory, if found."""
+    import os
+
+    candidates = [
+        # Monorepo layout from services/master-service/app/main.py
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "migrations", "master"),
+        # Docker layout from /app/app/main.py with migrations mounted at /app/migrations
+        os.path.join(os.path.dirname(__file__), "..", "migrations", "master"),
+        # Fallback via MIGRATIONS_DIR env var
+        os.environ.get("MASTER_MIGRATIONS_DIR", ""),
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isdir(candidate):
+            return os.path.abspath(candidate)
+    return None
+
+
+def _stamp_existing_schema_if_needed(migrations_dir: str) -> None:
+    """Bootstrap alembic for databases created outside alembic.
+
+    If the database already has the tenants table but no alembic_version record,
+    detect whether the schema looks like 0001 or head and stamp the appropriate
+    revision so that subsequent upgrades only apply real deltas.
+    """
+    import os
+    import subprocess
+    import sys
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import SQLAlchemyError
+
+    engine = create_engine(settings.database_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as conn:
+            alembic_exists = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = 'alembic_version'"
+                )
+            ).scalar()
+            if alembic_exists:
+                return
+
+            tenants_exists = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = 'tenants'"
+                )
+            ).scalar()
+            if not tenants_exists:
+                # Fresh database; alembic upgrade will create everything.
+                return
+
+            # Detect whether the schema already includes columns added by later
+            # migrations (e.g. subscription_status from 0002). If so, stamp head.
+            head_columns = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'tenants' "
+                    "AND column_name = 'subscription_status'"
+                )
+            ).scalar()
+            target_revision = (
+                "0003_add_saas_schema" if head_columns else "0001_initial_master_schema"
+            )
+
+            logger.info("Bootstrapping alembic revision for existing schema: %s", target_revision)
+            result = subprocess.run(
+                [sys.executable, "-m", "alembic", "stamp", target_revision],
+                cwd=migrations_dir,
+                capture_output=True,
+                text=True,
+                check=True,
+                env={**dict(os.environ), "DATABASE_URL": settings.database_url},
+            )
+            if result.stdout:
+                logger.debug(result.stdout)
+    except subprocess.CalledProcessError as exc:
+        logger.error("Failed to stamp existing schema: %s\n%s", exc.stderr, exc.stdout)
+        if settings.environment == "prod":
+            raise
+    except SQLAlchemyError as exc:
+        logger.error("Database connectivity error during migration bootstrap: %s", exc)
+        if settings.environment == "prod":
+            raise
+    finally:
+        engine.dispose()
+
+
+def _run_migrations() -> None:
+    """Run Alembic migrations for the master database on startup.
+
+    Supports both monorepo layout (project root / migrations / master) and the
+    Docker service layout where migrations are mounted next to the app package.
+    """
+    import os
+    import subprocess
+    import sys
+
+    migrations_dir = _find_migrations_dir()
+    if not migrations_dir:
+        logger.warning("Master migrations directory not found; skipping alembic")
+        return
+
+    _stamp_existing_schema_if_needed(migrations_dir)
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=migrations_dir,
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**dict(os.environ), "DATABASE_URL": settings.database_url},
+        )
+        logger.info("Master DB migrations applied successfully")
+        if result.stdout:
+            logger.debug(result.stdout)
+    except subprocess.CalledProcessError as exc:
+        logger.error("Master DB migration failed: %s\n%s", exc.stderr, exc.stdout)
+        # Do not crash the app in development, but log loudly.
+        if settings.environment == "prod":
+            raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _run_migrations()
+
     from app.core.database import init_db
     init_db()
+
+    # Seed canonical subscription plans into the DB catalog.
+    from app.db.master import get_master_db
+    from app.services.subscription_plans import sync_plans_to_db
+    plan_db = get_master_db()
+    try:
+        sync_plans_to_db(plan_db)
+    finally:
+        plan_db.close()
 
     from app.db.master import get_master_db
     from app.models.master import Tenant, GlobalAuditLog
@@ -116,6 +254,8 @@ async def security_headers(request: Request, call_next):
 app.add_middleware(ReadOnlyScopeMiddleware)
 app.add_middleware(ImpersonationBannerMiddleware)
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(api_v1_router, prefix="/api/v1")
 

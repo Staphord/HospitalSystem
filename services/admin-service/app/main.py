@@ -16,6 +16,7 @@ from app.core.middleware import (
     ImpersonationBannerMiddleware,
     ReadOnlyScopeMiddleware,
 )
+from shared.middleware import BodySizeLimitMiddleware, SecurityHeadersMiddleware
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -105,6 +106,8 @@ async def security_headers(request: Request, call_next):
 app.add_middleware(ReadOnlyScopeMiddleware)
 app.add_middleware(ImpersonationBannerMiddleware)
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(BodySizeLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(api_v1_router, prefix="/api/v1")
 
