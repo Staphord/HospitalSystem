@@ -46,6 +46,8 @@ from app.services.brute_force import (
     is_blocked,
     record_failed_attempt,
     record_successful_login,
+    get_failed_attempts,
+    MAX_FAILED_ATTEMPTS,
 )
 from app.services.tenant_service import is_tenant_suspended
 
@@ -220,6 +222,28 @@ async def superadmin_login(
     if result is None:
         record_failed_attempt(body.username, ip)
         if isinstance(last_exc, HTTPException):
+            if last_exc.status_code == status.HTTP_401_UNAUTHORIZED:
+                attempts = get_failed_attempts(body.username, ip)
+                remaining = max(0, MAX_FAILED_ATTEMPTS - attempts)
+                if attempts >= MAX_FAILED_ATTEMPTS:
+                    rem_seconds = get_remaining_seconds(body.username, ip)
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail={
+                            "code": "BRUTE_FORCE_BLOCKED",
+                            "message": f"Too many failed login attempts. Try again in {rem_seconds} seconds.",
+                            "retry_after": rem_seconds,
+                        }
+                    )
+                detail_msg = last_exc.detail if isinstance(last_exc.detail, str) else last_exc.detail.get("message", "Invalid username or password")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={
+                        "message": detail_msg,
+                        "attempts_remaining": remaining
+                    },
+                    headers=last_exc.headers
+                )
             raise last_exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -268,8 +292,11 @@ async def superadmin_login(
             db.commit()
             db.refresh(existing)
     except HTTPException:
+        db.rollback()
         raise
-    except Exception:
+    except Exception as exc:
+        db.rollback()
+        logger.error("Error during superadmin database synchronization: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Unable to verify super admin privileges",
@@ -359,6 +386,28 @@ async def login(
         )
     except HTTPException as exc:
         record_failed_attempt(body.username, ip)
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            attempts = get_failed_attempts(body.username, ip)
+            remaining = max(0, MAX_FAILED_ATTEMPTS - attempts)
+            if attempts >= MAX_FAILED_ATTEMPTS:
+                rem_seconds = get_remaining_seconds(body.username, ip)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "code": "BRUTE_FORCE_BLOCKED",
+                        "message": f"Too many failed login attempts. Try again in {rem_seconds} seconds.",
+                        "retry_after": rem_seconds,
+                    }
+                )
+            detail_msg = exc.detail if isinstance(exc.detail, str) else exc.detail.get("message", "Invalid username or password")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "message": detail_msg,
+                    "attempts_remaining": remaining
+                },
+                headers=exc.headers
+            )
         raise
     except Exception as exc:
         logger.exception("Login failed for %s: %s", body.username, exc)

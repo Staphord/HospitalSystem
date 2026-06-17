@@ -89,3 +89,14 @@ def get_remaining_seconds(username: str, ip: str | None = None) -> int:
         return max(0, int(ttl))
     except Exception:
         return 0
+
+
+def get_failed_attempts(username: str, ip: str | None = None) -> int:
+    """Return the number of failed attempts recorded in the current window."""
+    try:
+        r = _get_redis()
+        val = r.get(_key(username, ip))
+        return int(val) if val else 0
+    except Exception:
+        return 0
+

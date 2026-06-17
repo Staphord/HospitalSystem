@@ -238,7 +238,8 @@ def main() -> None:
     admin_password_user = os.getenv("KEYCLOAK_ADMIN_TEST_PASSWORD", "adminpassword")
     superadmin_username = os.getenv("KEYCLOAK_SUPERADMIN_TEST_USERNAME", "superadmin")
     superadmin_password = os.getenv("KEYCLOAK_SUPERADMIN_TEST_PASSWORD", "superadmin123")
-    test_tenant_id = os.getenv("KEYCLOAK_TEST_TENANT_ID", "gilgal")
+    test_tenant_id = os.getenv("KEYCLOAK_TEST_TENANT_ID", "hosp-citygeneral")
+
 
     _ensure_user(kc_admin, test_username, test_password, ["hospital_user"], tenant_id=test_tenant_id)
     print(f"  User '{test_username}' ready")

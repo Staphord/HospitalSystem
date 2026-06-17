@@ -129,21 +129,33 @@ def get_tenant_db_session(tenant_id: str) -> Session:
         engine, SessionLocal = _tenant_engine_cache[tenant_id]
         return SessionLocal()
 
-    # Query master database for tenant DSN
-    master_db = get_session_local()()
-    try:
-        result = master_db.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
-            {"tid": tenant_id},
-        )
-        row = result.scalar()
-        if not row:
-            raise ValueError(f"Tenant '{tenant_id}' not found or inactive")
+    import time
+
+    # Query master database for tenant DSN with robust retries to handle replication lag/race conditions
+    row = None
+    for attempt in range(3):
+        master_db = get_session_local()()
+        try:
+            result = master_db.execute(
+                text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+                {"tid": tenant_id},
+            )
+            row = result.scalar()
+            if row:
+                break
+        except Exception as e:
+            logger.warning("Attempt %d to query tenant %s from master DB failed: %s", attempt + 1, tenant_id, e)
+        finally:
+            master_db.close()
         
-        from app.services.tenant_service import decrypt_dsn
-        dsn = decrypt_dsn(str(row))
-    finally:
-        master_db.close()
+        if attempt < 2:
+            time.sleep(0.5)
+
+    if not row:
+        raise ValueError(f"Tenant '{tenant_id}' not found or inactive")
+        
+    from app.services.tenant_service import decrypt_dsn
+    dsn = decrypt_dsn(str(row))
 
     engine = create_engine(dsn, pool_pre_ping=True, pool_size=5, max_overflow=10)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
