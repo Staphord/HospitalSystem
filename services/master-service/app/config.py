@@ -30,6 +30,22 @@ class Settings(BaseSettings):
     db_admin_url: str = Field(default="postgresql://postgres:postgres@localhost:5432/postgres", alias="DB_ADMIN_URL")
     tenant_db_template: str = Field(default="postgresql://postgres:postgres@localhost:5432/tenant_{tenant_id}", alias="TENANT_DB_TEMPLATE")
 
+    # Downstream service URLs for health checks
+    api_gateway_url: str | None = Field(default=None, alias="API_GATEWAY_URL")
+    auth_service_url: str | None = Field(default=None, alias="AUTH_SERVICE_URL")
+    master_service_url: str | None = Field(default=None, alias="MASTER_SERVICE_URL")
+    admin_service_url: str | None = Field(default=None, alias="ADMIN_SERVICE_URL")
+    reception_service_url: str | None = Field(default=None, alias="RECEPTION_SERVICE_URL")
+    triage_service_url: str | None = Field(default=None, alias="TRIAGE_SERVICE_URL")
+    consultation_service_url: str | None = Field(default=None, alias="CONSULTATION_SERVICE_URL")
+    laboratory_service_url: str | None = Field(default=None, alias="LABORATORY_SERVICE_URL")
+    radiology_service_url: str | None = Field(default=None, alias="RADIOLOGY_SERVICE_URL")
+    pharmacy_service_url: str | None = Field(default=None, alias="PHARMACY_SERVICE_URL")
+    billing_service_url: str | None = Field(default=None, alias="BILLING_SERVICE_URL")
+    ward_service_url: str | None = Field(default=None, alias="WARD_SERVICE_URL")
+    notification_service_url: str | None = Field(default=None, alias="NOTIFICATION_SERVICE_URL")
+    report_service_url: str | None = Field(default=None, alias="REPORT_SERVICE_URL")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

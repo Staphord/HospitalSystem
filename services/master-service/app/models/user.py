@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, String
 
 from app.db.base import Base
 
@@ -13,3 +13,5 @@ class User(Base):
     email = Column(String, nullable=True)
     role = Column(String, nullable=True)
     hospital_id = Column(String, index=True, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    force_password_change = Column(Boolean, default=False, nullable=False)

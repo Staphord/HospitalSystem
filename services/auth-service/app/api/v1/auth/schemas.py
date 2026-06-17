@@ -1,9 +1,12 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from shared.security import validate_password, sanitize_username
 
 
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1)
+    realm: str | None = Field(default=None, max_length=255)
 
 
 class TokenResponse(BaseModel):
@@ -33,6 +36,11 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return validate_password(value)
 
 
 class MFASetupResponse(BaseModel):
@@ -73,6 +81,26 @@ class SignupRequest(BaseModel):
     admin_password: str = Field(..., min_length=8, max_length=128)
     admin_email: EmailStr
     admin_full_name: str = Field(default="", max_length=255)
+    subscription_plan: str = Field(default="free_trial", max_length=50)
+    subscription_billing_cycle: str = Field(default="monthly", max_length=16)
+
+    @field_validator("admin_password")
+    @classmethod
+    def validate_admin_password(cls, value: str) -> str:
+        return validate_password(value)
+
+    @field_validator("admin_username")
+    @classmethod
+    def validate_admin_username(cls, value: str) -> str:
+        return sanitize_username(value)
+
+    @field_validator("subscription_billing_cycle")
+    @classmethod
+    def validate_billing_cycle(cls, value: str) -> str:
+        allowed = {"monthly", "annual"}
+        if value.lower() not in allowed:
+            raise ValueError(f"billing_cycle must be one of {allowed}")
+        return value.lower()
 
 
 class SuperAdminLoginRequest(BaseModel):

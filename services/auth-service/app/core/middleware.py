@@ -32,29 +32,36 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         tenant_id = tenant.tenant_id if tenant else None
 
         if request.method not in ("GET", "OPTIONS", "HEAD"):
+            db = None
             try:
                 db = get_session_local()()
+                ip_address = request.client.host if request.client else None
+                detail = {
+                    "request_id": request_id,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "process_time_ms": round(process_time * 1000, 1),
+                }
                 db.execute(
                     text(
-                        "INSERT INTO audit_logs "
-                        "(request_id, user_sub, tenant_id, method, path, status_code, process_time_ms) "
-                        "VALUES (:rid, :sub, :tid, :method, :path, :status, :ms)"
+                        "INSERT INTO global_audit_logs "
+                        "(user_sub, tenant_id, action, detail, ip_address) "
+                        "VALUES (:sub, :tid, :action, :detail, :ip)"
                     ),
                     {
-                        "rid": request_id,
                         "sub": user_sub,
                         "tid": tenant_id,
-                        "method": request.method,
-                        "path": request.url.path,
-                        "status": response.status_code,
-                        "ms": round(process_time * 1000, 1),
+                        "action": request.method,
+                        "detail": detail,
+                        "ip": ip_address,
                     },
                 )
                 db.commit()
             except Exception:
                 pass
             finally:
-                db.close()
+                if db is not None:
+                    db.close()
 
         return response
 

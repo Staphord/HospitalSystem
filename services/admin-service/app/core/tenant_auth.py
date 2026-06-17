@@ -28,18 +28,30 @@ class TenantContext:
 
 
 _bearer_scheme = HTTPBearer(auto_error=False)
-_jwks_cache: TTLCache[str, dict[str, Any]] = TTLCache(maxsize=1, ttl=300)
+_jwks_cache: TTLCache[str, dict[str, Any]] = TTLCache(maxsize=10, ttl=300)
 
 
-def _issuer() -> str:
-    return f"{settings.keycloak_url}/realms/{settings.keycloak_realm}"
+def _issuer(realm: str | None = None) -> str:
+    return f"{settings.keycloak_url}/realms/{realm or settings.keycloak_realm}"
 
 
-async def _fetch_jwks() -> dict[str, Any]:
-    key = "jwks"
+def _extract_realm_from_iss(token: str) -> str | None:
+    """Extract realm name from the unverified token's iss claim."""
+    try:
+        claims = jwt.get_unverified_claims(token)
+        iss = claims.get("iss", "")
+        if iss.startswith(settings.keycloak_url + "/realms/"):
+            return iss.split("/realms/", 1)[1]
+    except Exception:
+        pass
+    return None
+
+
+async def _fetch_jwks(realm: str | None = None) -> dict[str, Any]:
+    key = f"jwks:{realm or settings.keycloak_realm}"
     if key in _jwks_cache:
         return _jwks_cache[key]
-    url = f"{_issuer()}/protocol/openid-connect/certs"
+    url = f"{_issuer(realm)}/protocol/openid-connect/certs"
     async with httpx.AsyncClient(timeout=10.0) as c:
         resp = await c.get(url)
         resp.raise_for_status()
@@ -75,12 +87,14 @@ async def _decode_token(token: str) -> dict[str, Any]:
         except Exception as e:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from e
 
-    jwks = await _fetch_jwks()
+    # Multi-realm: derive realm from the token's issuer claim
+    token_realm = _extract_realm_from_iss(token)
+    jwks = await _fetch_jwks(token_realm)
     rsa_key = _build_rsa_key(jwks, kid)
     try:
         return jwt.decode(
             token, rsa_key, algorithms=["RS256"],
-            issuer=_issuer(), options={"verify_exp": True, "verify_aud": False},
+            issuer=_issuer(token_realm), options={"verify_exp": True, "verify_aud": False},
         )
     except jwt.ExpiredSignatureError as e:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Token has expired") from e

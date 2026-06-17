@@ -140,3 +140,108 @@ hospital-flow/
   3. Encrypts DSN with Fernet and updates tenant record
   4. Publishes `tenant.provisioned` event for downstream services
 - Requires `DB_ADMIN_URL` env var with CREATEDB privilege and `TENANT_DB_TEMPLATE` for naming new databases
+
+---
+
+## Context Summary (Session 3)
+
+### Goal
+Implement secure subscription lifecycle management inside `master-service`.
+
+### Completed Features
+- Full SaaS billing schema in `master-service`: `subscription_plans`, `subscriptions`, `invoices`, `saas_payments`, `super_admin_audit_log`, `announcements`, `subscription_audit_log`.
+- Extended `Tenant` model with contact, address, timezone, currency, branding, region, trial, billing, and created-by fields.
+- Subscription plan catalog server-side (`free_trial`, `basic`, `standard`, `premium`, `enterprise`) with prices, trial days, max users, and feature gates; plans are synced to `subscription_plans` table on startup.
+- Annual and monthly billing cycles.
+- Upgrade / downgrade plan endpoints with rank validation (cannot downgrade to trial).
+- Subscription renewal extending term from current end date.
+- One-time free trial per tenant (`has_used_trial` flag prevents abuse).
+- Manual tenant account activation, suspension (with required reason + Redis blocklist + Keycloak session revocation), and reactivation (only if not cancelled and not past grace period).
+- Background suspension job now handles trial expiry and grace periods.
+- Master DB migrations via Alembic (`migrations/master/versions/0002_add_subscription_lifecycle.py` and `0003_add_saas_schema.py`), automatically applied on `master-service` startup.
+- Comprehensive audit logging to `global_audit_logs` and `subscription_audit_log` for every subscription/account action.
+- Unit tests for subscription business rules, made SQLite-compatible by skipping SaaS-table writes when those tables are absent.
+- Added `services/master-service/README.md` documenting architecture, schema, and endpoints.
+
+### New Key Endpoints (all require `super_admin`)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/superadmin/plans` | List canonical subscription plans |
+| GET | `/api/v1/superadmin/tenants/{tenant_id}/subscription` | Get subscription state |
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/subscribe` | Start/replace subscription (optional trial) |
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/upgrade` | Upgrade to higher plan |
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/downgrade` | Downgrade to lower plan |
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/renew` | Renew subscription |
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/activate` | Activate hospital account |
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/suspend` | Suspend hospital account |
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/reactivate` | Reactivate hospital account |
+
+### New Key Files
+- `services/master-service/app/services/subscription_plans.py` — Plan catalog and ranking utilities
+- `services/master-service/app/services/subscription_service.py` — Authoritative subscription state machine
+- `services/master-service/app/models/saas.py` — SaaS billing, subscription, audit, and announcement models
+- `services/master-service/tests/unit/test_subscription_service.py` — Unit tests
+- `services/master-service/README.md` — Service documentation
+- `migrations/master/versions/0002_add_subscription_lifecycle.py` — Subscription lifecycle migration
+- `migrations/master/versions/0003_add_saas_schema.py` — SaaS schema migration
+
+### Updated Files
+- `services/master-service/app/models/master.py` — Added subscription lifecycle columns to `Tenant`
+- `services/master-service/app/api/v1/superadmin/router.py` — Added subscription endpoints
+- `services/master-service/app/api/v1/superadmin/schemas.py` — Added subscription request/response schemas
+- `services/master-service/app/services/suspension_job.py` — Trial expiry handling
+- `services/master-service/app/services/tenant_service.py` — Grace-period aware expiry checks
+- `services/master-service/app/main.py` — Automatic Alembic migration on startup
+- `infrastructure/docker-compose.yml` — Fixed build contexts and migrations volume paths
+- `migrations/master/alembic.ini` — Fixed logging configuration
+
+---
+
+## Context Summary (Session 4)
+
+### Goal
+Extend the Hospital Flow Streamlit portal with tenant subscription visibility, user suspension/resume, tenant termination, and suspended-tenant lockout; fix auth/signup breakage caused by subscription schema drift.
+
+### Completed Features
+- Added `terminate_tenant` endpoint: `POST /api/v1/superadmin/tenants/{tenant_id}/terminate` (irreversible, revokes Keycloak sessions, Redis blocklist).
+- Added `terminated_at` and `termination_reason` columns to `Tenant` model and `TERMINATED` to `SubscriptionStatus`.
+- Added user `is_active` support in `admin-service` model, schemas, and update endpoint, synced to Keycloak `enabled` flag.
+- Added tenant `users.is_active` column via tenant migration `0002_add_user_is_active.py`.
+- Added tenant self-service subscription endpoint `GET /api/v1/tenant/subscription` in `master-service`, exposed through the API gateway.
+- Updated Streamlit app with:
+  - User suspend/resume toggle and active status in the user list.
+  - Tenant terminate button in superadmin tenant management.
+  - New "Subscription" page for hospital admins showing plan, status, feature gates, and suspension details.
+  - Suspended/terminated tenant lockout screen with logout action.
+- Enforced tenant suspension lockout at login and refresh in `auth-service` (`TENANT_SUSPENDED` 403).
+- Aligned `auth-service` `Tenant` model with `master-service` migrations to fix signup failures (`subscription_status`, `has_used_trial`, `auto_renew`, contact/address fields).
+- Rebuilt and verified all modified backend services; signup, login, user CRUD, tenant suspension/termination, and subscription self-service all pass manual API tests.
+
+### New Key Endpoints
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/api/v1/superadmin/tenants/{tenant_id}/terminate` | `super_admin` | Permanently terminate a tenant |
+| GET | `/api/v1/tenant/subscription` | Any authenticated tenant user | Read own tenant subscription state |
+
+### New Key Files
+- `services/master-service/app/api/v1/tenant/router.py` — Tenant self-service subscription endpoint
+- `migrations/master/versions/0005_add_termination_columns.py` — Termination columns migration
+- `migrations/tenant/versions/0002_add_user_is_active.py` — Tenant user `is_active` migration
+
+### Updated Files
+- `services/auth-service/app/models/master.py` — Aligned tenant columns with master-service migrations
+- `services/auth-service/app/api/v1/auth/router.py` — Login/refresh tenant suspension lockout; superadmin login now syncs local `super_admins` record from Keycloak
+- `services/auth-service/app/services/tenant_service.py` — DB fallback for `is_tenant_suspended` when Redis key is missing/expired
+- `services/master-service/app/api/v1/router.py` — Registered tenant self-service router
+- `services/master-service/app/api/v1/superadmin/router.py` — Added terminate, invoice, SaaS payment, and super admin audit log endpoints
+- `services/master-service/app/api/v1/superadmin/schemas.py` — Added `TenantTerminateRequest`, `InvoiceCreate`, `InvoiceUpdate`, `SaaSPaymentCreate`, `is_trial`, `TerminationSnapshot`
+- `services/master-service/app/services/subscription_service.py` — `terminate_tenant` logic; added `is_trial` to subscription state
+- `services/master-service/app/services/subscription_plans.py` — `TERMINATED` status
+- `services/api-gateway/app/tenant.py` — DB fallback for `is_tenant_suspended` when Redis key is missing/expired
+- `services/admin-service/app/models/user.py` — `is_active` column
+- `services/admin-service/app/api/v1/admin/schemas.py` — `is_active` in update/output
+- `services/admin-service/app/api/v1/admin/router.py` — `is_active` → Keycloak sync
+- `services/admin-service/app/services/keycloak_admin.py` — `is_active` handling
+- `services/api-gateway/app/proxy.py` — Route `/api/v1/tenant` to master-service
+- `streamlit_app/app.py` — User suspend/resume, terminate button, subscription page, lockout screen, user-list error feedback, proactive subscription status check on dashboard load
+- `scripts/migrate_existing_tenants.py` — Utility to run tenant migrations on all existing tenant DBs
