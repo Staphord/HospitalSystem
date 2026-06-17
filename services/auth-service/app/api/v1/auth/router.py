@@ -224,6 +224,7 @@ async def login(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Super admin must use the Super Admin Portal",
             )
+        result["tenant_id"] = unverified.get("tenant_id")
     except HTTPException:
         raise
     except Exception:
@@ -262,6 +263,13 @@ async def refresh(
         db=db,
     )
     result["scope"] = "full"
+    try:
+        from jose import jwt as _jwt
+        token = result["access_token"]
+        unverified = _jwt.get_unverified_claims(token)
+        result["tenant_id"] = unverified.get("tenant_id")
+    except Exception:
+        pass
     return result
 
 
@@ -392,3 +400,60 @@ async def impersonate(
     )
 
     return result
+
+
+@router.get("/session-check")
+async def check_session(
+    request: Request,
+    ctx: TenantContext = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    from app.models.auth import RefreshToken
+    user_sub = ctx.user_sub
+    raw = ctx.raw_token or {}
+    session_state = raw.get("session_state") or raw.get("sid")
+
+    if not user_sub or not session_state:
+        return {"has_other_active": False, "session_revoked": False}
+
+    # 1. Check if the current session itself is revoked
+    current_session = db.query(RefreshToken).filter(
+        RefreshToken.session_id == session_state,
+        RefreshToken.keycloak_sub == user_sub,
+    ).first()
+
+    if current_session and current_session.is_revoked:
+        return {"has_other_active": False, "session_revoked": True}
+
+    # 2. Check if there are other active sessions
+    now = datetime.now(timezone.utc)
+    other_active = db.query(RefreshToken).filter(
+        RefreshToken.keycloak_sub == user_sub,
+        RefreshToken.session_id != session_state,
+        RefreshToken.is_revoked == False,
+        RefreshToken.expires_at > now,
+    ).first()
+
+    return {"has_other_active": other_active is not None, "session_revoked": False}
+
+
+@router.post("/session-keep-only")
+async def keep_only_this_session(
+    request: Request,
+    ctx: TenantContext = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    from app.models.auth import RefreshToken
+    user_sub = ctx.user_sub
+    raw = ctx.raw_token or {}
+    session_state = raw.get("session_state") or raw.get("sid")
+
+    if user_sub and session_state:
+        db.query(RefreshToken).filter(
+            RefreshToken.keycloak_sub == user_sub,
+            RefreshToken.session_id != session_state,
+            RefreshToken.is_revoked == False,
+        ).update({"is_revoked": True})
+        db.commit()
+
+    return {"detail": "Other sessions invalidated successfully"}

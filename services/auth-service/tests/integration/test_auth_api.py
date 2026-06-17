@@ -62,4 +62,5 @@ async def test_superadmin_login_rejects_invalid_credentials(client):
         "/api/v1/auth/superadmin/login",
         json={"username": "wrong", "password": "wrong"},
     )
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST)
+

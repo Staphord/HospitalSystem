@@ -6,3 +6,14 @@ venv/
 .agents/
 migrations/versions/*.pyc
 *.pyc
+
+# Generated logs and logs directories
+*.log
+logs/
+**/*.log
+
+# Local execution scripts
+scripts/run_local_services.sh
+scripts/recreate_users.py
+
+

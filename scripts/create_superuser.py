@@ -202,26 +202,55 @@ def create_user(
 
     db = _get_db()
     try:
-        existing = db.execute(
-            text("SELECT id FROM users WHERE keycloak_sub = :sub"),
-            {"sub": user_id},
-        ).scalar()
+        if "super_admin" not in roles:
+            if not hospital_id:
+                raise ValueError("hospital_id is required for hospital-level roles")
 
-        if existing:
-            db.execute(
-                text("UPDATE users SET email = :email, hospital_id = :hid WHERE id = :id"),
-                {"email": email, "hid": hospital_id, "id": existing},
-            )
-            print(f"  Updated local user record (ID: {existing})")
-        else:
-            db.execute(
-                text(
-                    "INSERT INTO users (keycloak_sub, email, hospital_id) "
-                    "VALUES (:sub, :email, :hid)"
-                ),
-                {"sub": user_id, "email": email, "hid": hospital_id},
-            )
-            print(f"  Created local user record for hospital: {hospital_id or 'ALL (super_admin)'}")
+            primary_role = roles[0]
+            full_name = username.capitalize() + " User"
+
+            existing = db.execute(
+                text("SELECT id FROM users WHERE keycloak_sub = :sub"),
+                {"sub": user_id},
+            ).scalar()
+
+            if existing:
+                db.execute(
+                    text(
+                        "UPDATE users SET "
+                        "username = :username, "
+                        "full_name = :full_name, "
+                        "email = :email, "
+                        "role = :role, "
+                        "hospital_id = :hid "
+                        "WHERE id = :id"
+                    ),
+                    {
+                        "username": username,
+                        "full_name": full_name,
+                        "email": email,
+                        "role": primary_role,
+                        "hid": hospital_id,
+                        "id": existing,
+                    },
+                )
+                print(f"  Updated local user record (ID: {existing})")
+            else:
+                db.execute(
+                    text(
+                        "INSERT INTO users (keycloak_sub, username, full_name, email, role, hospital_id) "
+                        "VALUES (:sub, :username, :full_name, :email, :role, :hid)"
+                    ),
+                    {
+                        "sub": user_id,
+                        "username": username,
+                        "full_name": full_name,
+                        "email": email,
+                        "role": primary_role,
+                        "hid": hospital_id,
+                    },
+                )
+                print(f"  Created local user record for hospital: {hospital_id}")
 
         # Insert into super_admins table for super_admin role
         if "super_admin" in roles:
@@ -321,6 +350,9 @@ def main() -> None:
 
     if not args.password:
         parser.error("--password is required for user creation")
+
+    if args.role != "super_admin" and not args.hospital_id:
+        parser.error("--hospital-id is required for hospital-level roles (hospital_admin, hospital_user)")
 
     if args.role == "super_admin":
         roles = ["super_admin", "hospital_admin"]

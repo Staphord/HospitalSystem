@@ -108,6 +108,9 @@ class JWTVerificationMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable):
         path = request.url.path
 
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # Skip health, docs, and public auth endpoints (login, signup, refresh, password reset)
         PUBLIC_PREFIXES = (
             "/health",
