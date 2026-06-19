@@ -127,3 +127,13 @@ class SignupResponse(BaseModel):
     expires_in: int
     refresh_expires_in: int
     token_type: str = "Bearer"
+
+
+class MFAChallengeResponse(BaseModel):
+    mfa_required: bool = True
+    challenge_token: str
+
+
+class MFALoginVerifyRequest(BaseModel):
+    challenge_token: str = Field(..., min_length=1)
+    totp_code: str = Field(..., min_length=6, max_length=20)

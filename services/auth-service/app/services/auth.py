@@ -365,9 +365,21 @@ async def _get_admin_token() -> str:
 _totp_secrets: TTLCache[str, str] = TTLCache(maxsize=1024, ttl=600)
 
 
+def is_valid_totp_secret(secret: str | None) -> bool:
+    if not secret:
+        return False
+    try:
+        pyotp.TOTP(secret).now()
+        return True
+    except Exception:
+        return False
+
+
 def generate_mfa_secret(keycloak_sub: str) -> Dict[str, str]:
-    secret = pyotp.random_base32()
-    _totp_secrets[keycloak_sub] = secret
+    secret = _totp_secrets.get(keycloak_sub)
+    if not secret:
+        secret = pyotp.random_base32()
+        _totp_secrets[keycloak_sub] = secret
 
     totp = pyotp.TOTP(secret)
     provisioning_uri = totp.provisioning_uri(
@@ -380,9 +392,68 @@ def generate_mfa_secret(keycloak_sub: str) -> Dict[str, str]:
     }
 
 
-def verify_mfa_totp(keycloak_sub: str, totp_code: str) -> bool:
-    secret = _totp_secrets.get(keycloak_sub)
+def get_pending_mfa_secret(keycloak_sub: str) -> str | None:
+    return _totp_secrets.get(keycloak_sub)
+
+
+def clear_pending_mfa_secret(keycloak_sub: str) -> None:
+    _totp_secrets.pop(keycloak_sub, None)
+
+
+def verify_mfa_totp(
+    keycloak_sub: str,
+    totp_code: str,
+    db: Session | None = None,
+    secret: str | None = None,
+) -> bool:
+    if secret is None and db is not None:
+        user = db.query(User).filter(User.keycloak_sub == keycloak_sub).first()
+        if user and user.mfa_secret:
+            secret = user.mfa_secret
+
+    if secret is None:
+        secret = _totp_secrets.get(keycloak_sub)
+
     if not secret:
         return False
-    totp = pyotp.TOTP(secret)
-    return totp.verify(totp_code, valid_window=1)
+
+    try:
+        totp = pyotp.TOTP(secret)
+        return totp.verify(totp_code, valid_window=2)
+    except Exception:
+        return False
+
+
+def verify_backup_code(user_record: Any, code: str, db: Session) -> bool:
+    """
+    Verify a single-use backup recovery code against the stored hashed list.
+    If the code matches, it is removed from the list (consumed) and the
+    database is updated immediately.
+
+    Args:
+        user_record: SQLAlchemy model instance with a `backup_codes` JSON column.
+        code:        The plain-text backup code supplied by the user.
+        db:          The SQLAlchemy session the user_record belongs to.
+
+    Returns:
+        True if the code matched and was consumed, False otherwise.
+    """
+    import json as _json
+    if not user_record or not user_record.backup_codes:
+        return False
+
+    try:
+        stored: list[str] = _json.loads(user_record.backup_codes)
+    except (ValueError, TypeError):
+        return False
+
+    code_hash = hashlib.sha256(code.strip().encode()).hexdigest()
+    if code_hash not in stored:
+        return False
+
+    # Consume the code — it is single-use
+    stored.remove(code_hash)
+    user_record.backup_codes = _json.dumps(stored)
+    db.add(user_record)
+    db.commit()
+    return True

@@ -106,11 +106,23 @@ def _migrate_super_admins_table() -> None:
                     full_name VARCHAR(200) NOT NULL,
                     role VARCHAR(50) NOT NULL DEFAULT 'super_admin',
                     mfa_secret VARCHAR(100) NOT NULL,
+                    mfa_enabled BOOLEAN NOT NULL DEFAULT false,
+                    backup_codes TEXT,
                     is_active BOOLEAN NOT NULL DEFAULT true,
                     last_login_at TIMESTAMP,
                     created_at TIMESTAMP NOT NULL DEFAULT now()
                 )
             """))
+            conn.commit()
+    else:
+        columns = {column["name"] for column in inspector.get_columns("super_admins")}
+        with _engine.connect() as conn:
+            if "mfa_enabled" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE super_admins ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT false"
+                ))
+            if "backup_codes" not in columns:
+                conn.execute(text("ALTER TABLE super_admins ADD COLUMN backup_codes TEXT"))
             conn.commit()
 
 
