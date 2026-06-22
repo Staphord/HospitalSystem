@@ -223,6 +223,21 @@ async def ensure_roles(roles: list[str], realm: str | None = None) -> None:
                 )
 
 
+async def remove_user_role(user_id: str, role: str, realm: str | None = None) -> bool:
+    """Remove a single realm role from a Keycloak user. Returns True if role was removed."""
+    import json as _json
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/users/{user_id}/role-mappings/realm"
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        rr = await c.get(f"{_admin_api_url(realm)}/roles/{role}", headers=hdrs)
+        if not rr.is_success:
+            return False
+        role_rep = rr.json()
+        body = _json.dumps([role_rep]).encode()
+        r = await c.request("DELETE", url, content=body, headers={**hdrs, "Content-Type": "application/json"})
+        return r.is_success
+
+
 async def set_user_attribute(user_id: str, attr_name: str, attr_value: str, realm: str | None = None) -> None:
     hdrs = await _headers()
     url = f"{_admin_api_url(realm)}/users/{user_id}"

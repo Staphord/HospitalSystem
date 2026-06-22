@@ -117,7 +117,12 @@ hospital-flow/
 │   │   ├── alembic.ini
 │   │   ├── env.py
 │   │   └── versions/
-│   │       └── 0001_initial_master_schema.py
+│   │       ├── 0001_initial_master_schema.py
+│   │       ├── 0002_add_subscription_lifecycle.py
+│   │       ├── 0003_add_saas_schema.py
+│   │       ├── 0004_announcement_creator_null.py
+│   │       ├── 0005_add_termination_columns.py
+│   │       └── 0006_add_keycloak_realm.py
 │   └── tenant/
 │       ├── alembic.ini
 │       ├── env.py
@@ -205,6 +210,12 @@ alembic downgrade -1
 alembic revision --autogenerate -m "your change description"
 ```
 
+> **Troubleshooting**: If the database was created outside Alembic (e.g., via SQLAlchemy `create_all()`), the `alembic_version` table may be stamped at an old revision while columns from later migrations already exist. To fix, stamp to the correct revision and upgrade:
+> ```bash
+> alembic stamp 0004_announcement_creator_null
+> alembic upgrade head
+> ```
+
 **Tenant DB** (all clinical tables — applied per hospital):
 
 ```bash
@@ -246,6 +257,40 @@ master-service (event subscriber)
 |----------|-------------|---------|
 | `DB_ADMIN_URL` | PostgreSQL connection with CREATEDB privilege | `postgresql://postgres:nasr@localhost:5432/postgres` |
 | `TENANT_DB_TEMPLATE` | DSN template for new tenant databases | `postgresql://postgres:nasr@localhost:5432/tenant_{tenant_id}` |
+
+### Keycloak Realm Architecture
+
+- **Per-tenant realms**: Each hospital gets its own Keycloak realm (`hosp-XXXXXXXX`) on signup, with `hospital_user` and `hospital_admin` roles.
+- **Realm fallback**: If realm creation fails (e.g., Keycloak unreachable), the tenant falls back to the shared `hospital-realm` realm.
+- **Realm verification**: After creating a realm, the system verifies it exists via `GET /admin/realms/{realm}` before setting `keycloak_realm` on the tenant record.
+- **Retroactive realm fix**: Super admins can create/fix a realm for an existing tenant via `POST /api/v1/superadmin/tenants/{id}/ensure-realm`.
+
+### Realm Auto-Detection on Login
+
+When a client sends `POST /api/v1/auth/login` without a `realm` field, the auth-service performs a **cross-realm search**:
+
+1. **Fast path**: Check the default realm (`hospital-realm`) and the `master` realm.
+2. **Full scan**: List all Keycloak realms via the admin API and search each one for the username.
+3. **Fallback**: If not found anywhere, authenticate against the default realm.
+
+This allows Streamlit and other clients to accept just a username + password without the user needing to know their realm. The resolved `tenant_id` is extracted from the JWT and returned in the response body.
+
+### Super Admin Role CRUD Across Realms
+
+Super admins can manage roles in **any** Keycloak realm via:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/superadmin/realms` | List all Keycloak realm names |
+| GET | `/api/v1/superadmin/realms/{realm}/roles` | List roles in a realm |
+| POST | `/api/v1/superadmin/realms/{realm}/roles` | Create a role in a realm |
+| PUT | `/api/v1/superadmin/realms/{realm}/roles/{name}` | Rename a role |
+| DELETE | `/api/v1/superadmin/realms/{realm}/roles/{name}` | Delete a role |
+| GET | `/api/v1/superadmin/users` | List all users across all realms |
+
+### Login Response
+
+Both `POST /api/v1/auth/login` and `POST /api/v1/auth/refresh` now return `tenant_id` in the response body (extracted from the JWT claims), so clients don't need to decode the JWT themselves:
 
 ### Manual provisioning (development/testing)
 
@@ -566,6 +611,7 @@ See `.env.example` for the full list with example values.
 | `nurse2` | `Nassir_05` | `nurse` | `hosp-001` |
 | `doctor1` | `Nassir_05` | `doctor` | `hosp-001` |
 | `clinician1` | `Nassir_05` | `clinician` | `hosp-001` |
+| *(signup)* | *(your choice)* | `hospital_admin` | *(auto-assigned)* |
 
 Create test users with:
 ```bash
