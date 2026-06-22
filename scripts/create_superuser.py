@@ -34,6 +34,40 @@ def _get_db() -> Session:
     return factory()
 
 
+def _get_tenant_db(hospital_id: str) -> Session | None:
+    master_db = _get_db()
+    try:
+        row = master_db.execute(
+            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid"),
+            {"tid": hospital_id}
+        ).fetchone()
+        if not row or not row[0]:
+            print(f"  WARNING: Tenant database for '{hospital_id}' is not provisioned or active in the master DB. Skipping tenant DB sync.")
+            return None
+        
+        from cryptography.fernet import Fernet
+        key = os.getenv("TENANT_DB_ENCRYPTION_KEY")
+        if not key:
+            print("  WARNING: TENANT_DB_ENCRYPTION_KEY is not set. Skipping tenant DB sync.")
+            return None
+        cipher = Fernet(key.encode())
+        dsn = cipher.decrypt(row[0].encode()).decode()
+    except Exception as e:
+        print(f"  WARNING: Failed to retrieve tenant DSN: {e}. Skipping tenant DB sync.")
+        return None
+    finally:
+        master_db.close()
+    
+    try:
+        engine = create_engine(dsn)
+        factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        return factory()
+    except Exception as e:
+        print(f"  WARNING: Failed to connect to tenant DB: {e}. Skipping tenant DB sync.")
+        return None
+
+
+
 def _get_kc_admin() -> KeycloakAdmin:
     import requests
     try:
@@ -202,26 +236,109 @@ def create_user(
 
     db = _get_db()
     try:
-        existing = db.execute(
-            text("SELECT id FROM users WHERE keycloak_sub = :sub"),
-            {"sub": user_id},
-        ).scalar()
+        if "super_admin" not in roles:
+            if not hospital_id:
+                raise ValueError("hospital_id is required for hospital-level roles")
 
-        if existing:
-            db.execute(
-                text("UPDATE users SET email = :email, hospital_id = :hid WHERE id = :id"),
-                {"email": email, "hid": hospital_id, "id": existing},
-            )
-            print(f"  Updated local user record (ID: {existing})")
-        else:
-            db.execute(
-                text(
-                    "INSERT INTO users (keycloak_sub, email, hospital_id) "
-                    "VALUES (:sub, :email, :hid)"
-                ),
-                {"sub": user_id, "email": email, "hid": hospital_id},
-            )
-            print(f"  Created local user record for hospital: {hospital_id or 'ALL (super_admin)'}")
+            primary_role = roles[0]
+            full_name = username.capitalize() + " User"
+
+            existing = db.execute(
+                text("SELECT id FROM users WHERE keycloak_sub = :sub"),
+                {"sub": user_id},
+            ).scalar()
+
+            if existing:
+                db.execute(
+                    text(
+                        "UPDATE users SET "
+                        "username = :username, "
+                        "full_name = :full_name, "
+                        "email = :email, "
+                        "role = :role, "
+                        "hospital_id = :hid "
+                        "WHERE id = :id"
+                    ),
+                    {
+                        "username": username,
+                        "full_name": full_name,
+                        "email": email,
+                        "role": primary_role,
+                        "hid": hospital_id,
+                        "id": existing,
+                    },
+                )
+                print(f"  Updated local user record (ID: {existing})")
+            else:
+                db.execute(
+                    text(
+                        "INSERT INTO users (keycloak_sub, username, full_name, email, role, hospital_id) "
+                        "VALUES (:sub, :username, :full_name, :email, :role, :hid)"
+                    ),
+                    {
+                        "sub": user_id,
+                        "username": username,
+                        "full_name": full_name,
+                        "email": email,
+                        "role": primary_role,
+                        "hid": hospital_id,
+                    },
+                )
+                print(f"  Created local user record for hospital: {hospital_id}")
+
+            # Sync with the tenant DB
+            tenant_db = _get_tenant_db(hospital_id)
+            if tenant_db:
+                try:
+                    tenant_existing = tenant_db.execute(
+                        text("SELECT id FROM users WHERE keycloak_sub = :sub"),
+                        {"sub": user_id},
+                    ).scalar()
+
+                    if tenant_existing:
+                        tenant_db.execute(
+                            text(
+                                "UPDATE users SET "
+                                "username = :username, "
+                                "full_name = :full_name, "
+                                "email = :email, "
+                                "role = :role, "
+                                "hospital_id = :hid "
+                                "WHERE id = :id"
+                            ),
+                            {
+                                "username": username,
+                                "full_name": full_name,
+                                "email": email,
+                                "role": primary_role,
+                                "hid": hospital_id,
+                                "id": tenant_existing,
+                            },
+                        )
+                        print(f"  Updated tenant DB user record (ID: {tenant_existing})")
+                    else:
+                        tenant_db.execute(
+                            text(
+                                "INSERT INTO users (keycloak_sub, username, full_name, email, role, hospital_id) "
+                                "VALUES (:sub, :username, :full_name, :email, :role, :hid)"
+                            ),
+                            {
+                                "sub": user_id,
+                                "username": username,
+                                "full_name": full_name,
+                                "email": email,
+                                "role": primary_role,
+                                "hid": hospital_id,
+                            },
+                        )
+                        print(f"  Created tenant DB user record for hospital: {hospital_id}")
+                    tenant_db.commit()
+                except Exception as e:
+                    print(f"  WARNING: Failed to write to tenant DB: {e}")
+                    tenant_db.rollback()
+                finally:
+                    tenant_db.close()
+
 
         # Insert into super_admins table for super_admin role
         if "super_admin" in roles:
@@ -283,6 +400,12 @@ def delete_user(username: str) -> None:
 
     db = _get_db()
     try:
+        user_row = db.execute(
+            text("SELECT hospital_id FROM users WHERE keycloak_sub = :sub"),
+            {"sub": user_id},
+        ).fetchone()
+        hospital_id = user_row[0] if user_row else None
+
         result = db.execute(
             text("DELETE FROM users WHERE keycloak_sub = :sub"),
             {"sub": user_id},
@@ -295,8 +418,26 @@ def delete_user(username: str) -> None:
         if result.rowcount:
             print(f"Deleted local user record for '{username}'")
         print(f"Deleted super_admins record for '{username}' if present")
+
+        # Delete from tenant DB if applicable
+        if hospital_id:
+            tenant_db = _get_tenant_db(hospital_id)
+            if tenant_db:
+                try:
+                    tenant_db.execute(
+                        text("DELETE FROM users WHERE keycloak_sub = :sub"),
+                        {"sub": user_id},
+                    )
+                    tenant_db.commit()
+                    print(f"Deleted user record from tenant '{hospital_id}' DB")
+                except Exception as e:
+                    print(f"  WARNING: Failed to delete from tenant DB: {e}")
+                    tenant_db.rollback()
+                finally:
+                    tenant_db.close()
     finally:
         db.close()
+
 
 
 def main() -> None:
@@ -321,6 +462,9 @@ def main() -> None:
 
     if not args.password:
         parser.error("--password is required for user creation")
+
+    if args.role != "super_admin" and not args.hospital_id:
+        parser.error("--hospital-id is required for hospital-level roles (hospital_admin, hospital_user)")
 
     if args.role == "super_admin":
         roles = ["super_admin", "hospital_admin"]

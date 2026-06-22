@@ -19,3 +19,4 @@ asyncpg
 bcrypt
 aio-pika
 alembic
+aiosmtplib

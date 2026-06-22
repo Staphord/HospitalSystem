@@ -22,7 +22,7 @@ async def test_health_endpoint(client):
 
 @pytest.mark.asyncio
 async def test_proxy_no_auth_rejected(client):
-    response = await client.get("/api/v1/auth/login")
+    response = await client.get("/api/v1/reception/patients")
     # Missing auth should be rejected by middleware
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -30,7 +30,8 @@ async def test_proxy_no_auth_rejected(client):
 @pytest.mark.asyncio
 async def test_proxy_invalid_token_rejected(client):
     response = await client.get(
-        "/api/v1/auth/login",
+        "/api/v1/reception/patients",
         headers={"Authorization": "Bearer invalid_token"},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+

@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     db_admin_url: str = Field(default="postgresql://postgres:postgres@localhost:5432/postgres", alias="DB_ADMIN_URL")
     tenant_db_template: str = Field(default="postgresql://postgres:postgres@localhost:5432/tenant_{tenant_id}", alias="TENANT_DB_TEMPLATE")
 
+    smtp_host: str = Field(default="smtp.gmail.com", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str | None = Field(default=None, alias="SMTP_USER")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="no-reply@hospitalflow.com", alias="SMTP_FROM")
+    frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

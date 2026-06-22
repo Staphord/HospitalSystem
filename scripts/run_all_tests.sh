@@ -25,7 +25,10 @@ for svc in "${SERVICES[@]}"; do
   if [ -d "services/$svc" ]; then
     cd "services/$svc"
     if [ -f "pytest.ini" ] || [ -d "tests" ]; then
-      pytest -q || echo "Tests failed for $svc"
+      if [ -f "../../.env" ]; then
+        export $(grep -v '^#' ../../.env | xargs)
+      fi
+      PYTHONPATH=. pytest -q || echo "Tests failed for $svc"
     else
       echo "No tests found for $svc"
     fi

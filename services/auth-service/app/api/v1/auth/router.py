@@ -12,7 +12,10 @@ from app.api.v1.auth.schemas import (
     ImpersonateResponse,
     LoginRequest,
     LogoutRequest,
+    MFAChallengeResponse,
+    MFALoginVerifyRequest,
     MFAVerifyRequest,
+    MFAEmailSendLoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshRequest,
@@ -47,6 +50,8 @@ from app.services.brute_force import (
     is_blocked,
     record_failed_attempt,
     record_successful_login,
+    get_failed_attempts,
+    MAX_FAILED_ATTEMPTS,
 )
 from app.services.tenant_service import is_tenant_suspended
 
@@ -175,7 +180,7 @@ async def signup(
     }
 
 
-@public_router.post("/superadmin/login", response_model=SuperAdminTokenResponse)
+@public_router.post("/superadmin/login", response_model=SuperAdminTokenResponse | MFAChallengeResponse)
 @limiter.limit("10/minute")
 async def superadmin_login(
     request: Request,
@@ -221,6 +226,28 @@ async def superadmin_login(
     if result is None:
         record_failed_attempt(body.username, ip)
         if isinstance(last_exc, HTTPException):
+            if last_exc.status_code == status.HTTP_401_UNAUTHORIZED:
+                attempts = get_failed_attempts(body.username, ip)
+                remaining = max(0, MAX_FAILED_ATTEMPTS - attempts)
+                if attempts >= MAX_FAILED_ATTEMPTS:
+                    rem_seconds = get_remaining_seconds(body.username, ip)
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail={
+                            "code": "BRUTE_FORCE_BLOCKED",
+                            "message": f"Too many failed login attempts. Try again in {rem_seconds} seconds.",
+                            "retry_after": rem_seconds,
+                        }
+                    )
+                detail_msg = last_exc.detail if isinstance(last_exc.detail, str) else last_exc.detail.get("message", "Invalid username or password")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail={
+                        "message": detail_msg,
+                        "attempts_remaining": remaining
+                    },
+                    headers=last_exc.headers
+                )
             raise last_exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -231,6 +258,7 @@ async def superadmin_login(
     record_successful_login(body.username, ip)
 
     # Decode access token to verify super_admin role and sync local record
+    local_superadmin = None
     try:
         from jose import jwt as _jwt
         token = result["access_token"]
@@ -284,16 +312,55 @@ async def superadmin_login(
             db.add(admin)
             db.commit()
             db.refresh(admin)
+            local_superadmin = admin
         else:
             existing.last_login_at = datetime.now(timezone.utc)
             db.commit()
             db.refresh(existing)
+            local_superadmin = existing
     except HTTPException:
+        db.rollback()
         raise
-    except Exception:
+    except Exception as exc:
+        db.rollback()
+        logger.error("Error during superadmin database synchronization: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Unable to verify super admin privileges",
+        )
+
+    if (
+        local_superadmin
+        and local_superadmin.mfa_enabled
+        and auth_service.is_valid_totp_secret(local_superadmin.mfa_secret)
+        and local_superadmin.backup_codes
+    ):
+        import json as _json
+        from fastapi.responses import JSONResponse
+        from jose import jwt as _jwt
+
+        challenge_payload = {
+            "super_admin_id": str(local_superadmin.super_admin_id),
+            "mfa_challenge": True,
+            "superadmin": True,
+            "exp": (datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp(),
+            "tokens": _json.dumps({
+                "access_token": result["access_token"],
+                "refresh_token": result["refresh_token"],
+                "expires_in": result["expires_in"],
+                "refresh_expires_in": result["refresh_expires_in"],
+                "token_type": "Bearer",
+                "session_id": result.get("session_id", ""),
+                "not_before_policy": result.get("not_before_policy", 0),
+                "scope": "full",
+            }),
+        }
+        challenge_token = _jwt.encode(
+            challenge_payload, settings.secret_key, algorithm="HS256"
+        )
+        return JSONResponse(
+            status_code=202,
+            content={"mfa_required": True, "challenge_token": challenge_token},
         )
 
     ip = request.client.host if request.client else None
@@ -325,7 +392,7 @@ async def superadmin_login(
     }
 
 
-@public_router.post("/login", response_model=TokenResponse)
+@public_router.post("/login", response_model=TokenResponse | MFAChallengeResponse)
 @limiter.limit("10/minute")
 async def login(
     request: Request,
@@ -380,6 +447,28 @@ async def login(
         )
     except HTTPException as exc:
         record_failed_attempt(body.username, ip)
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            attempts = get_failed_attempts(body.username, ip)
+            remaining = max(0, MAX_FAILED_ATTEMPTS - attempts)
+            if attempts >= MAX_FAILED_ATTEMPTS:
+                rem_seconds = get_remaining_seconds(body.username, ip)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail={
+                        "code": "BRUTE_FORCE_BLOCKED",
+                        "message": f"Too many failed login attempts. Try again in {rem_seconds} seconds.",
+                        "retry_after": rem_seconds,
+                    }
+                )
+            detail_msg = exc.detail if isinstance(exc.detail, str) else exc.detail.get("message", "Invalid username or password")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "message": detail_msg,
+                    "attempts_remaining": remaining
+                },
+                headers=exc.headers
+            )
         raise
     except Exception as exc:
         logger.exception("Login failed for %s: %s", body.username, exc)
@@ -403,6 +492,7 @@ async def login(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Super admin must use the Super Admin Portal",
             )
+        result["tenant_id"] = unverified.get("tenant_id")
     except HTTPException:
         raise
     except Exception:
@@ -425,6 +515,7 @@ async def login(
             audit_db.close()
 
     # Decode token to enforce tenant suspension lockout at login time.
+    login_tenant_id = None
     try:
         from jose import jwt as _jwt
         token = result["access_token"]
@@ -439,6 +530,51 @@ async def login(
         raise
     except Exception:
         pass
+
+    # ── MFA Challenge Gate ──────────────────────────────────────────────────
+    # After Keycloak authenticates the user, check whether MFA is enabled in
+    # the tenant database. If it is, return a 202 challenge token instead of
+    # the real access/refresh tokens so the frontend can prompt for TOTP.
+    try:
+        from jose import jwt as _jwt
+        from app.services.provision import get_tenant_db_session
+        _raw = _jwt.get_unverified_claims(result["access_token"])
+        _tenant_id = _raw.get("tenant_id")
+        _keycloak_sub = _raw.get("sub")
+        if _tenant_id and _keycloak_sub:
+            _tdb = get_tenant_db_session(_tenant_id)
+            try:
+                from app.models.user import User as _User
+                _user_rec = _tdb.query(_User).filter(_User.keycloak_sub == _keycloak_sub).first()
+                if (
+                    _user_rec
+                    and _user_rec.mfa_enabled
+                    and auth_service.is_valid_totp_secret(_user_rec.mfa_secret)
+                    and _user_rec.backup_codes
+                ):
+                    # Issue a signed, short-lived challenge token that wraps
+                    # the full token set — only /mfa/verify-login can unwrap it.
+                    import json as _json
+                    _challenge_payload = {
+                        "sub": _keycloak_sub,
+                        "tenant_id": _tenant_id,
+                        "mfa_challenge": True,
+                        "exp": (datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp(),
+                        "tokens": _json.dumps(result),
+                    }
+                    _challenge_token = _jwt.encode(
+                        _challenge_payload, settings.secret_key, algorithm="HS256"
+                    )
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=202,
+                        content={"mfa_required": True, "challenge_token": _challenge_token},
+                    )
+            finally:
+                _tdb.close()
+    except Exception as _mfa_exc:
+        logger.debug("MFA gate check failed (non-fatal): %s", _mfa_exc)
+    # ── End MFA Challenge Gate ──────────────────────────────────────────────
 
     result["scope"] = "full"
     result["tenant_id"] = login_tenant_id
@@ -480,6 +616,238 @@ async def refresh(
     except Exception:
         result["tenant_id"] = None
     return result
+
+
+@public_router.post("/mfa/email/send-login-code", response_model=dict)
+@limiter.limit("10/minute")
+async def mfa_email_send_login_code(
+    request: Request,
+    body: MFAEmailSendLoginRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    from jose import jwt as _jwt
+    from app.models.admin import SuperAdmin as _SuperAdmin
+    from app.models.user import User as _User
+    import pyotp
+
+    # Decode and verify challenge token
+    try:
+        challenge = _jwt.decode(
+            body.challenge_token, settings.secret_key, algorithms=["HS256"]
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired challenge token",
+        )
+
+    if not challenge.get("mfa_challenge"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid challenge token context",
+        )
+
+    super_admin_id = challenge.get("super_admin_id")
+    is_superadmin = super_admin_id is not None
+
+    if is_superadmin:
+        mfa_db = db
+    else:
+        tenant_id = challenge.get("tenant_id")
+        if not tenant_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tenant context not found in challenge",
+            )
+        from app.services.provision import get_tenant_db_session
+        mfa_db = get_tenant_db_session(tenant_id)
+
+    try:
+        # Retrieve user record
+        if is_superadmin:
+            user_record = mfa_db.query(_SuperAdmin).filter(_SuperAdmin.super_admin_id == super_admin_id).first()
+        else:
+            keycloak_sub = challenge.get("sub")
+            user_record = mfa_db.query(_User).filter(_User.keycloak_sub == keycloak_sub).first()
+
+        if user_record is None or not user_record.mfa_secret:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="MFA is not configured for this account",
+            )
+
+        # Generate TOTP code
+        totp = pyotp.TOTP(user_record.mfa_secret)
+        code = totp.now()
+
+        # Send email
+        email = user_record.email
+        if not email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User email address not found",
+            )
+
+        await auth_service.send_mfa_email_code(email=email, code=code)
+
+        return {"detail": "Verification code sent to email"}
+    finally:
+        if not is_superadmin:
+            mfa_db.close()
+
+
+@public_router.post("/mfa/verify-login", response_model=TokenResponse)
+@limiter.limit("10/minute")
+async def mfa_verify_login(
+    request: Request,
+    body: MFALoginVerifyRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    import json
+
+    from jose import JWTError
+    from jose import jwt as _jwt
+    from app.models.admin import SuperAdmin as _SuperAdmin
+    from app.models.user import User as _User
+    from app.services.provision import get_tenant_db_session
+
+    try:
+        challenge = _jwt.decode(
+            body.challenge_token,
+            settings.secret_key,
+            algorithms=["HS256"],
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired MFA challenge",
+        )
+
+    if not challenge.get("mfa_challenge"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA challenge",
+        )
+
+    is_superadmin_challenge = bool(challenge.get("superadmin"))
+    tenant_id = challenge.get("tenant_id")
+    keycloak_sub = challenge.get("sub")
+    super_admin_id = challenge.get("super_admin_id")
+
+    if is_superadmin_challenge:
+        if not super_admin_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA challenge",
+            )
+
+        user_record = db.query(_SuperAdmin).filter(
+            _SuperAdmin.super_admin_id == str(super_admin_id)
+        ).first()
+        if (
+            not user_record
+            or not user_record.mfa_enabled
+            or not auth_service.is_valid_totp_secret(user_record.mfa_secret)
+            or not user_record.backup_codes
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA is not configured for this account",
+            )
+
+        # Try TOTP first, then fall back to a backup recovery code
+        totp_valid = auth_service.verify_mfa_totp(
+            keycloak_sub=str(super_admin_id),
+            totp_code=body.totp_code,
+            secret=user_record.mfa_secret,
+        )
+        if not totp_valid:
+            backup_valid = auth_service.verify_backup_code(
+                user_record=user_record,
+                code=body.totp_code,
+                db=db,
+            )
+            if not backup_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid TOTP or backup code",
+                )
+
+        tokens_raw = challenge.get("tokens")
+        if not isinstance(tokens_raw, str):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA challenge",
+            )
+
+        try:
+            tokens = json.loads(tokens_raw)
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA challenge",
+            )
+        tokens["scope"] = "full"
+        return tokens
+
+    if not tenant_id or not keycloak_sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA challenge",
+        )
+
+    tenant_db = get_tenant_db_session(tenant_id)
+    try:
+        user_record = tenant_db.query(_User).filter(_User.keycloak_sub == keycloak_sub).first()
+        if (
+            not user_record
+            or not user_record.mfa_enabled
+            or not auth_service.is_valid_totp_secret(user_record.mfa_secret)
+            or not user_record.backup_codes
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="MFA is not configured for this account",
+            )
+
+        # Try TOTP first, then fall back to a backup recovery code
+        totp_valid = auth_service.verify_mfa_totp(
+            keycloak_sub=keycloak_sub,
+            totp_code=body.totp_code,
+            secret=user_record.mfa_secret,
+        )
+        if not totp_valid:
+            backup_valid = auth_service.verify_backup_code(
+                user_record=user_record,
+                code=body.totp_code,
+                db=tenant_db,
+            )
+            if not backup_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid TOTP or backup code",
+                )
+
+        tokens_raw = challenge.get("tokens")
+        if not isinstance(tokens_raw, str):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid MFA challenge",
+            )
+
+        tokens = json.loads(tokens_raw)
+        tokens["scope"] = "full"
+        tokens["tenant_id"] = tenant_id
+        return tokens
+    except HTTPException:
+        raise
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid MFA challenge",
+        )
+    finally:
+        tenant_db.close()
 
 
 @public_router.post("/password-reset", status_code=202)
@@ -564,20 +932,178 @@ async def mfa_setup(
     return auth_service.generate_mfa_secret(keycloak_sub=user.sub)
 
 
+@router.post("/mfa/email/send-setup-code", response_model=dict)
+@limiter.limit("10/minute")
+async def mfa_email_send_setup_code(
+    request: Request,
+    user: TokenPayload = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.models.admin import SuperAdmin as _SuperAdmin
+    from app.models.user import User as _User
+    from app.exceptions import BadRequestError
+    import pyotp
+
+    roles = (user.realm_access or {}).get("roles", [])
+    is_superadmin = "super_admin" in roles
+
+    if is_superadmin:
+        mfa_db = db
+    else:
+        tenant_id = user.raw.get("tenant_id") if user.raw else None
+        if not tenant_id:
+            raise BadRequestError("Tenant context not found")
+        from app.services.provision import get_tenant_db_session
+        mfa_db = get_tenant_db_session(tenant_id)
+
+    try:
+        # Find user email if not in token
+        email = user.email
+        if not email:
+            if is_superadmin:
+                user_record = mfa_db.query(_SuperAdmin).filter(_SuperAdmin.super_admin_id == user.sub).first()
+            else:
+                user_record = mfa_db.query(_User).filter(_User.keycloak_sub == user.sub).first()
+            if user_record:
+                email = user_record.email
+
+        if not email:
+            raise BadRequestError("User email address not found")
+
+        # Generate / get pending secret
+        res = auth_service.generate_mfa_secret(keycloak_sub=user.sub)
+        secret = res["secret"]
+
+        # Calculate current TOTP token
+        totp = pyotp.TOTP(secret)
+        code = totp.now()
+
+        # Send email
+        await auth_service.send_mfa_email_code(email=email, code=code)
+
+        return {"detail": "Verification code sent to email"}
+    finally:
+        if not is_superadmin:
+            mfa_db.close()
+
+
+
 @router.post("/mfa/verify", response_model=dict)
 @limiter.limit("10/minute")
 async def mfa_verify(
     request: Request,
     body: MFAVerifyRequest,
     user: TokenPayload = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
 ) -> dict:
-    valid = auth_service.verify_mfa_totp(
-        keycloak_sub=user.sub,
-        totp_code=body.totp_code,
-    )
-    if not valid:
-        raise BadRequestError("Invalid TOTP code")
-    return {"detail": "MFA verified successfully"}
+    import hashlib
+    import json
+    from app.models.admin import SuperAdmin as _SuperAdmin
+    from app.models.user import User as _User
+
+    roles = (user.realm_access or {}).get("roles", [])
+    is_superadmin = "super_admin" in roles
+
+    if is_superadmin:
+        mfa_db = db
+    else:
+        tenant_id = user.raw.get("tenant_id") if user.raw else None
+        if not tenant_id:
+            raise BadRequestError("Tenant context not found")
+        from app.services.provision import get_tenant_db_session
+        mfa_db = get_tenant_db_session(tenant_id)
+
+    try:
+        pending_secret = auth_service.get_pending_mfa_secret(user.sub)
+        valid = auth_service.verify_mfa_totp(
+            keycloak_sub=user.sub,
+            totp_code=body.totp_code,
+            db=mfa_db,
+            secret=pending_secret,
+        )
+        if not valid:
+            raise BadRequestError("Invalid TOTP code")
+
+        # Enable MFA on the account and generate backup codes
+        if is_superadmin:
+            user_record = mfa_db.query(_SuperAdmin).filter(_SuperAdmin.super_admin_id == user.sub).first()
+            if user_record is None:
+                user_record = mfa_db.query(_SuperAdmin).filter(
+                    (_SuperAdmin.email == user.email) |
+                    (_SuperAdmin.username == user.preferred_username)
+                ).first()
+        else:
+            user_record = mfa_db.query(_User).filter(_User.keycloak_sub == user.sub).first()
+
+        if user_record is None:
+            raise BadRequestError("User record not found")
+
+        import secrets
+        codes = [secrets.token_hex(4) for _ in range(10)]
+        hashed_codes = [hashlib.sha256(c.encode()).hexdigest() for c in codes]
+
+        user_record.mfa_enabled = True
+        if pending_secret:
+            user_record.mfa_secret = pending_secret
+            auth_service.clear_pending_mfa_secret(user.sub)
+        user_record.backup_codes = json.dumps(hashed_codes)
+        mfa_db.add(user_record)
+        mfa_db.commit()
+
+        return {
+            "detail": "MFA verified and enabled successfully",
+            "backup_codes": codes,
+        }
+    finally:
+        if not is_superadmin:
+            mfa_db.close()
+
+
+@router.post("/mfa/disable", response_model=dict)
+@limiter.limit("10/minute")
+async def mfa_disable(
+    request: Request,
+    user: TokenPayload = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    from app.models.admin import SuperAdmin as _SuperAdmin
+    from app.models.user import User as _User
+
+    roles = (user.realm_access or {}).get("roles", [])
+    is_superadmin = "super_admin" in roles
+
+    if is_superadmin:
+        mfa_db = db
+    else:
+        tenant_id = user.raw.get("tenant_id") if user.raw else None
+        if not tenant_id:
+            raise BadRequestError("Tenant context not found")
+        from app.services.provision import get_tenant_db_session
+        mfa_db = get_tenant_db_session(tenant_id)
+
+    try:
+        if is_superadmin:
+            user_record = mfa_db.query(_SuperAdmin).filter(
+                (_SuperAdmin.super_admin_id == user.sub) |
+                (_SuperAdmin.email == user.email) |
+                (_SuperAdmin.username == user.preferred_username)
+            ).first()
+        else:
+            user_record = mfa_db.query(_User).filter(_User.keycloak_sub == user.sub).first()
+
+        if user_record is None:
+            raise BadRequestError("User record not found")
+
+        user_record.mfa_enabled = False
+        user_record.mfa_secret = None
+        user_record.backup_codes = None
+        mfa_db.add(user_record)
+        mfa_db.commit()
+
+        return {"detail": "Two-factor authentication disabled successfully"}
+    finally:
+        if not is_superadmin:
+            mfa_db.close()
 
 
 @router.post("/impersonate", response_model=ImpersonateResponse)
@@ -609,3 +1135,62 @@ async def impersonate(
     )
 
     return result
+
+
+@router.get("/session-check")
+async def check_session(
+    request: Request,
+    ctx: TenantContext = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    from app.models.auth import RefreshToken
+    user_sub = ctx.user_sub
+    raw = ctx.raw_token or {}
+    session_state = raw.get("session_state") or raw.get("sid")
+
+    if not user_sub or not session_state:
+        return {"has_other_active": False, "session_revoked": False}
+
+    # 1. Check if the current session itself has any active (unrevoked and unexpired) token
+    now = datetime.now(timezone.utc)
+    current_active = db.query(RefreshToken).filter(
+        RefreshToken.session_id == session_state,
+        RefreshToken.keycloak_sub == user_sub,
+        RefreshToken.is_revoked == False,
+        RefreshToken.expires_at > now,
+    ).first()
+
+    if not current_active:
+        return {"has_other_active": False, "session_revoked": True}
+
+    # 2. Check if there are other active sessions
+    other_active = db.query(RefreshToken).filter(
+        RefreshToken.keycloak_sub == user_sub,
+        RefreshToken.session_id != session_state,
+        RefreshToken.is_revoked == False,
+        RefreshToken.expires_at > now,
+    ).first()
+
+    return {"has_other_active": other_active is not None, "session_revoked": False}
+
+
+@router.post("/session-keep-only")
+async def keep_only_this_session(
+    request: Request,
+    ctx: TenantContext = Depends(get_current_tenant),
+    db: Session = Depends(get_db),
+):
+    from app.models.auth import RefreshToken
+    user_sub = ctx.user_sub
+    raw = ctx.raw_token or {}
+    session_state = raw.get("session_state") or raw.get("sid")
+
+    if user_sub and session_state:
+        db.query(RefreshToken).filter(
+            RefreshToken.keycloak_sub == user_sub,
+            RefreshToken.session_id != session_state,
+            RefreshToken.is_revoked == False,
+        ).update({"is_revoked": True})
+        db.commit()
+
+    return {"detail": "Other sessions invalidated successfully"}
