@@ -10,6 +10,7 @@ from app.models.saas import (
     Announcement,
     SubscriptionAuditLog,
 )
+from app.models.incident import Incident
 
 __all__ = [
     "User",
@@ -23,4 +24,5 @@ __all__ = [
     "SuperAdminAuditLog",
     "Announcement",
     "SubscriptionAuditLog",
+    "Incident",
 ]

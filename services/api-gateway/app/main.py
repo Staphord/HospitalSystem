@@ -64,7 +64,38 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "api-gateway"}
+    import os, platform
+    from datetime import datetime, timezone
+    telemetry = {
+        "status": "ok",
+        "service": "api-gateway",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "system": {
+            "platform": platform.platform(),
+            "python_version": platform.python_version(),
+        },
+    }
+    try:
+        import psutil
+        telemetry["cpu"] = {
+            "percent": psutil.cpu_percent(interval=0.1),
+            "count": psutil.cpu_count(),
+        }
+        mem = psutil.virtual_memory()
+        telemetry["memory"] = {
+            "total": mem.total,
+            "available": mem.available,
+            "percent": mem.percent,
+        }
+        disk = psutil.disk_usage(os.path.abspath(os.sep))
+        telemetry["disk"] = {
+            "total": disk.total,
+            "free": disk.free,
+            "percent": disk.percent,
+        }
+    except ImportError:
+        pass
+    return telemetry
 
 
 app.include_router(proxy_router)

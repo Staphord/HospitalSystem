@@ -39,6 +39,7 @@ from app.services.keycloak_admin import (
     ensure_roles,
     set_user_attribute,
     create_local_user,
+    remove_user_role,
 )
 from app.services.superadmin_auth import _hash_password
 from app.services.brute_force import (
@@ -240,6 +241,26 @@ async def superadmin_login(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User is not a super admin",
             )
+
+        # Strip hospital_admin from superadmin users in Keycloak
+        if "hospital_admin" in roles:
+            try:
+                from app.services.keycloak_admin import _headers, _admin_api_url
+                import httpx
+                hdrs = await _headers()
+                url = f"{_admin_api_url(realm_candidate)}/users"
+                async with httpx.AsyncClient(timeout=10.0) as c:
+                    search = await c.get(f"{url}?username={body.username}", headers=hdrs)
+                    if search.is_success and search.json():
+                        kc_user_id = search.json()[0]["id"]
+                        await remove_user_role(
+                            kc_user_id, "hospital_admin", realm=realm_candidate
+                        )
+                        logger.info(
+                            "Stripped hospital_admin role from superadmin %s", body.username
+                        )
+            except Exception as exc:
+                logger.warning("Failed to strip hospital_admin from superadmin: %s", exc)
 
         # Ensure a matching local super_admin row exists so master-service
         # user management endpoints can list/edit this account.

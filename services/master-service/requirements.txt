@@ -20,3 +20,4 @@ pytest-asyncio
 httpx
 python-dotenv
 aio-pika
+psutil

@@ -457,3 +457,47 @@ class SaaSPaymentCreate(BaseModel):
     payment_method: str = Field(..., max_length=50)
     reference_number: str | None = Field(default=None, max_length=100)
     receipt_sent_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# Incident management schemas
+# ---------------------------------------------------------------------------
+
+
+class IncidentCreate(BaseModel):
+    title: str = Field(..., max_length=200)
+    description: str
+    severity: str = Field(default="warning", max_length=16)
+    source: str | None = Field(default=None, max_length=100)
+    tenant_id: str | None = Field(default=None, max_length=64)
+    assigned_to: str | None = None
+
+
+class IncidentUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    severity: str | None = Field(default=None, max_length=16)
+    status: str | None = Field(default=None, max_length=32)
+    source: str | None = Field(default=None, max_length=100)
+    tenant_id: str | None = Field(default=None, max_length=64)
+    assigned_to: str | None = None
+    resolution_notes: str | None = None
+
+
+class IncidentOut(BaseModel):
+    incident_id: UUID
+    title: str
+    description: str
+    severity: str
+    status: str
+    source: str | None
+    tenant_id: str | None
+    assigned_to: str | None
+    resolved_at: datetime | None
+    resolution_notes: str | None
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
