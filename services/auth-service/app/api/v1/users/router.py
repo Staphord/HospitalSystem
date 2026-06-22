@@ -39,6 +39,30 @@ async def me(
             "scope": ctx.scope,
             "mfa_enabled": db_mfa,
         }
+
+    # Handle impersonation tokens: return a synthetic profile for the session
+    is_impersonating = ctx.raw_token.get("impersonator") or ctx.raw_token.get("impersonation")
+    if is_impersonating:
+        hospital_name = None
+        if ctx.tenant_id:
+            from app.models.master import Tenant as TenantModel
+            tenant_record = db.query(TenantModel).filter(TenantModel.tenant_id == ctx.tenant_id).first()
+            if tenant_record:
+                hospital_name = tenant_record.name
+        return {
+            "sub": ctx.user_sub,
+            "username": ctx.preferred_username or "superadmin",
+            "preferred_username": ctx.preferred_username or "superadmin",
+            "email": ctx.email or "support@hospitalflow.com",
+            "full_name": (ctx.preferred_username or "Super Admin").replace("_", " ").title(),
+            "roles": ["hospital_admin"],
+            "role": "hospital_admin",
+            "tenant_id": ctx.tenant_id,
+            "hospital_name": hospital_name,
+            "is_super_admin": False,
+            "scope": ctx.scope,
+        }
+
     # Derive primary role from Keycloak realm roles
     raw_roles = ctx.roles or []
     # Filter out system roles
