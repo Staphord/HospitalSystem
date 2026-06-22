@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, String, Text
 
 from app.db.base import Base
 
@@ -13,3 +13,6 @@ class User(Base):
     email = Column(String, nullable=True)
     role = Column(String, nullable=True)
     hospital_id = Column(String, index=True, nullable=True)
+    mfa_secret = Column(String(255), nullable=True)
+    mfa_enabled = Column(Boolean, nullable=False, default=False)
+    backup_codes = Column(Text, nullable=True)

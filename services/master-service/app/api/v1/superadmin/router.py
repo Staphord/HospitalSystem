@@ -68,11 +68,15 @@ from app.api.v1.superadmin.schemas import (
     SaaSPaymentOut,
     SaaSPaymentCreate,
     SuperAdminAuditLogOut,
+    IncidentCreate,
+    IncidentUpdate,
+    IncidentOut,
 )
 from app.models.user import User
 from app.models.admin import SuperAdmin
 from app.models.master import Tenant
 from app.models.saas import SubscriptionAuditLog, Announcement
+from app.models.incident import Incident
 
 logger = logging.getLogger("master_service.superadmin")
 
@@ -105,9 +109,9 @@ async def create_user(
                    "Use /admin/users for hospital-level user creation.",
         )
 
-    await ensure_roles(["super_admin", "hospital_admin"], realm="master")
+    await ensure_roles(["super_admin"], realm="master")
 
-    kc_roles = ["super_admin", "hospital_admin"]
+    kc_roles = ["super_admin"]
 
     try:
         kc_sub = await create_keycloak_user(
@@ -1498,6 +1502,62 @@ async def system_health(
     }
 
 
+@router.get("/telemetry", response_model=dict, tags=["System Health"])
+@limiter.limit("60/minute")
+async def system_telemetry(
+    request: Request,
+    _: TokenPayload = Depends(get_current_active_user),
+) -> dict:
+    """Return telemetry data including CPU, RAM, disk, and DB connection history."""
+    import os, platform
+    from datetime import datetime, timezone
+
+    data = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "master-service",
+        "system": {
+            "platform": platform.platform(),
+            "python_version": platform.python_version(),
+        },
+    }
+    try:
+        import psutil
+        data["cpu"] = {
+            "percent": psutil.cpu_percent(interval=0.1),
+            "count": psutil.cpu_count(),
+            "per_cpu": psutil.cpu_percent(interval=0.1, percpu=True),
+        }
+        mem = psutil.virtual_memory()
+        data["memory"] = {
+            "total": mem.total,
+            "available": mem.available,
+            "used": mem.used,
+            "percent": mem.percent,
+        }
+        disk = psutil.disk_usage(os.path.abspath(os.sep))
+        data["disk"] = {
+            "total": disk.total,
+            "used": disk.used,
+            "free": disk.free,
+            "percent": disk.percent,
+        }
+    except ImportError:
+        pass
+    try:
+        from app.config import settings
+        from sqlalchemy import create_engine, text as sa_text
+        engine = create_engine(settings.database_url, pool_pre_ping=True)
+        with engine.connect() as conn:
+            result = conn.execute(sa_text("SELECT count(*) FROM pg_stat_activity"))
+            data["db_connections"] = {"active": result.scalar() or 0}
+            result = conn.execute(sa_text("SELECT pg_database_size(current_database())"))
+            data["db_size_bytes"] = result.scalar() or 0
+        engine.dispose()
+    except Exception as exc:
+        data["db_error"] = str(exc)[:100]
+    return data
+
+
 # ---------------------------------------------------------------------------
 # Per-tenant Usage Statistics
 # ---------------------------------------------------------------------------
@@ -1646,6 +1706,135 @@ async def get_tenant(
     return TenantOut.model_validate(tenant)
 
 
+# ---------------------------------------------------------------------------
+# Aggregated Storage Usage (all tenants)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tenants/usage-telemetry", response_model=list[dict], tags=["Tenant Stats"])
+@limiter.limit("30/minute")
+async def get_aggregated_usage_telemetry(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> list[dict]:
+    """Return aggregated database and storage sizes for all onboarded tenants."""
+    tenants = db.query(Tenant).all()
+    from sqlalchemy import text as sa_text
+    results = []
+    for tenant in tenants:
+        try:
+            from app.services.provision import get_tenant_db_session
+            tenant_db = get_tenant_db_session(tenant.tenant_id)
+            db_name = tenant_db.get_bind().url.database
+            result = tenant_db.execute(
+                sa_text("SELECT pg_database_size(:db)"),
+                {"db": db_name},
+            )
+            db_size_bytes = result.scalar() or 0
+            result = tenant_db.execute(sa_text("SELECT COUNT(*) FROM users"))
+            user_count = result.scalar() or 0
+            results.append({
+                "tenant_id": tenant.tenant_id,
+                "name": tenant.name,
+                "db_size_bytes": db_size_bytes,
+                "db_size_mb": round(db_size_bytes / 1024 / 1024, 2),
+                "user_count": user_count,
+            })
+            tenant_db.close()
+        except Exception as exc:
+            results.append({
+                "tenant_id": tenant.tenant_id,
+                "name": tenant.name,
+                "error": str(exc)[:100],
+            })
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Per-Tenant Analytics
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tenants/{tenant_id}/analytics", response_model=dict, tags=["Tenant Stats"])
+@limiter.limit("30/minute")
+async def get_tenant_analytics(
+    request: Request,
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> dict:
+    """Return patient registration trends, active user counts, and module usage over time."""
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    from sqlalchemy import text as sa_text
+    from datetime import datetime, timezone, timedelta
+
+    now = datetime.now(timezone.utc)
+
+    patient_registration_trends = []
+    active_user_counts = {}
+    module_usage = {}
+
+    try:
+        from app.services.provision import get_tenant_db_session
+        tenant_db = get_tenant_db_session(tenant_id)
+
+        # Monthly patient registration trends (last 6 months)
+        for i in range(5, -1, -1):
+            month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(days=30 * i)
+            next_month = (month_start + timedelta(days=32)).replace(day=1)
+            result = tenant_db.execute(
+                sa_text("SELECT COUNT(*) FROM patients WHERE created_at >= :start AND created_at < :end"),
+                {"start": month_start, "end": next_month},
+            )
+            count = result.scalar() or 0
+            patient_registration_trends.append({
+                "month": month_start.strftime("%Y-%m"),
+                "registrations": count,
+            })
+
+        # Active user counts by role
+        try:
+            result = tenant_db.execute(sa_text("SELECT role, COUNT(*) FROM users WHERE is_active = true GROUP BY role"))
+            for row in result:
+                active_user_counts[row[0]] = row[1]
+        except Exception:
+            pass
+
+        # Module usage
+        module_query_map = {
+            "reception": "SELECT COUNT(*) FROM patients",
+            "triage": "SELECT COUNT(*) FROM triages",
+            "consultation": "SELECT COUNT(*) FROM consultations",
+            "laboratory": "SELECT COUNT(*) FROM lab_orders",
+            "radiology": "SELECT COUNT(*) FROM radiology_orders",
+            "pharmacy": "SELECT COUNT(*) FROM prescriptions",
+            "billing": "SELECT COUNT(*) FROM invoices",
+            "ward": "SELECT COUNT(*) FROM ward_admissions",
+        }
+        for module, query in module_query_map.items():
+            try:
+                result = tenant_db.execute(sa_text(query))
+                module_usage[module] = result.scalar() or 0
+            except Exception:
+                module_usage[module] = 0
+
+        tenant_db.close()
+    except Exception as exc:
+        logger.warning("Failed to query tenant DB for analytics: %s", exc)
+
+    return {
+        "tenant_id": tenant_id,
+        "tenant_name": tenant.name,
+        "patient_registration_trends": patient_registration_trends,
+        "active_user_counts": active_user_counts,
+        "module_usage": module_usage,
+    }
+
+
 # Retrieve all tenant subscriptions across the platform
 @router.get("/subscriptions", response_model=list[SubscriptionOut], tags=["Subscriptions"])
 @limiter.limit("60/minute")
@@ -1784,3 +1973,108 @@ async def get_revenue_history(
         "revenue": revenue_vals
     }
 
+
+# ---------------------------------------------------------------------------
+# Incidents Management CRUD
+# ---------------------------------------------------------------------------
+
+
+@router.get("/incidents", response_model=list[IncidentOut], tags=["Incidents"])
+@limiter.limit("60/minute")
+async def list_incidents(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> list[IncidentOut]:
+    """List all incidents, newest first."""
+    incidents = (
+        db.query(Incident)
+        .order_by(Incident.created_at.desc())
+        .all()
+    )
+    return [IncidentOut.model_validate(i) for i in incidents]
+
+
+@router.post("/incidents", response_model=IncidentOut, status_code=201, tags=["Incidents"])
+@limiter.limit("30/minute")
+async def create_incident(
+    request: Request,
+    body: IncidentCreate,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+) -> IncidentOut:
+    """Create a new incident (warning or severe)."""
+    from app.models.admin import SuperAdmin
+
+    admin = db.query(SuperAdmin).filter(SuperAdmin.username == user.preferred_username).first()
+    if not admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Super admin not found")
+
+    assignee = None
+    if body.assigned_to:
+        try:
+            assignee = UUID(body.assigned_to)
+        except (ValueError, AttributeError):
+            assignee = None
+
+    incident = Incident(
+        title=body.title,
+        description=body.description,
+        severity=body.severity,
+        source=body.source,
+        tenant_id=body.tenant_id,
+        assigned_to=assignee,
+        created_by=admin.super_admin_id,
+    )
+    db.add(incident)
+    db.commit()
+    db.refresh(incident)
+    return IncidentOut.model_validate(incident)
+
+
+@router.patch("/incidents/{incident_id}", response_model=IncidentOut, tags=["Incidents"])
+@limiter.limit("30/minute")
+async def update_incident(
+    request: Request,
+    incident_id: str,
+    body: IncidentUpdate,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> IncidentOut:
+    """Update an existing incident (status, severity, resolution, etc.)."""
+    from datetime import datetime, timezone
+
+    try:
+        uid = UUID(incident_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid incident_id")
+
+    incident = db.query(Incident).filter(Incident.incident_id == uid).first()
+    if not incident:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Incident not found")
+
+    if body.title is not None:
+        incident.title = body.title
+    if body.description is not None:
+        incident.description = body.description
+    if body.severity is not None:
+        incident.severity = body.severity
+    if body.status is not None:
+        incident.status = body.status
+        if body.status in ("resolved", "closed") and not incident.resolved_at:
+            incident.resolved_at = datetime.now(timezone.utc)
+    if body.source is not None:
+        incident.source = body.source
+    if body.tenant_id is not None:
+        incident.tenant_id = body.tenant_id
+    if body.assigned_to is not None:
+        try:
+            incident.assigned_to = UUID(body.assigned_to)
+        except (ValueError, AttributeError):
+            pass
+    if body.resolution_notes is not None:
+        incident.resolution_notes = body.resolution_notes
+
+    db.commit()
+    db.refresh(incident)
+    return IncidentOut.model_validate(incident)

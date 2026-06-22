@@ -262,4 +262,46 @@ app.include_router(api_v1_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "master-service"}
+    import os, platform
+    from datetime import datetime, timezone
+
+    telemetry = {
+        "status": "ok",
+        "service": "master-service",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "system": {
+            "platform": platform.platform(),
+            "python_version": platform.python_version(),
+        },
+    }
+    try:
+        import psutil
+        telemetry["cpu"] = {
+            "percent": psutil.cpu_percent(interval=0.1),
+            "count": psutil.cpu_count(),
+        }
+        mem = psutil.virtual_memory()
+        telemetry["memory"] = {
+            "total": mem.total,
+            "available": mem.available,
+            "percent": mem.percent,
+        }
+        disk = psutil.disk_usage(os.path.abspath(os.sep))
+        telemetry["disk"] = {
+            "total": disk.total,
+            "free": disk.free,
+            "percent": disk.percent,
+        }
+    except ImportError:
+        pass
+    try:
+        from app.config import settings
+        from sqlalchemy import create_engine, text
+        engine = create_engine(settings.database_url, pool_pre_ping=True)
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT count(*) FROM pg_stat_activity"))
+            telemetry["db_connections"] = {"active": result.scalar() or 0}
+        engine.dispose()
+    except Exception:
+        pass
+    return telemetry

@@ -25,6 +25,7 @@ async def me(
         db_admin = db.query(SuperAdmin).filter(SuperAdmin.super_admin_id == user["super_admin_id"]).first()
         db_full_name = db_admin.full_name if db_admin else "Super Admin"
         db_email = db_admin.email if db_admin else "admin@hospital.com"
+        db_mfa = db_admin.mfa_enabled if db_admin else False
         return {
             "sub": str(user["super_admin_id"]),
             "username": user["username"],
@@ -36,6 +37,7 @@ async def me(
             "tenant_id": None,
             "is_super_admin": True,
             "scope": ctx.scope,
+            "mfa_enabled": db_mfa,
         }
 
     # Handle impersonation tokens: return a synthetic profile for the session
@@ -85,6 +87,7 @@ async def me(
     # Fetch user details from DB to get the actual full_name and username
     db_username = ctx.preferred_username
     db_full_name = ctx.preferred_username.capitalize() if ctx.preferred_username else "User"
+    db_mfa = False
 
     if ctx.is_super_admin:
         from app.models.admin import SuperAdmin
@@ -94,6 +97,7 @@ async def me(
         if db_admin:
             db_username = db_admin.username or db_username
             db_full_name = db_admin.full_name or db_full_name
+            db_mfa = db_admin.mfa_enabled
     elif ctx.tenant_id:
         from app.services.provision import get_tenant_db_session
         from app.models.user import User
@@ -103,6 +107,7 @@ async def me(
             if db_user:
                 db_username = db_user.username or db_username
                 db_full_name = db_user.full_name or db_full_name
+                db_mfa = db_user.mfa_enabled
         finally:
             tenant_db.close()
 
@@ -117,6 +122,7 @@ async def me(
         "tenant_id": ctx.tenant_id,
         "is_super_admin": ctx.is_super_admin,
         "scope": ctx.scope,
+        "mfa_enabled": db_mfa,
     }
 
 

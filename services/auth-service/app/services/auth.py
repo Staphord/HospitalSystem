@@ -135,7 +135,10 @@ async def logout(refresh_token: str, db: Session, realm: str | None = None) -> N
     ).first()
 
     if db_record:
-        db_record.is_revoked = True
+        db.query(RefreshToken).filter(
+            RefreshToken.session_id == db_record.session_id,
+            RefreshToken.keycloak_sub == db_record.keycloak_sub,
+        ).update({"is_revoked": True})
         db.commit()
 
     try:
@@ -175,13 +178,23 @@ def _store_refresh_token(
 ) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
-    record = RefreshToken(
-        session_id=session_id,
-        keycloak_sub=keycloak_sub,
-        refresh_token_hash=_hash_token(refresh_token),
-        expires_at=expires_at,
-    )
-    db.add(record)
+    # Check if a record already exists for this session_id to avoid UniqueViolation constraint error
+    record = db.query(RefreshToken).filter(RefreshToken.session_id == session_id).first()
+    if record:
+        record.keycloak_sub = keycloak_sub
+        record.refresh_token_hash = _hash_token(refresh_token)
+        record.expires_at = expires_at
+        record.is_revoked = False
+    else:
+        record = RefreshToken(
+            session_id=session_id,
+            keycloak_sub=keycloak_sub,
+            refresh_token_hash=_hash_token(refresh_token),
+            expires_at=expires_at,
+            is_revoked=False,
+        )
+        db.add(record)
+
     db.commit()
     return session_id
 
@@ -365,9 +378,21 @@ async def _get_admin_token() -> str:
 _totp_secrets: TTLCache[str, str] = TTLCache(maxsize=1024, ttl=600)
 
 
+def is_valid_totp_secret(secret: str | None) -> bool:
+    if not secret:
+        return False
+    try:
+        pyotp.TOTP(secret).now()
+        return True
+    except Exception:
+        return False
+
+
 def generate_mfa_secret(keycloak_sub: str) -> Dict[str, str]:
-    secret = pyotp.random_base32()
-    _totp_secrets[keycloak_sub] = secret
+    secret = _totp_secrets.get(keycloak_sub)
+    if not secret:
+        secret = pyotp.random_base32()
+        _totp_secrets[keycloak_sub] = secret
 
     totp = pyotp.TOTP(secret)
     provisioning_uri = totp.provisioning_uri(
@@ -380,9 +405,118 @@ def generate_mfa_secret(keycloak_sub: str) -> Dict[str, str]:
     }
 
 
-def verify_mfa_totp(keycloak_sub: str, totp_code: str) -> bool:
-    secret = _totp_secrets.get(keycloak_sub)
+def get_pending_mfa_secret(keycloak_sub: str) -> str | None:
+    return _totp_secrets.get(keycloak_sub)
+
+
+def clear_pending_mfa_secret(keycloak_sub: str) -> None:
+    _totp_secrets.pop(keycloak_sub, None)
+
+
+def verify_mfa_totp(
+    keycloak_sub: str,
+    totp_code: str,
+    db: Session | None = None,
+    secret: str | None = None,
+) -> bool:
+    if secret is None and db is not None:
+        user = db.query(User).filter(User.keycloak_sub == keycloak_sub).first()
+        if user and user.mfa_secret:
+            secret = user.mfa_secret
+
+    if secret is None:
+        secret = _totp_secrets.get(keycloak_sub)
+
     if not secret:
         return False
-    totp = pyotp.TOTP(secret)
-    return totp.verify(totp_code, valid_window=1)
+
+    try:
+        totp = pyotp.TOTP(secret)
+        return totp.verify(totp_code, valid_window=2)
+    except Exception:
+        return False
+
+
+def verify_backup_code(user_record: Any, code: str, db: Session) -> bool:
+    """
+    Verify a single-use backup recovery code against the stored hashed list.
+    If the code matches, it is removed from the list (consumed) and the
+    database is updated immediately.
+
+    Args:
+        user_record: SQLAlchemy model instance with a `backup_codes` JSON column.
+        code:        The plain-text backup code supplied by the user.
+        db:          The SQLAlchemy session the user_record belongs to.
+
+    Returns:
+        True if the code matched and was consumed, False otherwise.
+    """
+    import json as _json
+    if not user_record or not user_record.backup_codes:
+        return False
+
+    try:
+        stored: list[str] = _json.loads(user_record.backup_codes)
+    except (ValueError, TypeError):
+        return False
+
+    code_hash = hashlib.sha256(code.strip().encode()).hexdigest()
+    if code_hash not in stored:
+        return False
+
+    # Consume the code — it is single-use
+    stored.remove(code_hash)
+    user_record.backup_codes = _json.dumps(stored)
+    db.add(user_record)
+    db.commit()
+    return True
+
+
+async def send_mfa_email_code(email: str, code: str) -> None:
+    if not settings.smtp_user or not settings.smtp_password:
+        print("\n" + "="*80)
+        print(f" MOCK MFA EMAIL DISPATCH TO: {email}")
+        print(f" Subject: Your Multi-Factor Authentication Code - HospitalFlow")
+        print(f" MFA Code: {code}")
+        print("="*80 + "\n")
+        return
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Your Multi-Factor Authentication Code - HospitalFlow"
+        msg["From"] = settings.smtp_from
+        msg["To"] = email
+
+        html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+          <h2 style="color: #4f46e5;">HospitalFlow Verification Code</h2>
+          <p>You are receiving this email because a multi-factor authentication check was requested for your account.</p>
+          <p style="font-size: 1.125rem;">Your 6-digit verification code is:</p>
+          <div style="font-size: 2.25rem; font-weight: bold; letter-spacing: 4px; padding: 10px 20px; background-color: #f3f4f6; border-radius: 8px; display: inline-block; color: #111827; margin: 10px 0;">
+            {code}
+          </div>
+          <p style="color: #6b7280; font-size: 0.875rem; margin-top: 20px;">This code is valid for 5 minutes. If you did not request this code, please secure your account immediately.</p>
+        </body>
+        </html>
+        """
+        text = f"Your HospitalFlow MFA verification code is: {code}"
+
+        part1 = MIMEText(text, "plain")
+        part2 = MIMEText(html, "html")
+        msg.attach(part1)
+        msg.attach(part2)
+
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.smtp_host,
+            port=settings.smtp_port,
+            username=settings.smtp_user,
+            password=settings.smtp_password,
+            start_tls=True if settings.smtp_port == 587 else False,
+            use_tls=True if settings.smtp_port == 465 else False,
+        )
+        print(f"[SUCCESS] MFA verification email successfully sent to {email}")
+    except Exception as e:
+        print(f"[ERROR] Failed to send MFA email to {email}: {str(e)}")
+
