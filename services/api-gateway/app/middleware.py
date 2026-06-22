@@ -162,7 +162,8 @@ class JWTVerificationMiddleware(BaseHTTPMiddleware):
                 headers=e.headers or {},
             )
 
-        if settings.keycloak_introspect:
+        # Skip introspection for impersonation tokens since they are locally generated
+        if settings.keycloak_introspect and not payload.get("impersonator") and not payload.get("impersonation"):
             try:
                 await _introspect_token(token)
             except HTTPException as e:
