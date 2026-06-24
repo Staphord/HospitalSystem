@@ -28,10 +28,10 @@ def upgrade() -> None:
         sa.Column("status", sa.String(32), nullable=False, server_default="open"),
         sa.Column("source", sa.String(100), nullable=True),
         sa.Column("tenant_id", sa.String(64), sa.ForeignKey("tenants.tenant_id"), nullable=True),
-        sa.Column("assigned_to", UUID(as_uuid=True), sa.ForeignKey("super_admins.super_admin_id"), nullable=True),
+        sa.Column("assigned_to", sa.String(64), sa.ForeignKey("super_admins.super_admin_id"), nullable=True),
         sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("resolution_notes", sa.Text, nullable=True),
-        sa.Column("created_by", UUID(as_uuid=True), sa.ForeignKey("super_admins.super_admin_id"), nullable=False),
+        sa.Column("created_by", sa.String(64), sa.ForeignKey("super_admins.super_admin_id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
     )
