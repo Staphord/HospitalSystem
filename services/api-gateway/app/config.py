@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     billing_service_url: str = Field(default="http://localhost:8016", alias="BILLING_SERVICE_URL")
     ward_service_url: str = Field(default="http://localhost:8017", alias="WARD_SERVICE_URL")
     admin_service_url: str = Field(default="http://localhost:8018", alias="ADMIN_SERVICE_URL")
+    patient_service_url: str = Field(default="http://localhost:8005", alias="PATIENT_SERVICE_URL")
+    visit_service_url: str = Field(default="http://localhost:8006", alias="VISIT_SERVICE_URL")
     notification_service_url: str = Field(default="http://localhost:8019", alias="NOTIFICATION_SERVICE_URL")
     report_service_url: str = Field(default="http://localhost:8020", alias="REPORT_SERVICE_URL")
 

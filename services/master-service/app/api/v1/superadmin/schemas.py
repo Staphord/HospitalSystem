@@ -216,6 +216,8 @@ class SubscriptionSnapshot(BaseModel):
     is_expired: bool
     in_grace_period: bool
     has_used_trial: bool
+    pending_plan: str | None = None
+    pending_billing_cycle: str | None = None
 
 
 class SuspensionSnapshot(BaseModel):

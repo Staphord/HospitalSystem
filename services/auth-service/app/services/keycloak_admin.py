@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.user import User
 
+logger = __import__("logging").getLogger("keycloak_admin")
+
 
 async def _get_admin_token() -> str:
     data = {
@@ -331,3 +333,41 @@ def delete_local_user(db: Session, keycloak_sub: str) -> bool:
     db.delete(user)
     db.commit()
     return True
+
+
+SUPERADMIN_CLIENT_ID = "superadmin-login"
+
+
+async def ensure_superadmin_client() -> None:
+    """Ensure a 'superadmin-login' public client exists in the master realm
+    with Direct Access Grants enabled, so superadmins can authenticate
+    via Keycloak password grant without a client secret."""
+    hdrs = await _headers()
+    url = f"{settings.keycloak_url}/admin/realms/master/clients"
+
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        # Check if client already exists
+        resp = await c.get(url, headers=hdrs)
+        if resp.is_success:
+            for cl in resp.json():
+                if cl.get("clientId") == SUPERADMIN_CLIENT_ID:
+                    logger.info("superadmin-login client already exists in master realm")
+                    return
+
+        # Create the client
+        payload = {
+            "clientId": SUPERADMIN_CLIENT_ID,
+            "enabled": True,
+            "publicClient": True,
+            "directAccessGrantsEnabled": True,
+            "standardFlowEnabled": False,
+            "serviceAccountsEnabled": False,
+            "protocol": "openid-connect",
+        }
+        cr = await c.post(url, json=payload, headers=hdrs)
+        if cr.is_success:
+            logger.info("Created superadmin-login client in master realm")
+        elif cr.status_code == 409:
+            logger.info("superadmin-login client already exists (409)")
+        else:
+            cr.raise_for_status()

@@ -11,6 +11,23 @@ from app.api.v1.users.schemas import UserUpdate, PasswordChange
 router = APIRouter()
 
 
+def _derive_primary_role(ctx: TenantContext) -> str:
+    """Derive the highest-priority role from the tenant context."""
+    if ctx.is_super_admin:
+        return "super_admin"
+    raw_roles = ctx.roles or []
+    system_roles = {"default-roles-hosp-", "offline_access", "uma_authorization"}
+    user_roles = [
+        r for r in raw_roles
+        if not any(r.startswith(s) for s in system_roles) and r not in system_roles
+    ]
+    role_priority = ["super_admin", "hospital_admin", "nurse", "clinician", "doctor", "patient", "hospital_user"]
+    for pr in role_priority:
+        if pr in user_roles:
+            return pr
+    return user_roles[0] if user_roles else "hospital_user"
+
+
 @router.get("/me")
 @limiter.limit("30/minute")
 async def me(
@@ -18,63 +35,37 @@ async def me(
     ctx: TenantContext = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
-    user = getattr(request.state, "user", None)
-    is_super = user and user.get("super_admin_id")
+    primary_role = _derive_primary_role(ctx)
+    is_super = ctx.is_super_admin
+    mfa_enabled = False
+
     if is_super:
-        from app.models.admin import SuperAdmin
-        db_admin = db.query(SuperAdmin).filter(SuperAdmin.super_admin_id == user["super_admin_id"]).first()
-        db_full_name = db_admin.full_name if db_admin else "Super Admin"
-        db_email = db_admin.email if db_admin else "admin@hospital.com"
-        db_mfa = db_admin.mfa_enabled if db_admin else False
-        return {
-            "sub": str(user["super_admin_id"]),
-            "username": user["username"],
-            "preferred_username": user["username"],
-            "email": db_email,
-            "full_name": db_full_name,
-            "roles": [user["role"]],
-            "role": user["role"],
-            "tenant_id": None,
-            "is_super_admin": True,
-            "scope": ctx.scope,
-            "mfa_enabled": db_mfa,
-        }
-    # Derive primary role from Keycloak realm roles
-    raw_roles = ctx.roles or []
-    # Filter out system roles
-    system_roles = {"default-roles-hosp-", "offline_access", "uma_authorization"}
-    user_roles = [r for r in raw_roles if not any(r.startswith(s) for s in system_roles) and r not in system_roles]
-
-    # Pick the most specific role as the primary one
-    role_priority = ["super_admin", "hospital_admin", "nurse", "clinician", "doctor", "patient", "hospital_user"]
-    primary_role = None
-    if ctx.is_super_admin:
-        primary_role = "super_admin"
-    else:
-        for pr in role_priority:
-            if pr in user_roles:
-                primary_role = pr
-                break
-        if not primary_role and user_roles:
-            primary_role = user_roles[0]
-        if not primary_role:
-            primary_role = "hospital_user"
-
-    # Fetch user details from DB to get the actual full_name and username
-    db_username = ctx.preferred_username
-    db_full_name = ctx.preferred_username.capitalize() if ctx.preferred_username else "User"
-    db_mfa = False
-
-    if ctx.is_super_admin:
         from app.models.admin import SuperAdmin
         db_admin = db.query(SuperAdmin).filter(
             (SuperAdmin.email == ctx.email) | (SuperAdmin.username == ctx.preferred_username)
         ).first()
-        if db_admin:
-            db_username = db_admin.username or db_username
-            db_full_name = db_admin.full_name or db_full_name
-            db_mfa = db_admin.mfa_enabled
-    elif ctx.tenant_id:
+        db_full_name = db_admin.full_name if db_admin else ctx.preferred_username or "Super Admin"
+        db_email = db_admin.email if db_admin else ctx.email or "admin@hospital.com"
+        mfa_enabled = db_admin.mfa_enabled if db_admin else False
+        return {
+            "sub": ctx.user_sub,
+            "username": db_admin.username if db_admin else ctx.preferred_username,
+            "preferred_username": ctx.preferred_username,
+            "email": db_email,
+            "full_name": db_full_name,
+            "roles": ctx.roles,
+            "role": primary_role,
+            "tenant_id": None,
+            "is_super_admin": True,
+            "scope": ctx.scope,
+            "mfa_enabled": mfa_enabled,
+        }
+
+    # Tenant user path
+    db_username = ctx.preferred_username
+    db_full_name = ctx.preferred_username.capitalize() if ctx.preferred_username else "User"
+
+    if ctx.tenant_id:
         from app.services.provision import get_tenant_db_session
         from app.models.user import User
         tenant_db = get_tenant_db_session(ctx.tenant_id)
@@ -83,7 +74,7 @@ async def me(
             if db_user:
                 db_username = db_user.username or db_username
                 db_full_name = db_user.full_name or db_full_name
-                db_mfa = db_user.mfa_enabled
+                mfa_enabled = db_user.mfa_enabled
         finally:
             tenant_db.close()
 
@@ -96,9 +87,9 @@ async def me(
         "roles": ctx.roles,
         "role": primary_role,
         "tenant_id": ctx.tenant_id,
-        "is_super_admin": ctx.is_super_admin,
+        "is_super_admin": False,
         "scope": ctx.scope,
-        "mfa_enabled": db_mfa,
+        "mfa_enabled": mfa_enabled,
     }
 
 

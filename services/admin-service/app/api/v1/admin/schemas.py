@@ -59,3 +59,20 @@ class HospitalUserOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RoleCreate(BaseModel):
+    name: str = Field(..., max_length=100, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+class RoleUpdate(BaseModel):
+    name: str = Field(..., max_length=100, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+class RoleOut(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    composite: bool | None = None
+    clientRole: bool | None = None
+    containerId: str | None = None

@@ -132,7 +132,7 @@ async def get_current_tenant(
         request.state.user = {
             "super_admin_id": payload.get("super_admin_id"),
             "username": payload.get("username"),
-            "role": payload.get("role", "super_admin"),
+            "role": "super_admin",
         }
         return ctx
 
