@@ -472,7 +472,7 @@ class IncidentCreate(BaseModel):
     severity: str = Field(default="warning", max_length=16)
     source: str | None = Field(default=None, max_length=100)
     tenant_id: str | None = Field(default=None, max_length=64)
-    assigned_to: str | None = None
+    assigned_to: UUID | None = None
 
 
 class IncidentUpdate(BaseModel):
@@ -482,7 +482,7 @@ class IncidentUpdate(BaseModel):
     status: str | None = Field(default=None, max_length=32)
     source: str | None = Field(default=None, max_length=100)
     tenant_id: str | None = Field(default=None, max_length=64)
-    assigned_to: str | None = None
+    assigned_to: UUID | None = None
     resolution_notes: str | None = None
 
 
@@ -494,10 +494,10 @@ class IncidentOut(BaseModel):
     status: str
     source: str | None
     tenant_id: str | None
-    assigned_to: str | None
+    assigned_to: UUID | None
     resolved_at: datetime | None
     resolution_notes: str | None
-    created_by: str
+    created_by: UUID
     created_at: datetime
     updated_at: datetime
 

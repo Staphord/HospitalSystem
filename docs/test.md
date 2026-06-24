@@ -1,6 +1,20 @@
 # Hospital Flow — Testing Guide
 
-## 0. Architecture & Authentication
+## 0. Quick Start — Get Tokens
+
+```bash
+# Hospital admin token (for tenant operations)
+HADMIN_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"hadmin1","password":"admin12345"}' | jq -r .access_token)
+
+# Super admin token (for incidents, monitoring, tenant management)
+SADMIN_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"superadmin","password":"superadmin123"}' | jq -r .access_token)
+```
+
+## 1. Architecture & Authentication
 
 ### Gateway vs. Direct Access
 
@@ -63,19 +77,20 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 
 ---
 
-## 1. Monitoring Endpoints (super_admin only)
+## 2. Monitoring Endpoints (super_admin only)
 
-All monitoring endpoints require a **super_admin Bearer token** and are available at `http://localhost:8002/docs`.
+All monitoring endpoints require a **super_admin Bearer token**. They are **GET-only** (no request body — if Swagger shows `Request body *`, ignore it; just click Execute).
 
-### GET /api/v1/superadmin/telemetry
+### GET /api/v1/monitoring/telemetry — System health
 
-Returns real-time system health of the master-service host.
+**curl:**
+```bash
+# Set superadmin token first
+SADMIN_TOKEN="eyJhbGciOi..."
 
-**Steps:**
-1. Open `http://localhost:8002/docs`
-2. Click **Authorize**, paste your Bearer token, click **Authorize**
-3. Expand `GET /api/v1/superadmin/telemetry`
-4. Click **Try it out → Execute**
+curl -s http://localhost:8000/api/v1/monitoring/telemetry \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq
+```
 
 **Expected response:**
 ```json
@@ -95,9 +110,15 @@ Returns real-time system health of the master-service host.
 
 ---
 
-### GET /api/v1/superadmin/tenant-counts
+### GET /api/v1/monitoring/tenant-counts — Tenant status aggregation
 
-Returns aggregate tenant counts by status.
+No request body needed — just the Bearer token.
+
+**curl:**
+```bash
+curl -s http://localhost:8000/api/v1/monitoring/tenant-counts \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq
+```
 
 ```json
 {
@@ -151,11 +172,25 @@ Returns detailed usage for one tenant.
 
 ---
 
-## 2. Incidents Endpoints (super_admin only)
+## 3. Incidents Endpoints (super_admin only)
 
 Incidents track system problems. Available at `http://localhost:8002/docs` under **Incidents** tag.
 
 ### POST /api/v1/superadmin/incidents — Create
+
+**curl:**
+```bash
+curl -X POST http://localhost:8000/api/v1/superadmin/incidents \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "title": "Database query timeout",
+  "description": "Analytics query took > 30s on hosp-abc12345",
+  "severity": "severe",
+  "source": "monitoring-automation",
+  "tenant_id": "hosp-abc12345"
+}'
+```
 
 ```json
 {
@@ -193,11 +228,23 @@ Incidents track system problems. Available at `http://localhost:8002/docs` under
 
 Returns all incidents, newest first.
 
-**Filter options:** None currently (returns all). You can optionally pass `?status=open` or `?severity=severe` in query params.
+**curl:**
+```bash
+curl -s http://localhost:8000/api/v1/superadmin/incidents \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
 
 ### PATCH /api/v1/superadmin/incidents/{incident_id} — Update
 
 **Path param:** `incident_id` (UUID)
+
+**curl:**
+```bash
+curl -X PATCH http://localhost:8000/api/v1/superadmin/incidents/<UUID> \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "resolved", "resolution_notes": "Fixed by restarting DB"}'
+```
 
 ```json
 {
@@ -210,7 +257,7 @@ Returns all incidents, newest first.
 
 ---
 
-## 3. /api/v1/me — Profile Endpoint
+## 4. /api/v1/me — Profile Endpoint
 
 Available at `http://localhost:8001/docs` (auth-service).
 
@@ -246,7 +293,7 @@ Available at `http://localhost:8001/docs` (auth-service).
 
 ---
 
-## 4. Running the stack
+## 5. Running the stack
 
 ```bash
 docker compose -f infrastructure/docker-compose.yml up --build -d
@@ -275,7 +322,7 @@ $env:PYTHONPATH="."; pytest tests/unit/test_subscription_service.py -v
 
 ---
 
-## 5. Patient Service (port 8005)
+## 6. Patient Service (port 8005)
 
 ### How to Test on Swagger UI
 
@@ -417,7 +464,7 @@ All 14 tests cover:
 
 ---
 
-## 6. Visit Service (port 8006)
+## 7. Visit Service (port 8006)
 
 ### How to Test on Swagger UI
 
@@ -569,7 +616,7 @@ All 11 tests cover:
 
 ---
 
-## 7. Reception Service (port 8010) — Orchestrator
+## 8. Reception Service (port 8010) — Orchestrator
 
 The reception-service does **not** store data itself. It orchestrates calls between patient-service and visit-service so the reception desk has a single API to work with.
 
@@ -686,7 +733,33 @@ Returns all triage queue entries created today, ordered oldest first.
 
 ---
 
-## 8. Troubleshooting
+## 9. Auto-Migration (Schema Sync)
+
+Tenant-facing services (patient-service, visit-service, etc.) automatically sync the database schema on every connection via `sync_tenant_schema()`.
+
+**What it does:**
+- Creates missing tables
+- Adds missing columns (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`)
+- Creates missing indexes
+
+**How it works:**
+- Runs inside `get_tenant_session()` every time a tenant DB connection is opened
+- Only executes DDL when the schema is out of sync — no overhead on matched schemas
+- Uses SQLAlchemy metadata inspection — no Alembic dependency
+
+**To add to a new service:**
+```python
+# in app/db/sync.py
+from app.db.sync import sync_tenant_schema
+
+def get_tenant_session(db_url: str) -> Session:
+    ...
+    sync_tenant_schema(engine, Base.metadata)
+```
+
+---
+
+## 10. Troubleshooting
 
 ### "No tenant association found in token" (403)
 - You are using a **super admin** token which has no `tenant_id` claim
@@ -704,9 +777,15 @@ Returns all triage queue entries created today, ordered oldest first.
 - Verify `DATABASE_URL` points to the correct Master DB
 
 ### Tables not found in tenant database
-- The services auto-create tables via `Base.metadata.create_all()` on first connection
-- If the DB user lacks CREATE privileges, run the migration scripts manually:
-  ```bash
-  python services/patient-service/migrations/0001_create_patients.py
-  python services/visit-service/migrations/0001_create_visit_schema.py
-  ```
+- The services auto-create missing tables via `sync_tenant_schema()` on every connection
+- Missing columns are also auto-added via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+- If the DB user lacks CREATE/ALTER privileges, grant them or run migrations manually
+
+### Column not found (e.g. "column X does not exist")
+- Restart the service — `sync_tenant_schema()` runs on startup and will add missing columns
+- The schema sync runs on every tenant DB session, not just the first connection
+
+### "Multiple head revisions" in Alembic
+- Two migration files share the same parent revision
+- Either chain them (one depends on the other) or create a merge migration
+- Current fix: `0007_add_incidents.py` now depends on `0007_add_superadmin_mfa_fields.py`

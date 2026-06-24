@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.config import settings
 from app.db.base import Base
+from app.db.sync import sync_tenant_schema
 
 _tenant_engine_cache: dict[str, tuple] = {}
 _master_engine = None
@@ -71,10 +72,10 @@ async def get_tenant_db_url_from_request(
 def get_tenant_session(db_url: str) -> Session:
     if db_url not in _tenant_engine_cache:
         engine = create_engine(db_url, pool_pre_ping=True, pool_size=5, max_overflow=10)
-        Base.metadata.create_all(bind=engine)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         _tenant_engine_cache[db_url] = (engine, SessionLocal)
-    _, SessionLocal = _tenant_engine_cache[db_url]
+    engine, SessionLocal = _tenant_engine_cache[db_url]
+    sync_tenant_schema(engine, Base.metadata)
     return SessionLocal()
 
 

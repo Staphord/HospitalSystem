@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 # revision identifiers, used by Alembic.
 revision: str = "0007_add_incidents"
-down_revision: Union[str, None] = "0006_add_keycloak_realm"
+down_revision: Union[str, None] = "0007_add_superadmin_mfa_fields"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
