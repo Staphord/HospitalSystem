@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from app.db.base import Base
 
@@ -97,6 +98,23 @@ class Subscription(Base):
 
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
+    @hybrid_property
+    def id(self):
+        return self.subscription_id
+
+    @id.setter
+    def id(self, value):
+        self.subscription_id = value
+
+    @property
+    def plan_name(self) -> str:
+        # Get subscription plan display name
+        from app.services.subscription_plans import PLAN_UUIDS, PLAN_CATALOG
+        for plan_enum, p_uuid in PLAN_UUIDS.items():
+            if p_uuid == self.plan_id:
+                return PLAN_CATALOG[plan_enum].display_name
+        return "Free Trial"
+
 
 class InvoiceStatus(str):
     unpaid = "unpaid"
@@ -140,6 +158,14 @@ class Invoice(Base):
     issued_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
     paid_at = Column(DateTime(timezone=True), nullable=True)
 
+    @hybrid_property
+    def id(self):
+        return self.invoice_id
+
+    @id.setter
+    def id(self, value):
+        self.invoice_id = value
+
 
 class SaaSPayment(Base):
     """Payment receipts from hospitals for subscriptions."""
@@ -176,6 +202,14 @@ class SaaSPayment(Base):
     )
     receipt_sent_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    @hybrid_property
+    def id(self):
+        return self.payment_id
+
+    @id.setter
+    def id(self, value):
+        self.payment_id = value
 
 
 class SuperAdminAuditLog(Base):
@@ -235,6 +269,14 @@ class Announcement(Base):
         nullable=True,
     )
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    @hybrid_property
+    def id(self):
+        return self.announcement_id
+
+    @id.setter
+    def id(self, value):
+        self.announcement_id = value
 
 
 class SubscriptionEventType(str):

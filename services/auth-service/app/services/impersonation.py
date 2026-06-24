@@ -22,15 +22,14 @@ def create_impersonation_token(
         "sub": super_admin_sub,
         "preferred_username": super_admin_username,
         "tenant_id": target_tenant_id,
-        "is_super_admin": True,
         "scope": "readonly",
         "impersonator": True,
-        "realm_access": {"roles": ["super_admin"]},
+        "impersonation": True,
+        "realm_access": {"roles": ["hospital_admin"]},
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=settings.impersonation_token_ttl)).timestamp()),
         "jti": str(uuid.uuid4()),
         "iss": _issuer(),
-        "impersonation": True,
     }
 
     token = jwt.encode(
