@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
@@ -7,19 +9,34 @@ from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.core.limiter import limiter
 from app.dependencies import get_tenant_db_for_request
 from app.services.keycloak_admin import (
+    assign_user_roles,
     create_keycloak_user,
-    ensure_roles,
     create_local_user,
-    update_local_user,
-    update_keycloak_user,
-    set_user_attribute,
-    get_local_users_by_hospital,
+    create_realm_role,
     delete_keycloak_user,
     delete_local_user,
+    delete_realm_role,
+    ensure_roles,
+    get_local_users_by_hospital,
+    get_realm_roles,
+    set_user_attribute,
+    set_user_password,
+    update_keycloak_user,
+    update_local_user,
+    update_realm_role,
 )
-from app.api.v1.admin.schemas import HospitalUserCreate, HospitalUserUpdate, HospitalUserOut
+from app.api.v1.admin.schemas import (
+    HospitalUserCreate,
+    HospitalUserUpdate,
+    HospitalUserOut,
+    RoleCreate,
+    RoleUpdate,
+    RoleOut,
+)
 from app.models.user import User
 from app.models.master import Tenant
+
+logger = logging.getLogger("admin_service.admin")
 
 router = APIRouter(dependencies=[Depends(require_role("hospital_admin"))])
 
@@ -32,7 +49,12 @@ def _get_tenant_realm(db: Session, tenant_id: str) -> str:
     return settings.keycloak_realm
 
 
-@router.get("/users", response_model=list[HospitalUserOut])
+# ---------------------------------------------------------------------------
+# User management
+# ---------------------------------------------------------------------------
+
+
+@router.get("/users", response_model=list[HospitalUserOut], tags=["Users"])
 @limiter.limit("30/minute")
 async def list_hospital_users(
     request: Request,
@@ -58,7 +80,7 @@ async def list_hospital_users(
     ]
 
 
-@router.post("/users", response_model=HospitalUserOut, status_code=201)
+@router.post("/users", response_model=HospitalUserOut, status_code=201, tags=["Users"])
 @limiter.limit("30/minute")
 async def create_hospital_user(
     request: Request,
@@ -123,7 +145,7 @@ async def create_hospital_user(
     )
 
 
-@router.patch("/users/{sub}", response_model=HospitalUserOut)
+@router.patch("/users/{sub}", response_model=HospitalUserOut, tags=["Users"])
 @limiter.limit("30/minute")
 async def update_hospital_user(
     request: Request,
@@ -148,7 +170,6 @@ async def update_hospital_user(
             realm=realm,
         )
     if body.password is not None:
-        from app.services.keycloak_admin import set_user_password
         await set_user_password(user.keycloak_sub, body.password, realm=realm)
     if body.role is not None:
         role_map = {
@@ -160,7 +181,6 @@ async def update_hospital_user(
             "patient": ["patient", "hospital_user"],
         }
         target_roles = role_map.get(body.role, ["hospital_user"])
-        from app.services.keycloak_admin import assign_user_roles
         await assign_user_roles(user.keycloak_sub, target_roles, realm=realm)
 
     updated = update_local_user(
@@ -185,7 +205,7 @@ async def update_hospital_user(
     )
 
 
-@router.delete("/users/{sub}", status_code=204)
+@router.delete("/users/{sub}", status_code=204, tags=["Users"])
 @limiter.limit("30/minute")
 async def delete_hospital_user(
     request: Request,
@@ -203,3 +223,95 @@ async def delete_hospital_user(
     if not kc_deleted:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found in Keycloak")
     delete_local_user(db, sub)
+
+
+# ---------------------------------------------------------------------------
+# Role management (within the tenant's Keycloak realm)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/roles", response_model=list[RoleOut], tags=["Roles"])
+@limiter.limit("60/minute")
+async def list_roles(
+    request: Request,
+    master_db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> list[RoleOut]:
+    """List all realm-level roles in the tenant's Keycloak realm."""
+    if not ctx.tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No tenant association")
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    try:
+        roles = await get_realm_roles(realm)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to list roles: {e}",
+        )
+    return [RoleOut.model_validate(r) for r in roles]
+
+
+@router.post("/roles", response_model=RoleOut, status_code=201, tags=["Roles"])
+@limiter.limit("30/minute")
+async def create_role(
+    request: Request,
+    body: RoleCreate,
+    master_db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> RoleOut:
+    """Create a new realm-level role in the tenant's Keycloak realm."""
+    if not ctx.tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No tenant association")
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    try:
+        role = await create_realm_role(realm, body.name)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to create role: {e}",
+        )
+    return RoleOut.model_validate(role)
+
+
+@router.put("/roles/{role_name}", response_model=dict, tags=["Roles"])
+@limiter.limit("30/minute")
+async def update_role(
+    request: Request,
+    role_name: str,
+    body: RoleUpdate,
+    master_db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> dict:
+    """Update a realm-level role name in the tenant's Keycloak realm."""
+    if not ctx.tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No tenant association")
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    try:
+        await update_realm_role(realm, role_name, body.name)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to update role: {e}",
+        )
+    return {"detail": f"Role '{role_name}' renamed to '{body.name}'"}
+
+
+@router.delete("/roles/{role_name}", status_code=204, tags=["Roles"])
+@limiter.limit("30/minute")
+async def delete_role(
+    request: Request,
+    role_name: str,
+    master_db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> None:
+    """Delete a realm-level role from the tenant's Keycloak realm."""
+    if not ctx.tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No tenant association")
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    try:
+        await delete_realm_role(realm, role_name)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to delete role: {e}",
+        )

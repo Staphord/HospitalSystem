@@ -6,13 +6,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
 
-master_engine = create_engine(
-    settings.database_url,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=3600,
-)
+_engine_kwargs = {"pool_pre_ping": True}
+if "sqlite" not in settings.database_url:
+    _engine_kwargs.update(pool_size=10, max_overflow=20, pool_recycle=3600)
+
+master_engine = create_engine(settings.database_url, **_engine_kwargs)
 
 MasterSessionLocal = sessionmaker(
     autocommit=False, autoflush=False, bind=master_engine

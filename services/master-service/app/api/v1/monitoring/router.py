@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_active_user, require_role, TokenPayload
@@ -16,7 +16,7 @@ router = APIRouter(dependencies=[Depends(require_role("super_admin"))])
 @router.get("/telemetry", response_model=dict, tags=["Monitoring"])
 @limiter.limit("60/minute")
 async def monitoring_telemetry(
-    request,
+    request: Request,
     _: TokenPayload = Depends(get_current_active_user),
 ) -> dict:
     """Return system telemetry data (CPU, RAM, disk, DB connections)."""
@@ -72,7 +72,7 @@ async def monitoring_telemetry(
 @router.get("/tenant-counts", response_model=dict, tags=["Monitoring"])
 @limiter.limit("60/minute")
 async def monitoring_tenant_counts(
-    request,
+    request: Request,
     db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
 ) -> dict:
