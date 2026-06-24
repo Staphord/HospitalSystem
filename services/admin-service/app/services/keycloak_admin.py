@@ -185,6 +185,57 @@ async def ensure_roles(roles: list[str], realm: str | None = None) -> None:
                 )
 
 
+async def get_realm_roles(realm: str) -> list[dict]:
+    """List all realm-level roles in a specific Keycloak realm."""
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/roles"
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        r = await c.get(url, headers=hdrs)
+        r.raise_for_status()
+        return r.json()
+
+
+async def create_realm_role(realm: str, role_name: str) -> dict:
+    """Create a new realm-level role in a specific Keycloak realm."""
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/roles"
+    payload = {"name": role_name}
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        r = await c.post(url, json=payload, headers=hdrs)
+        if r.status_code == 409:
+            raise Exception(f"Role '{role_name}' already exists in realm '{realm}'")
+        r.raise_for_status()
+        # Fetch the created role to return its representation
+        rr = await c.get(f"{url}/{role_name}", headers=hdrs)
+        rr.raise_for_status()
+        return rr.json()
+
+
+async def update_realm_role(realm: str, role_name: str, new_name: str) -> None:
+    """Update a realm-level role name in a specific Keycloak realm."""
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/roles/{role_name}"
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        existing = await c.get(url, headers=hdrs)
+        if existing.status_code == 404:
+            raise Exception(f"Role '{role_name}' not found in realm '{realm}'")
+        data = existing.json()
+        data["name"] = new_name
+        r = await c.put(url, json=data, headers=hdrs)
+        r.raise_for_status()
+
+
+async def delete_realm_role(realm: str, role_name: str) -> None:
+    """Delete a realm-level role from a specific Keycloak realm."""
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/roles/{role_name}"
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        r = await c.delete(url, headers=hdrs)
+        if r.status_code == 404:
+            raise Exception(f"Role '{role_name}' not found in realm '{realm}'")
+        r.raise_for_status()
+
+
 async def set_user_attribute(user_id: str, attr_name: str, attr_value: str, realm: str | None = None) -> None:
     hdrs = await _headers()
     url = f"{_admin_api_url(realm)}/users/{user_id}"

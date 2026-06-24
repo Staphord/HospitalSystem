@@ -93,6 +93,10 @@ class Tenant(Base):
     payment_provider_id = Column(String(255), nullable=True)
     subscription_metadata = Column("subscription_metadata", JSON, nullable=True)
 
+    # Deferred downgrade: pending plan applied at next renewal
+    pending_plan = Column(String(64), nullable=True)
+    pending_billing_cycle = Column(String(16), nullable=True)
+
     keycloak_realm = Column(String(255), nullable=True, default="hospital-realm")
     is_active = Column(Boolean, default=True, nullable=False)
 

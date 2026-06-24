@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.master import GlobalAuditLog, Tenant
-from app.models.saas import Subscription as SubscriptionRecord, SubscriptionAuditLog
+from app.models.saas import Invoice as InvoiceRecord, Subscription as SubscriptionRecord, SubscriptionAuditLog
 from app.services.subscription_plans import (
     BillingCycle,
     SubscriptionPlan,
@@ -112,6 +112,84 @@ def _require_tenant(db: Session, tenant_id: str) -> Tenant:
     if not tenant:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
     return tenant
+
+
+def compute_prorated_amount(
+    current_plan: SubscriptionPlan,
+    new_plan: SubscriptionPlan,
+    billing_cycle: BillingCycle,
+    subscription_end: datetime | None,
+) -> int:
+    """Calculate prorated amount in whole currency units for a mid-cycle plan change.
+
+    Positive return = additional charge (upgrade).
+    Negative return = credit (downgrade).
+    Returns 0 when there is no remaining period or prices are equal.
+    """
+    now = _utc_now()
+    end = _ensure_aware(subscription_end)
+    if not end or end <= now:
+        return 0
+
+    total_days = subscription_duration_days(billing_cycle)
+    remaining_days = max(1, (end - now).days)
+
+    current_details = get_plan(current_plan)
+    new_details = get_plan(new_plan)
+
+    if billing_cycle is BillingCycle.ANNUAL:
+        current_price = current_details.annual_price
+        new_price = new_details.annual_price
+    else:
+        current_price = current_details.monthly_price
+        new_price = new_details.monthly_price
+
+    price_diff = new_price - current_price
+    if price_diff == 0:
+        return 0
+
+    return int(price_diff * remaining_days / total_days) if total_days > 0 else price_diff
+
+
+def _generate_invoice(
+    db: Session,
+    tenant_id: str,
+    subscription_id: Any,
+    plan_name: str,
+    amount: int,
+    billing_cycle: BillingCycle,
+    subscription_start: datetime | None = None,
+    subscription_end: datetime | None = None,
+) -> None:
+    """Create an Invoice record atomically during a plan change.
+
+    Silently skips when the invoices table is unavailable (e.g. SQLite tests).
+    """
+    if not inspect(db.bind).has_table(InvoiceRecord.__tablename__):
+        return
+    try:
+        from datetime import date
+        start = _ensure_aware(subscription_start) or _utc_now()
+        end = _ensure_aware(subscription_end) or start
+        import uuid
+        invoice = InvoiceRecord(
+            tenant_id=tenant_id,
+            subscription_id=subscription_id,
+            invoice_number=f"PR-{tenant_id[:8]}-{uuid.uuid4().hex[:8].upper()}",
+            billing_period_start=start.date(),
+            billing_period_end=end.date(),
+            plan_name=plan_name,
+            amount=amount,
+            currency="USD",
+            due_date=end.date(),
+            status="paid" if amount <= 0 else "unpaid",
+        )
+        if amount <= 0:
+            invoice.paid_at = _utc_now()
+        db.add(invoice)
+        db.flush()
+    except Exception:
+        logger.exception("Failed to generate invoice for %s", tenant_id)
 
 
 def _subscription_audit_event(
@@ -305,19 +383,14 @@ def upgrade_subscription(
     user_sub: str | None = None,
     ip_address: str | None = None,
 ) -> SubscriptionActionResult:
-    """Upgrade a tenant to a higher plan. Immediate effect."""
+    """Upgrade a tenant to a higher plan. Immediate effect with proration."""
     tenant = _require_tenant(db, tenant_id)
     previous_status = tenant.subscription_status
     previous_plan = tenant.subscription_plan
 
     current_plan = SubscriptionPlan(tenant.subscription_plan)
 
-    if current_plan is SubscriptionPlan.FREE_TRIAL:
-        raise SubscriptionError(
-            "Cannot upgrade while on a free trial. Subscribe to a paid plan first.",
-            code="UPGRADE_FROM_TRIAL",
-        )
-
+    # Allow upgrade from free trial to any paid plan.
     if not valid_plan_transition(current_plan, new_plan):
         raise SubscriptionError(
             "Invalid plan transition.",
@@ -333,14 +406,22 @@ def upgrade_subscription(
     # Billing cycle defaults to the tenant's existing cycle.
     cycle = billing_cycle or BillingCycle(tenant.subscription_billing_cycle or "monthly")
 
+    # Compute proration before changing the plan.
+    proration = compute_prorated_amount(
+        current_plan, new_plan, cycle, tenant.subscription_end
+    )
+
     tenant.subscription_plan = new_plan.value
     tenant.subscription_billing_cycle = cycle.value
     tenant.subscription_status = SubscriptionStatus.ACTIVE.value
     tenant.status = "active"
     tenant.is_active = True
 
+    # Clear any deferred downgrade since the tenant moved to a higher plan.
+    tenant.pending_plan = None
+    tenant.pending_billing_cycle = None
+
     # Keep existing end date; upgrade is effective immediately but does not extend term.
-    # Optionally extend here if prorating is implemented in the future.
 
     start = _ensure_aware(tenant.subscription_start) or _utc_now()
     end = _ensure_aware(tenant.subscription_end) or start
@@ -354,6 +435,20 @@ def upgrade_subscription(
         status=tenant.subscription_status,
         auto_renew=tenant.auto_renew,
     )
+
+    # Generate prorated invoice if there is a charge.
+    if proration > 0 and sub_record:
+        _generate_invoice(
+            db=db,
+            tenant_id=tenant_id,
+            subscription_id=sub_record.subscription_id,
+            plan_name=new_plan.value,
+            amount=proration,
+            billing_cycle=cycle,
+            subscription_start=start,
+            subscription_end=end,
+        )
+
     _subscription_audit_event(
         db=db,
         tenant_id=tenant_id,
@@ -372,6 +467,7 @@ def upgrade_subscription(
             "from_plan": current_plan.value,
             "to_plan": new_plan.value,
             "billing_cycle": cycle.value,
+            "proration": proration,
             "subscription_end": tenant.subscription_end.isoformat() if tenant.subscription_end else None,
         },
         user_sub=user_sub,
@@ -397,21 +493,17 @@ def downgrade_subscription(
 ) -> SubscriptionActionResult:
     """Downgrade a tenant to a lower plan.
 
-    If effective_at_end is True, the change is recorded in subscription_metadata
-    and will take effect at the next renewal (not implemented in this version but
-    preserved for future use). Currently downgrades are immediate.
+    When effective_at_end is True, the downgrade is deferred by setting
+    pending_plan on the tenant; it will take effect at the next renewal.
+
+    When effective_at_end is False (immediate), prorated credit is computed
+    and an invoice (credit memo) is generated.
     """
     tenant = _require_tenant(db, tenant_id)
     previous_status = tenant.subscription_status
     previous_plan = tenant.subscription_plan
 
     current_plan = SubscriptionPlan(tenant.subscription_plan)
-
-    if current_plan is SubscriptionPlan.FREE_TRIAL:
-        raise SubscriptionError(
-            "Cannot downgrade while on a free trial.",
-            code="DOWNGRADE_FROM_TRIAL",
-        )
 
     if not valid_plan_transition(current_plan, new_plan):
         raise SubscriptionError(
@@ -426,37 +518,82 @@ def downgrade_subscription(
         )
 
     cycle = billing_cycle or BillingCycle(tenant.subscription_billing_cycle or "monthly")
+    now = _utc_now()
 
-    tenant.subscription_plan = new_plan.value
-    tenant.subscription_billing_cycle = cycle.value
-    tenant.subscription_status = SubscriptionStatus.ACTIVE.value
+    if effective_at_end:
+        # Defer the downgrade: record pending plan, do not change subscription yet.
+        tenant.pending_plan = new_plan.value
+        tenant.pending_billing_cycle = cycle.value
+        action = "downgrade_deferred"
 
-    metadata = tenant.subscription_metadata or {}
-    metadata["downgrade_effective_at_end"] = effective_at_end
-    metadata["downgrade_requested_at"] = _utc_now().isoformat()
-    tenant.subscription_metadata = metadata
+        metadata = tenant.subscription_metadata or {}
+        metadata["downgrade_requested_at"] = now.isoformat()
+        tenant.subscription_metadata = metadata
 
-    start = _ensure_aware(tenant.subscription_start) or _utc_now()
-    end = _ensure_aware(tenant.subscription_end) or start
-    sub_record = _record_subscription(
-        db=db,
-        tenant_id=tenant_id,
-        plan=new_plan,
-        billing_cycle=cycle,
-        start=start,
-        end=end,
-        status=tenant.subscription_status,
-        auto_renew=tenant.auto_renew,
-    )
-    _subscription_audit_event(
-        db=db,
-        tenant_id=tenant_id,
-        event_type="plan_downgraded",
-        actor_id=user_sub,
-        actor_type="super_admin" if user_sub else "system",
-        reason=f"Downgraded from {current_plan.value} to {new_plan.value}",
-        subscription_id=sub_record.subscription_id if sub_record else None,
-    )
+        _subscription_audit_event(
+            db=db,
+            tenant_id=tenant_id,
+            event_type="plan_downgraded",
+            actor_id=user_sub,
+            actor_type="super_admin" if user_sub else "system",
+            reason=f"Deferred downgrade from {current_plan.value} to {new_plan.value} (effective at end of term)",
+            subscription_id=None,
+        )
+    else:
+        # Immediate downgrade with prorated credit.
+        proration = compute_prorated_amount(
+            current_plan, new_plan, cycle, tenant.subscription_end
+        )
+
+        tenant.subscription_plan = new_plan.value
+        tenant.subscription_billing_cycle = cycle.value
+        tenant.subscription_status = SubscriptionStatus.ACTIVE.value
+        tenant.pending_plan = None
+        tenant.pending_billing_cycle = None
+
+        start = _ensure_aware(tenant.subscription_start) or now
+        end = _ensure_aware(tenant.subscription_end) or start
+        sub_record = _record_subscription(
+            db=db,
+            tenant_id=tenant_id,
+            plan=new_plan,
+            billing_cycle=cycle,
+            start=start,
+            end=end,
+            status=tenant.subscription_status,
+            auto_renew=tenant.auto_renew,
+        )
+
+        # Generate credit memo invoice (negative amount).
+        if proration < 0 and sub_record:
+            _generate_invoice(
+                db=db,
+                tenant_id=tenant_id,
+                subscription_id=sub_record.subscription_id,
+                plan_name=new_plan.value,
+                amount=proration,
+                billing_cycle=cycle,
+                subscription_start=start,
+                subscription_end=end,
+            )
+
+        _subscription_audit_event(
+            db=db,
+            tenant_id=tenant_id,
+            event_type="plan_downgraded",
+            actor_id=user_sub,
+            actor_type="super_admin" if user_sub else "system",
+            reason=f"Downgraded from {current_plan.value} to {new_plan.value}",
+            subscription_id=sub_record.subscription_id if sub_record else None,
+        )
+
+        metadata = tenant.subscription_metadata or {}
+        metadata["downgrade_effective_at_end"] = False
+        metadata["downgrade_requested_at"] = now.isoformat()
+        metadata["downgrade_proration"] = proration
+        tenant.subscription_metadata = metadata
+
+        action = "downgrade"
 
     _log_audit(
         db,
@@ -475,10 +612,52 @@ def downgrade_subscription(
 
     return SubscriptionActionResult(
         tenant=tenant,
-        action="downgrade",
+        action=action,
         previous_status=previous_status,
         previous_plan=previous_plan,
     )
+
+
+def apply_pending_plan_changes(db: Session, tenant: Tenant) -> bool:
+    """Apply a deferred downgrade (pending_plan) at renewal time.
+
+    Returns True if a pending plan was applied, False otherwise.
+    This is called internally by renew_subscription and can also be invoked
+    as a standalone background task for batch processing.
+    """
+    if not tenant.pending_plan:
+        return False
+
+    new_plan = SubscriptionPlan(tenant.pending_plan)
+    current_plan = SubscriptionPlan(tenant.subscription_plan)
+
+    tenant.subscription_plan = new_plan.value
+    if tenant.pending_billing_cycle:
+        tenant.subscription_billing_cycle = tenant.pending_billing_cycle
+    tenant.pending_plan = None
+    tenant.pending_billing_cycle = None
+
+    metadata = tenant.subscription_metadata or {}
+    metadata["pending_plan_applied_at"] = _utc_now().isoformat()
+    metadata["pending_plan_from"] = current_plan.value
+    metadata["pending_plan_to"] = new_plan.value
+    tenant.subscription_metadata = metadata
+
+    _subscription_audit_event(
+        db=db,
+        tenant_id=tenant.tenant_id,
+        event_type="plan_downgraded",
+        actor_id=None,
+        actor_type="system",
+        reason=f"Pending plan applied: {current_plan.value} -> {new_plan.value} at renewal",
+        subscription_id=None,
+    )
+
+    logger.info(
+        "Pending plan applied for %s: %s -> %s",
+        tenant.tenant_id, current_plan.value, new_plan.value,
+    )
+    return True
 
 
 def renew_subscription(
@@ -492,6 +671,8 @@ def renew_subscription(
 
     Renewal is allowed for ACTIVE, PAST_DUE, and SUSPENDED (manual) tenants.
     CANCELLED tenants must re-subscribe.
+
+    Before renewing, any deferred pending plan change is applied.
     """
     tenant = _require_tenant(db, tenant_id)
     previous_status = tenant.subscription_status
@@ -509,6 +690,9 @@ def renew_subscription(
             "Trials cannot be renewed. Subscribe to a paid plan instead.",
             code="TRIAL_RENEWAL",
         )
+
+    # Apply any deferred pending downgrade before renewing.
+    pending_applied = apply_pending_plan_changes(db, tenant)
 
     current_plan = SubscriptionPlan(tenant.subscription_plan)
     cycle = billing_cycle or BillingCycle(tenant.subscription_billing_cycle or "monthly")
@@ -538,6 +722,25 @@ def renew_subscription(
         status=tenant.subscription_status,
         auto_renew=tenant.auto_renew,
     )
+
+    # Generate a full-cycle invoice for the renewed term.
+    if sub_record:
+        plan_details = get_plan(current_plan)
+        if cycle is BillingCycle.ANNUAL:
+            full_amount = plan_details.annual_price
+        else:
+            full_amount = plan_details.monthly_price
+        _generate_invoice(
+            db=db,
+            tenant_id=tenant_id,
+            subscription_id=sub_record.subscription_id,
+            plan_name=current_plan.value,
+            amount=full_amount,
+            billing_cycle=cycle,
+            subscription_start=base_date,
+            subscription_end=tenant.subscription_end,
+        )
+
     _subscription_audit_event(
         db=db,
         tenant_id=tenant_id,
@@ -557,6 +760,7 @@ def renew_subscription(
             "billing_cycle": cycle.value,
             "subscription_end": tenant.subscription_end.isoformat(),
             "previous_status": previous_status,
+            "pending_plan_applied": pending_applied,
         },
         user_sub=user_sub,
         ip_address=ip_address,
@@ -836,6 +1040,8 @@ def get_subscription_state(tenant: Tenant) -> dict[str, Any]:
             "is_expired": is_expired,
             "in_grace_period": in_grace,
             "has_used_trial": tenant.has_used_trial,
+            "pending_plan": tenant.pending_plan,
+            "pending_billing_cycle": tenant.pending_billing_cycle,
         },
         "suspension": {
             "suspended_at": tenant.suspended_at.isoformat() if tenant.suspended_at else None,

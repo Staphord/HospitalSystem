@@ -202,19 +202,25 @@ async def superadmin_login(
             },
         )
 
-    # Try master realm first (new multi-tenant architecture), fall back to
-    # default realm for backwards compatibility (existing superadmins).
+    # Authenticate superadmins via Keycloak master realm using the dedicated
+    # superadmin-login client (public, Direct Access Grants enabled).
+    # Fall back to default realm for backwards compatibility.
     realms_to_try = ["master", settings.keycloak_realm]
     last_exc = None
     result = None
+    realm_used = None
     for realm_candidate in realms_to_try:
         try:
+            # Use superadmin-login (no secret) for master realm, hospital-api for default
+            client = "superadmin-login" if realm_candidate == "master" else None
             result = await auth_service.login(
                 username=body.username,
                 password=body.password,
                 db=db,
                 realm=realm_candidate,
+                client_id=client,
             )
+            realm_used = realm_candidate
             break
         except (HTTPException, Exception) as exc:
             last_exc = exc
@@ -222,6 +228,40 @@ async def superadmin_login(
                 "Superadmin login attempt for %s in realm %s failed: %s",
                 body.username, realm_candidate, exc,
             )
+
+    if result is None:
+        # User might exist locally but not yet in Keycloak master realm.
+        # Try to sync them to Keycloak and retry once.
+        local = db.query(SuperAdmin).filter(SuperAdmin.username == body.username).first()
+        if local and local.email:
+            try:
+                logger.info("Local superadmin %s found — syncing to Keycloak master realm", body.username)
+                await ensure_roles(["super_admin"], realm="master")
+                kc_sub = await create_keycloak_user(
+                    username=body.username,
+                    password=body.password,
+                    email=local.email,
+                    roles=["super_admin"],
+                    full_name=local.full_name or body.username,
+                    realm="master",
+                )
+                local.keycloak_sub = kc_sub
+                local.password_hash = _hash_password(body.password)
+                db.commit()
+
+                # Retry login with master realm
+                result = await auth_service.login(
+                    username=body.username,
+                    password=body.password,
+                    db=db,
+                    realm="master",
+                    client_id="superadmin-login",
+                )
+                realm_used = "master"
+                logger.info("Superadmin %s synced and authenticated via Keycloak", body.username)
+            except Exception as sync_exc:
+                logger.error("Failed to sync superadmin %s to Keycloak: %s", body.username, sync_exc)
+                result = None
 
     if result is None:
         record_failed_attempt(body.username, ip)
@@ -276,13 +316,13 @@ async def superadmin_login(
                 from app.services.keycloak_admin import _headers, _admin_api_url
                 import httpx
                 hdrs = await _headers()
-                url = f"{_admin_api_url(realm_candidate)}/users"
+                url = f"{_admin_api_url(realm_used)}/users"
                 async with httpx.AsyncClient(timeout=10.0) as c:
                     search = await c.get(f"{url}?username={body.username}", headers=hdrs)
                     if search.is_success and search.json():
                         kc_user_id = search.json()[0]["id"]
                         await remove_user_role(
-                            kc_user_id, "hospital_admin", realm=realm_candidate
+                            kc_user_id, "hospital_admin", realm=realm_used
                         )
                         logger.info(
                             "Stripped hospital_admin role from superadmin %s", body.username
@@ -363,7 +403,7 @@ async def superadmin_login(
             content={"mfa_required": True, "challenge_token": challenge_token},
         )
 
-    ip = request.client.host if request.client else None
+    audit_db = None
     try:
         audit_db = get_session_local()()
         record = GlobalAuditLog(
@@ -377,7 +417,7 @@ async def superadmin_login(
     except Exception:
         pass
     finally:
-        if audit_db:
+        if audit_db is not None:
             audit_db.close()
 
     return {
@@ -427,6 +467,47 @@ async def login(
             pass
     if not login_realm:
         login_realm = settings.keycloak_realm
+
+    # If the user is in the master realm, they might be a superadmin —
+    # authenticate via the dedicated superadmin-login client.
+    if login_realm == "master":
+        try:
+            result = await auth_service.login(
+                username=body.username,
+                password=body.password,
+                db=db,
+                realm="master",
+                client_id="superadmin-login",
+            )
+            # Decode token to verify super_admin role
+            from jose import jwt as _jwt
+            claims = _jwt.get_unverified_claims(result["access_token"])
+            roles = claims.get("realm_access", {}).get("roles", [])
+            if "super_admin" in roles:
+                logger.info("Superadmin login via /login endpoint for %s", body.username)
+                # Sync local super_admins record
+                local = db.query(SuperAdmin).filter(SuperAdmin.username == body.username).first()
+                if local is None:
+                    import secrets as _secrets
+                    email = claims.get("email") or f"{body.username}@localhost"
+                    full_name = claims.get("name") or body.username
+                    local = SuperAdmin(
+                        username=body.username,
+                        email=email,
+                        password_hash="",
+                        full_name=full_name,
+                        role="super_admin",
+                        mfa_secret=_secrets.token_hex(16),
+                        is_active=True,
+                        created_at=datetime.now(timezone.utc),
+                    )
+                    db.add(local)
+                    db.commit()
+                record_successful_login(body.username, ip)
+                return result
+        except (HTTPException, Exception) as _sa_exc:
+            logger.debug("Superadmin attempt via /login failed: %s", _sa_exc)
+            # Fall through to normal login flow
 
     # If the specified realm doesn't exist in Keycloak, fall back to default
     if login_realm != settings.keycloak_realm:

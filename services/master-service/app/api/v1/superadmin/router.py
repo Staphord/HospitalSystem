@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.database import get_db
 from app.core.security import get_current_active_user, require_role, TokenPayload
 from app.core.limiter import limiter
@@ -2010,20 +2011,13 @@ async def create_incident(
     if not admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Super admin not found")
 
-    assignee = None
-    if body.assigned_to:
-        try:
-            assignee = UUID(body.assigned_to)
-        except (ValueError, AttributeError):
-            assignee = None
-
     incident = Incident(
         title=body.title,
         description=body.description,
         severity=body.severity,
         source=body.source,
         tenant_id=body.tenant_id,
-        assigned_to=assignee,
+        assigned_to=body.assigned_to,
         created_by=admin.super_admin_id,
     )
     db.add(incident)
@@ -2068,10 +2062,7 @@ async def update_incident(
     if body.tenant_id is not None:
         incident.tenant_id = body.tenant_id
     if body.assigned_to is not None:
-        try:
-            incident.assigned_to = UUID(body.assigned_to)
-        except (ValueError, AttributeError):
-            pass
+        incident.assigned_to = body.assigned_to
     if body.resolution_notes is not None:
         incident.resolution_notes = body.resolution_notes
 

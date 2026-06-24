@@ -1,12 +1,12 @@
 # Hospital Management System - Microservices Setup Guide
 
-> **Note**: This guide covers the **microservices architecture** (14 services in Docker).
+> **Note**: This guide covers the **microservices architecture** (16 services in Docker).
 
 ---
 
 ## Architecture Overview
 
-The system is split into **14 independent microservices** orchestrated by Docker Compose:
+The system is split into **16 independent microservices** orchestrated by Docker Compose:
 
 | Service | Port | Role |
 |---------|------|------|
@@ -21,6 +21,8 @@ The system is split into **14 independent microservices** orchestrated by Docker
 | **pharmacy-service** | 8015 | Prescriptions, medication dispensing |
 | **billing-service** | 8016 | Invoices, payments, insurance claims |
 | **ward-service** | 8017 | Bed management, admissions, discharges |
+| **patient-service** | 8005 | Patient registration, search, lookup, delete |
+| **visit-service** | 8006 | Visit creation, payment type, insurance verification, triage queue |
 | **admin-service** | 8018 | Hospital admin user CRUD within a tenant |
 | **notification-service** | 8019 | Email, SMS, push notifications |
 | **report-service** | 8020 | Analytics, dashboards, PDF exports |
@@ -48,14 +50,19 @@ The system is split into **14 independent microservices** orchestrated by Docker
 
 ## Quick Start (Docker Compose)
 
+> All Docker commands below must be run from the **`infrastructure/`** directory:
+> ```bash
+> cd infrastructure
+> ```
+
 ### 1. Build and start everything
 
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 This will:
-- Build all 14 service images
+- Build all 16 service images
 - Start `postgres-master`, `redis`, and `rabbitmq`
 - Wait for infrastructure health checks to pass
 - Start all microservices in dependency order
@@ -63,6 +70,8 @@ This will:
 ### 2. Check service health
 
 ```bash
+cd infrastructure
+
 # Gateway
 curl http://localhost:8000/health
 
@@ -96,6 +105,12 @@ curl http://localhost:8016/health
 # Ward
 curl http://localhost:8017/health
 
+# Patient
+curl http://localhost:8005/health
+
+# Visit
+curl http://localhost:8006/health
+
 # Admin
 curl http://localhost:8018/health
 
@@ -111,25 +126,31 @@ All should return: `{"status":"ok","service":"..."}`
 ### 3. Watch logs
 
 ```bash
+cd infrastructure
+
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
-docker-compose logs -f api-gateway
-docker-compose logs -f auth-service
-docker-compose logs -f master-service
+docker compose logs -f api-gateway
+docker compose logs -f auth-service
+docker compose logs -f master-service
 ```
 
 ### 4. Stop everything
 
 ```bash
-docker-compose down
+cd infrastructure
+
+docker compose down
 ```
 
 To also remove the PostgreSQL volume (wipe data):
 
 ```bash
-docker-compose down -v
+cd infrastructure
+
+docker compose down -v
 ```
 
 ---
@@ -144,6 +165,12 @@ All external requests go through the **API Gateway** on port 8000. The gateway r
 | `POST /api/v1/auth/signup` | auth-service |
 | `GET /api/v1/superadmin/tenants` | master-service |
 | `POST /api/v1/admin/users` | admin-service |
+| `POST /api/v1/patients/register` | patient-service |
+| `GET /api/v1/patients/search` | patient-service |
+| `GET /api/v1/patients/{id}` | patient-service |
+| `DELETE /api/v1/patients/{id}` | patient-service |
+| `POST /api/v1/visits` | visit-service |
+| `GET /api/v1/visits/queues/triage/today` | visit-service |
 | `GET /api/v1/reception/patients` | reception-service |
 | `GET /api/v1/triage/...` | triage-service |
 | `GET /api/v1/consultation/...` | consultation-service |
@@ -177,6 +204,8 @@ Each service exposes its own interactive docs when `ENVIRONMENT=dev`:
 |---------|----------------|
 | Auth Service | http://localhost:8001/docs |
 | Master Service | http://localhost:8002/docs |
+| Patient Service | http://localhost:8005/docs |
+| Visit Service | http://localhost:8006/docs |
 | Admin Service | http://localhost:8018/docs |
 | Reception Service | http://localhost:8010/docs |
 | Triage Service | http://localhost:8011/docs |
@@ -220,6 +249,17 @@ GET    http://localhost:8000/api/v1/admin/users
 PATCH  http://localhost:8000/api/v1/admin/users/{id}
 DELETE http://localhost:8000/api/v1/admin/users
 
+# Patient endpoints (proxied to patient-service:8005)
+POST   http://localhost:8000/api/v1/patients/register
+GET    http://localhost:8000/api/v1/patients
+GET    http://localhost:8000/api/v1/patients/search
+GET    http://localhost:8000/api/v1/patients/{id}
+DELETE http://localhost:8000/api/v1/patients/{id}
+
+# Visit endpoints (proxied to visit-service:8006)
+POST   http://localhost:8000/api/v1/visits
+GET    http://localhost:8000/api/v1/visits/queues/triage/today
+
 # Clinical endpoints (reception, triage, etc.)
 GET/POST http://localhost:8000/api/v1/reception/patients
 GET/POST http://localhost:8000/api/v1/triage/...
@@ -244,11 +284,13 @@ The `master-service` and `auth-service` automatically create tables on startup u
 However, if you want to run migrations manually against the Docker Postgres:
 
 ```bash
+cd infrastructure
+
 # Master migrations
-alembic -c migrations/master/alembic.ini upgrade head
+docker compose exec master-service alembic -c /app/migrations/master/alembic.ini upgrade head
 
 # Tenant migrations (run after a tenant is created)
-alembic -c migrations/tenant/alembic.ini upgrade head
+docker compose exec master-service alembic -c /app/migrations/tenant/alembic.ini upgrade head
 ```
 
 ### Tenant Database Provisioning
@@ -279,6 +321,7 @@ Key overridden values:
 | `AUTH_SERVICE_URL` | `http://auth-service:8001` | Gateway → service internal routing |
 | `MASTER_SERVICE_URL` | `http://master-service:8002` | Gateway → service internal routing |
 | `ADMIN_SERVICE_URL` | `http://admin-service:8018` | Gateway → service internal routing |
+| `PATIENT_SERVICE_URL` | `http://patient-service:8005` | Gateway → service internal routing |
 | ... | ... | ... |
 
 If you want to tweak secrets or passwords, edit the `environment` blocks in `docker-compose.yml` directly.
@@ -321,7 +364,8 @@ Docker containers use `host.docker.internal` to reach the host. On Windows this 
 If a service keeps restarting, check its logs:
 
 ```bash
-docker-compose logs --tail 50 <service-name>
+cd infrastructure
+docker compose logs --tail 50 <service-name>
 ```
 
 Common causes:
@@ -334,7 +378,8 @@ Common causes:
 Run the initialization manually inside the container:
 
 ```bash
-docker-compose exec master-service python -c "from app.core.database import init_db; init_db()"
+cd infrastructure
+docker compose exec master-service python -c "from app.core.database import init_db; init_db()"
 ```
 
 ---
@@ -364,7 +409,8 @@ python scripts/create_superuser.py \
 You can also create a super admin inside the Docker container:
 
 ```bash
-docker-compose exec master-service python scripts/create_superuser.py \
+cd infrastructure
+docker compose exec master-service python scripts/create_superuser.py \
   --username=superadmin2 \
   --password=superadmin123 \
   --email=admin2@hosp.com \
@@ -409,8 +455,7 @@ Make sure your local `.env` points to `localhost` for Postgres, Redis, and Keycl
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yml` | Root Docker Compose stack (use this) |
-| `infrastructure/docker-compose.yml` | Copy of the root compose (for CI/CD reference) |
+| `infrastructure/docker-compose.yml` | Root Docker Compose stack (use this from `infrastructure/`) |
 | `services/<service>/Dockerfile` | Individual service image build |
 | `services/<service>/app/main.py` | FastAPI entry point |
 | `services/<service>/app/api/v1/...` | Business routes |

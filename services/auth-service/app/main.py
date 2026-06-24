@@ -46,6 +46,13 @@ async def lifespan(app: FastAPI):
     finally:
         master_db.close()
 
+    # Ensure Keycloak master realm has a superadmin-login client
+    try:
+        from app.services.keycloak_admin import ensure_superadmin_client
+        await ensure_superadmin_client()
+    except Exception as exc:
+        logger.warning("Could not set up superadmin-login client in master realm: %s", exc)
+
     consumer_task = None
     try:
         from app.events import subscriber as _sub

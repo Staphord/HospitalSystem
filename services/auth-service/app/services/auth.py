@@ -32,14 +32,15 @@ def _keycloak_logout_endpoint(realm: str | None = None) -> str:
     return f"{settings.keycloak_url}/realms/{realm}/protocol/openid-connect/logout"
 
 
-async def login(username: str, password: str, db: Session, realm: str | None = None) -> Dict[str, Any]:
+async def login(username: str, password: str, db: Session, realm: str | None = None, client_id: str | None = None) -> Dict[str, Any]:
     data = {
         "grant_type": "password",
-        "client_id": settings.keycloak_client_id,
-        "client_secret": settings.keycloak_client_secret,
+        "client_id": client_id or settings.keycloak_client_id,
         "username": username,
         "password": password,
     }
+    if client_id is None:
+        data["client_secret"] = settings.keycloak_client_secret
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(_keycloak_token_endpoint(realm), data=data)
 
