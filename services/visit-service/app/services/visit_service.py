@@ -21,6 +21,9 @@ def create_visit(
 ) -> dict:
     visit_number = generate_visit_number(db)
 
+    patient_uuid = uuid.UUID(patient_id) if isinstance(patient_id, str) else patient_id
+    registered_by_uuid = uuid.UUID(registered_by) if isinstance(registered_by, str) else registered_by
+
     insurance_id = None
     verification_flag = None
 
@@ -28,7 +31,7 @@ def create_visit(
         if not insurer_name or not policy_number:
             raise ValueError("insurer_name and policy_number are required when payment_type is insurance")
 
-        policy = find_insurance_policy(db, patient_id, insurer_name, policy_number)
+        policy = find_insurance_policy(db, str(patient_uuid), insurer_name, policy_number)
 
         if policy is None:
             raise ValueError(
@@ -45,7 +48,7 @@ def create_visit(
             verification_flag = reason
 
     visit = Visit(
-        patient_id=patient_id,
+        patient_id=patient_uuid,
         visit_number=visit_number,
         visit_date=date.today(),
         visit_type=visit_type,
@@ -53,7 +56,7 @@ def create_visit(
         insurance_id=insurance_id,
         verification_flag=verification_flag,
         status="registered",
-        registered_by=registered_by,
+        registered_by=registered_by_uuid,
     )
     db.add(visit)
     db.flush()
@@ -61,7 +64,7 @@ def create_visit(
     queue_number = generate_queue_number(db, "triage")
     queue = Queue(
         visit_id=visit.visit_id,
-        patient_id=patient_id,
+        patient_id=patient_uuid,
         queue_type="triage",
         queue_number=queue_number,
         priority="non_urgent",

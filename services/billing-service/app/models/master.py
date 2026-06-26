@@ -9,8 +9,8 @@ class Tenant(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String(64), unique=True, index=True, nullable=False)
-    name = Column(String(255), nullable=False)
-    db_dsn_encrypted = Column(Text, nullable=False)
+    hospital_name = Column(String(200), nullable=False)
+    db_connection_string = Column(Text, nullable=False)
     status = Column(String(32), default="active", nullable=False)
     subscription_plan = Column(String(64), default="standard")
     subscription_start = Column(DateTime(timezone=True), nullable=True)

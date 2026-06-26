@@ -79,8 +79,8 @@ async def signup(
 
     tenant = Tenant(
         tenant_id=tenant_id,
-        name=body.hospital_name,
-        db_dsn_encrypted=encrypt_dsn(f"postgresql://placeholder@{tenant_id}:5432/{tenant_id}"),
+        hospital_name=body.hospital_name,
+        db_connection_string=encrypt_dsn(f"postgresql://placeholder@{tenant_id}:5432/{tenant_id}"),
         status="trial" if is_trial else "active",
         subscription_plan=chosen_plan,
         subscription_status="trial" if is_trial else "active",
@@ -89,6 +89,18 @@ async def signup(
         subscription_end=datetime.now(timezone.utc) + timedelta(days=14),
         has_used_trial=is_trial,
         is_active=True,
+        country=body.country or "",
+        city=body.city or "",
+        address=body.address,
+        primary_contact_name=body.primary_contact_name or "",
+        primary_contact_email=body.primary_contact_email or "",
+        primary_contact_phone=body.primary_contact_phone or "",
+        billing_email=body.billing_email or "",
+        timezone=body.timezone or "UTC",
+        currency=body.currency or "USD",
+        date_format=body.date_format or "%Y-%m-%d",
+        logo_url=body.logo_url,
+        data_region=body.data_region,
     )
     db.add(tenant)
     db.commit()
@@ -469,7 +481,7 @@ async def login(
         login_realm = settings.keycloak_realm
 
     # If the user is in the master realm, they might be a superadmin —
-    # authenticate via the dedicated superadmin-login client.
+    # block them from /login and redirect to /superadmin/login.
     if login_realm == "master":
         try:
             result = await auth_service.login(
@@ -479,35 +491,20 @@ async def login(
                 realm="master",
                 client_id="superadmin-login",
             )
-            # Decode token to verify super_admin role
             from jose import jwt as _jwt
             claims = _jwt.get_unverified_claims(result["access_token"])
             roles = claims.get("realm_access", {}).get("roles", [])
             if "super_admin" in roles:
-                logger.info("Superadmin login via /login endpoint for %s", body.username)
-                # Sync local super_admins record
-                local = db.query(SuperAdmin).filter(SuperAdmin.username == body.username).first()
-                if local is None:
-                    import secrets as _secrets
-                    email = claims.get("email") or f"{body.username}@localhost"
-                    full_name = claims.get("name") or body.username
-                    local = SuperAdmin(
-                        username=body.username,
-                        email=email,
-                        password_hash="",
-                        full_name=full_name,
-                        role="super_admin",
-                        mfa_secret=_secrets.token_hex(16),
-                        is_active=True,
-                        created_at=datetime.now(timezone.utc),
-                    )
-                    db.add(local)
-                    db.commit()
-                record_successful_login(body.username, ip)
-                return result
-        except (HTTPException, Exception) as _sa_exc:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Super admins must use /api/v1/auth/superadmin/login",
+                )
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_403_FORBIDDEN:
+                raise
+            logger.debug("Superadmin attempt via /login failed: %s", exc)
+        except Exception as _sa_exc:
             logger.debug("Superadmin attempt via /login failed: %s", _sa_exc)
-            # Fall through to normal login flow
 
     # If the specified realm doesn't exist in Keycloak, fall back to default
     if login_realm != settings.keycloak_realm:

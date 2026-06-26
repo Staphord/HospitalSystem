@@ -1,10 +1,17 @@
 import uuid
 from datetime import date, datetime
+from enum import Enum as PyEnum
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, Enum, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
+
+
+class GenderEnum(str, PyEnum):
+    male = "male"
+    female = "female"
+    other = "other"
 
 
 class TenantPatient(Base):
@@ -13,24 +20,25 @@ class TenantPatient(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(String(50), nullable=False, index=True)
 
-    patient_number = Column(String(30), nullable=False)
+    patient_number = Column(String(20), nullable=False)
     full_name = Column(String(200), nullable=False, index=True)
     date_of_birth = Column(Date, nullable=False)
-    gender = Column(String(20), nullable=False)
-    phone = Column(String(30))
+    gender = Column(Enum(GenderEnum), nullable=False)
+    phone_primary = Column(String(20), nullable=False)
+    phone_secondary = Column(String(20))
     email = Column(String(150))
     address = Column(Text)
-    emergency_contact_name = Column(String(200))
-    emergency_contact_phone = Column(String(30))
+    next_of_kin_name = Column(String(200))
+    next_of_kin_phone = Column(String(20))
+    next_of_kin_relationship = Column(String(50))
     national_id = Column(String(50), nullable=True)
-    medical_history = Column(Text)
     allergies = Column(Text)
-    blood_group = Column(String(10))
+    blood_group = Column(String(5))
     is_active = Column(Boolean, default=True, nullable=False)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_by = Column(String(200), nullable=True)
+    created_by = Column(String(36), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("hospital_id", "patient_number", name="uq_hospital_patient_number"),

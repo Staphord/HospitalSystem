@@ -71,7 +71,7 @@ async def get_tenant_db_url(tenant_id: str) -> str | None:
     db = get_master_db()
     try:
         row = db.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
             {"tid": tenant_id},
         ).scalar()
         if not row:

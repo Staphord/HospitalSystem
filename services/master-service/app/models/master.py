@@ -29,7 +29,7 @@ class Tenant(Base):
     tenant_id = Column(String(64), unique=True, index=True, nullable=False)
 
     # Official hospital identification
-    name = Column(String(255), nullable=False)  # corresponds to hospital_name
+    hospital_name = Column(String(200), nullable=False)
     country = Column(String(100), nullable=False, default="")
     city = Column(String(100), nullable=False, default="")
     address = Column(Text, nullable=True)
@@ -48,7 +48,7 @@ class Tenant(Base):
     # Branding / infra
     logo_url = Column(String(255), nullable=True)
     data_region = Column(String(50), nullable=True)
-    db_dsn_encrypted = Column(Text, nullable=False)  # encrypted connection string
+    db_connection_string = Column(Text, nullable=False)  # encrypted connection string
 
     # Lifecycle
     status = Column(String(32), default=TenantStatus.trial.value, nullable=False)
@@ -58,7 +58,7 @@ class Tenant(Base):
     created_by = Column(
         UUID(as_uuid=True),
         ForeignKey("super_admins.super_admin_id"),
-        nullable=True,
+        nullable=False,
     )
     created_at = Column(
         DateTime(timezone=True),

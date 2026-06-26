@@ -53,6 +53,13 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("Could not set up superadmin-login client in master realm: %s", exc)
 
+    # Set master realm access token lifespan (default 60s → 300s)
+    try:
+        from app.services.keycloak_realm import set_realm_token_lifespan
+        await set_realm_token_lifespan("master", settings.keycloak_access_token_lifespan)
+    except Exception as exc:
+        logger.warning("Could not set master realm token lifespan: %s", exc)
+
     consumer_task = None
     try:
         from app.events import subscriber as _sub

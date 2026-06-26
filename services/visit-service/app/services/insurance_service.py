@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from typing import Optional
 
@@ -12,10 +13,11 @@ def find_insurance_policy(
     insurer_name: str,
     policy_number: str,
 ) -> Optional[PatientInsurance]:
+    patient_uuid = uuid.UUID(patient_id) if isinstance(patient_id, str) else patient_id
     return (
         db.query(PatientInsurance)
         .filter(
-            PatientInsurance.patient_id == patient_id,
+            PatientInsurance.patient_id == patient_uuid,
             PatientInsurance.insurer_name == insurer_name,
             PatientInsurance.policy_number == policy_number,
             PatientInsurance.is_active == True,

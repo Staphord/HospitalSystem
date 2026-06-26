@@ -9,7 +9,7 @@ class Tenant(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String(64), unique=True, index=True, nullable=False)
-    name = Column(String(255), nullable=False)
+    hospital_name = Column(String(200), nullable=False)
     country = Column(String(100), nullable=False, default="")
     city = Column(String(100), nullable=False, default="")
     address = Column(Text, nullable=True)
@@ -22,7 +22,7 @@ class Tenant(Base):
     date_format = Column(String(20), nullable=False, default="%Y-%m-%d")
     logo_url = Column(String(255), nullable=True)
     data_region = Column(String(50), nullable=True)
-    db_dsn_encrypted = Column(Text, nullable=False)
+    db_connection_string = Column(Text, nullable=False)
     status = Column(String(32), default="active", nullable=False)
     subscription_plan = Column(String(64), default="standard")
     subscription_status = Column(String(32), default="active", nullable=False)

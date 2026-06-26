@@ -1009,7 +1009,13 @@ def terminate_tenant(
 
 def get_subscription_state(tenant: Tenant) -> dict[str, Any]:
     """Return a serializable snapshot of a tenant's subscription."""
-    plan = get_plan(tenant.subscription_plan)
+    plan_name = tenant.subscription_plan or "none"
+    try:
+        plan = get_plan(plan_name)
+        display_name = plan.display_name
+    except (KeyError, ValueError):
+        display_name = plan_name.replace("_", " ").title()
+
     now = _utc_now()
     sub_end = _ensure_aware(tenant.subscription_end)
     grace_end = _ensure_aware(tenant.grace_period_end)
@@ -1024,22 +1030,22 @@ def get_subscription_state(tenant: Tenant) -> dict[str, Any]:
 
     return {
         "tenant_id": tenant.tenant_id,
-        "name": tenant.name,
-        "status": tenant.status,
-        "is_active": tenant.is_active,
+        "name": tenant.hospital_name,
+        "status": tenant.status or "active",
+        "is_active": tenant.is_active if tenant.is_active is not None else True,
         "is_trial": is_trial,
         "subscription": {
-            "plan": tenant.subscription_plan,
-            "display_name": plan.display_name,
-            "status": tenant.subscription_status,
+            "plan": plan_name,
+            "display_name": display_name,
+            "status": tenant.subscription_status or "active",
             "billing_cycle": tenant.subscription_billing_cycle,
             "start": tenant.subscription_start.isoformat() if tenant.subscription_start else None,
             "end": tenant.subscription_end.isoformat() if tenant.subscription_end else None,
             "grace_period_end": tenant.grace_period_end.isoformat() if tenant.grace_period_end else None,
-            "auto_renew": tenant.auto_renew,
+            "auto_renew": tenant.auto_renew if tenant.auto_renew is not None else True,
             "is_expired": is_expired,
             "in_grace_period": in_grace,
-            "has_used_trial": tenant.has_used_trial,
+            "has_used_trial": tenant.has_used_trial if tenant.has_used_trial is not None else False,
             "pending_plan": tenant.pending_plan,
             "pending_billing_cycle": tenant.pending_billing_cycle,
         },

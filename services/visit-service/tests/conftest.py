@@ -1,11 +1,17 @@
 import uuid
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import Column, String, UUID, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
 from app.models.visit import PatientInsurance
+
+
+class MockPatient(Base):
+    __tablename__ = "patients"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(String(50), nullable=False)
 
 
 @pytest.fixture
@@ -29,8 +35,16 @@ def db_session():
 
 
 @pytest.fixture
-def sample_patient_id():
-    return str(uuid.uuid4())
+def sample_patient(db_session):
+    pat = MockPatient(id=uuid.uuid4(), hospital_id="hosp-001")
+    db_session.add(pat)
+    db_session.commit()
+    return pat
+
+
+@pytest.fixture
+def sample_patient_id(sample_patient):
+    return sample_patient.id
 
 
 @pytest.fixture

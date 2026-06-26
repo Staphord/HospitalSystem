@@ -100,7 +100,7 @@ def _update_tenant_record(tenant_id: str, dsn: str) -> None:
             logger.error("Tenant record %s not found in master DB — cannot update DSN", tenant_id)
             return
 
-        tenant.db_dsn_encrypted = encrypt_dsn(dsn)
+        tenant.db_connection_string = encrypt_dsn(dsn)
         tenant.status = "active"
         tenant.updated_at = datetime.now(timezone.utc)
         db.commit()
@@ -186,7 +186,7 @@ def get_tenant_db_session(tenant_id: str) -> Session:
     master_db = get_master_db()
     try:
         result = master_db.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
             {"tid": tenant_id},
         )
         row = result.scalar()

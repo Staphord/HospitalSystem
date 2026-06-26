@@ -5,6 +5,7 @@ from app.api.v1.patients.schemas import (
     PatientRegisterRequest,
     PatientResponse,
     PatientSearchResponse,
+    PatientUpdateRequest,
 )
 from app.core.security import require_role
 from app.dependencies import get_tenant_db, get_tenant_id_from_token
@@ -14,6 +15,7 @@ from app.services.patient_service import (
     get_patient_count,
     register_patient,
     search_patients,
+    update_patient,
 )
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -54,13 +56,14 @@ def register(
         full_name=body.full_name,
         date_of_birth=body.date_of_birth,
         gender=body.gender,
-        phone=body.phone,
+        phone_primary=body.phone_primary,
+        phone_secondary=body.phone_secondary,
         email=body.email,
         address=body.address,
-        emergency_contact_name=body.emergency_contact_name,
-        emergency_contact_phone=body.emergency_contact_phone,
+        next_of_kin_name=body.next_of_kin_name,
+        next_of_kin_phone=body.next_of_kin_phone,
+        next_of_kin_relationship=body.next_of_kin_relationship,
         national_id=body.national_id,
-        medical_history=body.medical_history,
         allergies=body.allergies,
         blood_group=body.blood_group,
         created_by=payload.get("preferred_username", ""),
@@ -100,6 +103,37 @@ def get_patient(
     payload: dict = Depends(require_role("hospital_admin")),
 ):
     patient = get_patient_by_id(db, tenant_id, patient_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    return patient
+
+
+@router.patch("/{patient_id}", response_model=PatientResponse)
+def update(
+    patient_id: str,
+    body: PatientUpdateRequest,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_role("hospital_admin")),
+):
+    patient = update_patient(
+        db=db,
+        hospital_id=tenant_id,
+        patient_id=patient_id,
+        full_name=body.full_name,
+        date_of_birth=body.date_of_birth,
+        gender=body.gender,
+        phone_primary=body.phone_primary,
+        phone_secondary=body.phone_secondary,
+        email=body.email,
+        address=body.address,
+        next_of_kin_name=body.next_of_kin_name,
+        next_of_kin_phone=body.next_of_kin_phone,
+        next_of_kin_relationship=body.next_of_kin_relationship,
+        national_id=body.national_id,
+        allergies=body.allergies,
+        blood_group=body.blood_group,
+    )
     if not patient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
     return patient

@@ -20,7 +20,7 @@ def test_register_patient(db_session):
         full_name="John Doe",
         date_of_birth=date(1990, 1, 15),
         gender="male",
-        phone="+123456789",
+        phone_primary="+123456789",
         email="john@example.com",
         national_id="NAT-001",
         created_by="admin",
@@ -38,15 +38,16 @@ def test_register_patient_minimal_fields(db_session):
         full_name="Jane Smith",
         date_of_birth=date(1985, 5, 20),
         gender="female",
+        phone_primary="+987654321",
     )
     assert patient.patient_number is not None
     assert patient.full_name == "Jane Smith"
 
 
 def test_search_by_name(db_session):
-    register_patient(db_session, "hosp-001", "Alice Tan", date(1990, 1, 1), "female")
-    register_patient(db_session, "hosp-001", "Bob Tan", date(1992, 3, 3), "male")
-    register_patient(db_session, "hosp-001", "Charlie Brown", date(1980, 7, 7), "male")
+    register_patient(db_session, "hosp-001", "Alice Tan", date(1990, 1, 1), "female", phone_primary="+111")
+    register_patient(db_session, "hosp-001", "Bob Tan", date(1992, 3, 3), "male", phone_primary="+222")
+    register_patient(db_session, "hosp-001", "Charlie Brown", date(1980, 7, 7), "male", phone_primary="+333")
 
     results = search_patients(db_session, "hosp-001", query="Tan")
     assert len(results) == 2
@@ -59,7 +60,7 @@ def test_search_by_name(db_session):
 def test_search_by_national_id(db_session):
     register_patient(
         db_session, "hosp-001", "Alice", date(1990, 1, 1), "female",
-        national_id="NAT-ALICE",
+        phone_primary="+111", national_id="NAT-ALICE",
     )
     results = search_patients(db_session, "hosp-001", national_id="NAT-ALICE")
     assert len(results) == 1
@@ -69,6 +70,7 @@ def test_search_by_national_id(db_session):
 def test_search_by_patient_number(db_session):
     patient = register_patient(
         db_session, "hosp-001", "Bob", date(1992, 3, 3), "male",
+        phone_primary="+222",
     )
     results = search_patients(db_session, "hosp-001", patient_number=patient.patient_number)
     assert len(results) == 1
@@ -76,15 +78,15 @@ def test_search_by_patient_number(db_session):
 
 
 def test_search_scoped_to_hospital(db_session):
-    p1 = register_patient(db_session, "hosp-001", "Alice", date(1990, 1, 1), "female")
-    p2 = register_patient(db_session, "hosp-002", "Alice", date(1990, 1, 1), "female")
+    p1 = register_patient(db_session, "hosp-001", "Alice", date(1990, 1, 1), "female", phone_primary="+111")
+    p2 = register_patient(db_session, "hosp-002", "Alice", date(1990, 1, 1), "female", phone_primary="+222")
     results = search_patients(db_session, "hosp-001", query="Alice")
     assert len(results) == 1
     assert results[0].id == p1.id
 
 
 def test_get_patient_by_id(db_session):
-    patient = register_patient(db_session, "hosp-001", "Alice", date(1990, 1, 1), "female")
+    patient = register_patient(db_session, "hosp-001", "Alice", date(1990, 1, 1), "female", phone_primary="+111")
     found = get_patient_by_id(db_session, "hosp-001", str(patient.id))
     assert found is not None
     assert found.id == patient.id
@@ -94,7 +96,7 @@ def test_get_patient_by_id(db_session):
 
 
 def test_delete_patient(db_session):
-    patient = register_patient(db_session, "hosp-001", "ToDelete", date(2000, 1, 1), "male")
+    patient = register_patient(db_session, "hosp-001", "ToDelete", date(2000, 1, 1), "male", phone_primary="+999")
     pid = str(patient.id)
     assert get_patient_by_id(db_session, "hosp-001", pid) is not None
     assert delete_patient(db_session, "hosp-001", pid) is True
@@ -107,7 +109,7 @@ def test_delete_patient_not_found(db_session):
 
 def test_get_patient_count(db_session):
     assert get_patient_count(db_session, "hosp-001") == 0
-    register_patient(db_session, "hosp-001", "Alice", date(1990, 1, 1), "female")
+    register_patient(db_session, "hosp-001", "Alice", date(1990, 1, 1), "female", phone_primary="+111")
     assert get_patient_count(db_session, "hosp-001") == 1
-    register_patient(db_session, "hosp-001", "Bob", date(1992, 3, 3), "male")
+    register_patient(db_session, "hosp-001", "Bob", date(1992, 3, 3), "male", phone_primary="+222")
     assert get_patient_count(db_session, "hosp-001") == 2

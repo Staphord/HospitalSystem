@@ -6,25 +6,33 @@ def run_migration(engine_url: str) -> None:
     engine = create_engine(engine_url)
     with engine.connect() as conn:
         conn.execute(text("""
+            DO $$ BEGIN
+                CREATE TYPE patient_gender_enum AS ENUM ('male','female','other');
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+        """))
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS patients (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 hospital_id VARCHAR(50) NOT NULL,
-                patient_number VARCHAR(30) NOT NULL,
+                patient_number VARCHAR(20) NOT NULL,
                 full_name VARCHAR(200) NOT NULL,
                 date_of_birth DATE NOT NULL,
-                gender VARCHAR(20) NOT NULL,
-                phone VARCHAR(30),
+                gender patient_gender_enum NOT NULL,
+                phone_primary VARCHAR(20) NOT NULL,
+                phone_secondary VARCHAR(20),
                 email VARCHAR(150),
                 address TEXT,
-                emergency_contact_name VARCHAR(200),
-                emergency_contact_phone VARCHAR(30),
+                next_of_kin_name VARCHAR(200),
+                next_of_kin_phone VARCHAR(20),
+                next_of_kin_relationship VARCHAR(50),
                 national_id VARCHAR(50),
-                medical_history TEXT,
                 allergies TEXT,
-                blood_group VARCHAR(10),
+                blood_group VARCHAR(5),
+                is_active BOOLEAN NOT NULL DEFAULT true,
                 created_at TIMESTAMP NOT NULL DEFAULT now(),
                 updated_at TIMESTAMP NOT NULL DEFAULT now(),
-                created_by VARCHAR(200)
+                created_by VARCHAR(36)
             )
         """))
         conn.execute(text("""

@@ -300,7 +300,7 @@ async def get_my_tenant_stats(
 
     return {
         "tenant_id": tenant_id,
-        "name": tenant.name,
+        "name": tenant.hospital_name,
         "plan": tenant.subscription_plan,
         "plan_display_name": plan_details.display_name,
         "plan_max_users": plan_details.max_users,

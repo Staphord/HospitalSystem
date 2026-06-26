@@ -15,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
@@ -235,6 +236,107 @@ class Announcement(Base):
         nullable=True,
     )
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
+class SystemRole(Base):
+    """Roles created by super admin assignable to specific or all tenants."""
+
+    __tablename__ = "system_roles"
+
+    system_role_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name = Column(String(50), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    scope = Column(JSONB, nullable=True)
+    is_global = Column(Boolean, nullable=False, default=False)
+
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("super_admins.super_admin_id"),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
+class TenantSystemRoleAssignment(Base):
+    """Maps system roles to specific tenants (only when is_global=False)."""
+
+    __tablename__ = "tenant_system_roles"
+
+    assignment_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    system_role_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("system_roles.system_role_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tenant_id = Column(
+        String(64),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
+class GlobalRole(Base):
+    """Roles created by superadmin available to ALL tenants (no per-tenant assignment needed)."""
+
+    __tablename__ = "global_roles"
+
+    global_role_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name = Column(String(50), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    scope = Column(JSONB, nullable=True)
+
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("super_admins.super_admin_id"),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
+class TenantRole(Base):
+    """Roles created by hospital admin within a specific tenant (stored in Master DB for cross-tenant visibility)."""
+
+    __tablename__ = "tenant_roles"
+
+    tenant_role_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id = Column(
+        String(64),
+        ForeignKey("tenants.tenant_id"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(50), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    scope = Column(JSONB, nullable=True)
+
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("name", "tenant_id", name="uq_tenant_role_name_per_tenant"),
+    )
 
 
 class SubscriptionEventType(str):
