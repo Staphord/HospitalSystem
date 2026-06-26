@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 
 from app.db.base import Base
@@ -21,18 +20,3 @@ class RefreshToken(Base):
     )
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(Text, nullable=True)
-
-
-class PasswordResetToken(Base):
-    __tablename__ = "password_reset_tokens"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), index=True, nullable=False)
-    token_hash = Column(String(128), unique=True, index=True, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    is_used = Column(Boolean, default=False, nullable=False)
-    created_at = Column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        nullable=False,
-    )
