@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from uuid import UUID
 
@@ -47,6 +48,9 @@ from app.api.v1.superadmin.schemas import (
     TenantCreate,
     TenantUpdate,
     RoleCreate,
+    SystemRoleCreate,
+    SystemRoleUpdate,
+    SystemRoleOut,
     SubscriptionSubscribeRequest,
     SubscriptionPlanChangeRequest,
     SubscriptionRenewRequest,
@@ -72,12 +76,16 @@ from app.api.v1.superadmin.schemas import (
     IncidentCreate,
     IncidentUpdate,
     IncidentOut,
-    SuperAdminSessionOut,
+    GlobalRoleCreate,
+    GlobalRoleUpdate,
+    GlobalRoleOut,
+    AllRolesOut,
+    AllRolesTenantRole,
 )
 from app.models.user import User
 from app.models.admin import SuperAdmin
 from app.models.master import Tenant
-from app.models.saas import SubscriptionAuditLog, Announcement
+from app.models.saas import SubscriptionAuditLog, Announcement, SystemRole, TenantSystemRoleAssignment, GlobalRole, TenantRole
 from app.models.incident import Incident
 
 logger = logging.getLogger("master_service.superadmin")
@@ -279,8 +287,8 @@ async def create_tenant(
 
     tenant = Tenant(
         tenant_id=tenant_id,
-        name=body.hospital_name,
-        db_dsn_encrypted=encrypt_dsn(f"postgresql://placeholder@{tenant_id}:5432/{tenant_id}"),
+        hospital_name=body.hospital_name,
+        db_connection_string=encrypt_dsn(f"postgresql://placeholder@{tenant_id}:5432/{tenant_id}"),
         status="trial",
         is_active=True,
         country=body.country or "",
@@ -385,8 +393,8 @@ async def update_tenant(
     if not tenant:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
-    if body.name is not None:
-        tenant.name = body.name
+    if body.hospital_name is not None:
+        tenant.hospital_name = body.hospital_name
 
     current_status = tenant.status
     target_status = None
@@ -1106,6 +1114,348 @@ async def delete_realm_role_endpoint(
 
 
 # ---------------------------------------------------------------------------
+# System role management (super admin creates roles for all or specific tenants)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/system-roles", status_code=201, response_model=SystemRoleOut, tags=["System Roles"])
+@limiter.limit("30/minute")
+async def create_system_role(
+    request: Request,
+    body: SystemRoleCreate,
+    db: Session = Depends(get_db),
+    token: TokenPayload = Depends(get_current_active_user),
+) -> SystemRoleOut:
+    """Create a system role, optionally assigned to specific tenants."""
+    existing = db.query(SystemRole).filter(SystemRole.name == body.name).first()
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=f"System role '{body.name}' already exists")
+
+    system_role = SystemRole(
+        name=body.name,
+        description=body.description,
+        scope=body.scope,
+        is_global=body.is_global,
+        created_by=token.sub,
+    )
+    db.add(system_role)
+    db.flush()
+
+    if body.target_tenant_ids and not body.is_global:
+        for tid in body.target_tenant_ids:
+            tenant = db.query(Tenant).filter(Tenant.tenant_id == tid).first()
+            if not tenant:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Tenant '{tid}' not found")
+            db.add(TenantSystemRoleAssignment(system_role_id=system_role.system_role_id, tenant_id=tid))
+
+    db.commit()
+    db.refresh(system_role)
+    return _build_system_role_out(db, system_role)
+
+
+@router.get("/system-roles", response_model=list[SystemRoleOut], tags=["System Roles"])
+@limiter.limit("60/minute")
+async def list_system_roles(
+    request: Request,
+    tenant_id: str | None = None,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> list[SystemRoleOut]:
+    """List system roles. Optionally filter by tenant_id to see roles assigned to a tenant."""
+    query = db.query(SystemRole)
+    if tenant_id:
+        role_ids = (
+            db.query(TenantSystemRoleAssignment.system_role_id)
+            .filter(TenantSystemRoleAssignment.tenant_id == tenant_id)
+            .subquery()
+        )
+        query = query.filter(
+            (SystemRole.is_global == True) | (SystemRole.system_role_id.in_(role_ids))
+        )
+    roles = query.order_by(SystemRole.created_at.desc()).all()
+    return [_build_system_role_out(db, r) for r in roles]
+
+
+@router.get("/system-roles/{role_id}", response_model=SystemRoleOut, tags=["System Roles"])
+@limiter.limit("60/minute")
+async def get_system_role(
+    request: Request,
+    role_id: UUID,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> SystemRoleOut:
+    role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="System role not found")
+    return _build_system_role_out(db, role)
+
+
+@router.patch("/system-roles/{role_id}", response_model=SystemRoleOut, tags=["System Roles"])
+@limiter.limit("30/minute")
+async def update_system_role(
+    request: Request,
+    role_id: UUID,
+    body: SystemRoleUpdate,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> SystemRoleOut:
+    role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="System role not found")
+
+    if body.name is not None:
+        existing = db.query(SystemRole).filter(SystemRole.name == body.name, SystemRole.system_role_id != role_id).first()
+        if existing:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail=f"System role '{body.name}' already exists")
+        role.name = body.name
+    if body.description is not None:
+        role.description = body.description
+    if body.scope is not None:
+        role.scope = body.scope
+    if body.is_global is not None:
+        role.is_global = body.is_global
+
+    if body.target_tenant_ids is not None and not body.is_global:
+        db.query(TenantSystemRoleAssignment).filter(
+            TenantSystemRoleAssignment.system_role_id == role_id
+        ).delete()
+        for tid in body.target_tenant_ids:
+            tenant = db.query(Tenant).filter(Tenant.tenant_id == tid).first()
+            if not tenant:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Tenant '{tid}' not found")
+            db.add(TenantSystemRoleAssignment(system_role_id=role.system_role_id, tenant_id=tid))
+
+    db.commit()
+    db.refresh(role)
+    return _build_system_role_out(db, role)
+
+
+@router.delete("/system-roles/{role_id}", status_code=204, tags=["System Roles"])
+@limiter.limit("30/minute")
+async def delete_system_role(
+    request: Request,
+    role_id: UUID,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> None:
+    role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="System role not found")
+    db.delete(role)
+    db.commit()
+
+
+@router.post("/system-roles/{role_id}/tenants", response_model=SystemRoleOut, tags=["System Roles"])
+@limiter.limit("30/minute")
+async def assign_system_role_to_tenants(
+    request: Request,
+    role_id: UUID,
+    body: list[str],  # list of tenant_ids
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> SystemRoleOut:
+    role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="System role not found")
+    if role.is_global:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Cannot assign tenants to a global role")
+
+    for tid in body:
+        tenant = db.query(Tenant).filter(Tenant.tenant_id == tid).first()
+        if not tenant:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Tenant '{tid}' not found")
+        existing = db.query(TenantSystemRoleAssignment).filter(
+            TenantSystemRoleAssignment.system_role_id == role_id,
+            TenantSystemRoleAssignment.tenant_id == tid,
+        ).first()
+        if not existing:
+            db.add(TenantSystemRoleAssignment(system_role_id=role_id, tenant_id=tid))
+
+    db.commit()
+    db.refresh(role)
+    return _build_system_role_out(db, role)
+
+
+@router.delete("/system-roles/{role_id}/tenants/{tenant_id}", status_code=204, tags=["System Roles"])
+@limiter.limit("30/minute")
+async def remove_system_role_from_tenant(
+    request: Request,
+    role_id: UUID,
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> None:
+    if not db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="System role not found")
+    assignment = db.query(TenantSystemRoleAssignment).filter(
+        TenantSystemRoleAssignment.system_role_id == role_id,
+        TenantSystemRoleAssignment.tenant_id == tenant_id,
+    ).first()
+    if not assignment:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    db.delete(assignment)
+    db.commit()
+
+
+def _build_system_role_out(db: Session, role: SystemRole) -> SystemRoleOut:
+    """Build a SystemRoleOut from a SystemRole model, resolving tenant assignments."""
+    assignments = db.query(TenantSystemRoleAssignment).filter(
+        TenantSystemRoleAssignment.system_role_id == role.system_role_id
+    ).all()
+    target_ids = [a.tenant_id for a in assignments]
+    return SystemRoleOut(
+        system_role_id=role.system_role_id,
+        name=role.name,
+        description=role.description,
+        scope=role.scope,
+        is_global=role.is_global,
+        target_tenant_ids=target_ids,
+        created_by=role.created_by,
+        created_at=role.created_at,
+        updated_at=role.updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Global role management (simple roles available to ALL tenants)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/global-roles", status_code=201, response_model=GlobalRoleOut, tags=["Global Roles"])
+@limiter.limit("30/minute")
+async def create_global_role(
+    request: Request,
+    body: GlobalRoleCreate,
+    db: Session = Depends(get_db),
+    token: TokenPayload = Depends(get_current_active_user),
+) -> GlobalRoleOut:
+    """Create a global role available to all tenants (e.g. QA, Developer)."""
+    existing = db.query(GlobalRole).filter(GlobalRole.name == body.name).first()
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, detail=f"Global role '{body.name}' already exists")
+
+    role = GlobalRole(
+        name=body.name,
+        description=body.description,
+        scope=body.scope,
+        created_by=token.sub,
+    )
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    return GlobalRoleOut.model_validate(role)
+
+
+@router.get("/global-roles", response_model=list[GlobalRoleOut], tags=["Global Roles"])
+@limiter.limit("60/minute")
+async def list_global_roles(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> list[GlobalRoleOut]:
+    """List all global roles."""
+    roles = db.query(GlobalRole).order_by(GlobalRole.created_at.desc()).all()
+    return [GlobalRoleOut.model_validate(r) for r in roles]
+
+
+@router.get("/global-roles/{role_id}", response_model=GlobalRoleOut, tags=["Global Roles"])
+@limiter.limit("60/minute")
+async def get_global_role(
+    request: Request,
+    role_id: UUID,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> GlobalRoleOut:
+    """Get a single global role by ID."""
+    role = db.query(GlobalRole).filter(GlobalRole.global_role_id == role_id).first()
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Global role not found")
+    return GlobalRoleOut.model_validate(role)
+
+
+@router.patch("/global-roles/{role_id}", response_model=GlobalRoleOut, tags=["Global Roles"])
+@limiter.limit("30/minute")
+async def update_global_role(
+    request: Request,
+    role_id: UUID,
+    body: GlobalRoleUpdate,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> GlobalRoleOut:
+    """Update a global role's name, description, or scope."""
+    role = db.query(GlobalRole).filter(GlobalRole.global_role_id == role_id).first()
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Global role not found")
+
+    if body.name is not None:
+        existing = db.query(GlobalRole).filter(
+            GlobalRole.name == body.name,
+            GlobalRole.global_role_id != role_id,
+        ).first()
+        if existing:
+            raise HTTPException(status.HTTP_409_CONFLICT, detail=f"Global role '{body.name}' already exists")
+        role.name = body.name
+    if body.description is not None:
+        role.description = body.description
+    if body.scope is not None:
+        role.scope = body.scope
+
+    db.commit()
+    db.refresh(role)
+    return GlobalRoleOut.model_validate(role)
+
+
+@router.delete("/global-roles/{role_id}", status_code=204, tags=["Global Roles"])
+@limiter.limit("30/minute")
+async def delete_global_role(
+    request: Request,
+    role_id: UUID,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> None:
+    """Delete a global role."""
+    role = db.query(GlobalRole).filter(GlobalRole.global_role_id == role_id).first()
+    if not role:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Global role not found")
+    db.delete(role)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# All-roles endpoint (global + per-tenant)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/all-roles", response_model=AllRolesOut, tags=["Roles"])
+@limiter.limit("30/minute")
+async def list_all_roles(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> AllRolesOut:
+    """List ALL roles across the system — both global roles and per-tenant roles."""
+    global_roles = db.query(GlobalRole).order_by(GlobalRole.created_at.desc()).all()
+    tenant_roles = db.query(TenantRole).order_by(TenantRole.created_at.desc()).all()
+
+    return AllRolesOut(
+        global_roles=[GlobalRoleOut.model_validate(r) for r in global_roles],
+        tenant_roles=[
+            AllRolesTenantRole(
+                tenant_role_id=r.tenant_role_id,
+                tenant_id=r.tenant_id,
+                name=r.name,
+                description=r.description,
+                scope=r.scope,
+                created_by=r.created_by,
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+            )
+            for r in tenant_roles
+        ],
+    )
+
+
+# ---------------------------------------------------------------------------
 # Keycloak realm management for super admins
 # ---------------------------------------------------------------------------
 
@@ -1271,24 +1621,57 @@ async def create_tenant_invoice(
     db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
 ) -> InvoiceOut:
-    from app.models.saas import Invoice as InvoiceModel
-    invoice = InvoiceModel(
-        tenant_id=tenant_id,
-        subscription_id=body.subscription_id,
-        invoice_number=body.invoice_number,
-        billing_period_start=body.billing_period_start,
-        billing_period_end=body.billing_period_end,
-        plan_name=body.plan_name,
-        amount=body.amount,
-        currency=body.currency,
-        due_date=body.due_date,
-        status=body.status,
+    from app.models.saas import Invoice as InvoiceModel, Subscription as SubscriptionModel
+    from sqlalchemy.exc import IntegrityError
+
+    # Auto-resolve subscription_id from tenant's active subscription
+    active_sub = (
+        db.query(SubscriptionModel)
+        .filter(
+            SubscriptionModel.tenant_id == tenant_id,
+            SubscriptionModel.status.in_(["active", "trial"]),
+        )
+        .order_by(SubscriptionModel.created_at.desc())
+        .first()
     )
-    db.add(invoice)
-    db.commit()
-    db.refresh(invoice)
-    _enrich_invoice(db, invoice)
-    return InvoiceOut.model_validate(invoice)
+    if not active_sub:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f"No active subscription found for tenant {tenant_id}. "
+                   f"Subscribe the tenant first via POST /tenants/{tenant_id}/subscribe",
+        )
+    subscription_id = active_sub.subscription_id
+
+    try:
+        invoice = InvoiceModel(
+            tenant_id=tenant_id,
+            subscription_id=subscription_id,
+            invoice_number=body.invoice_number,
+            billing_period_start=body.billing_period_start,
+            billing_period_end=body.billing_period_end,
+            plan_name=body.plan_name,
+            amount=body.amount,
+            currency=body.currency,
+            due_date=body.due_date,
+            status=body.status,
+        )
+        db.add(invoice)
+        db.commit()
+        db.refresh(invoice)
+        _enrich_invoice(db, invoice)
+        return InvoiceOut.model_validate(invoice)
+    except IntegrityError as e:
+        db.rollback()
+        detail = str(e.orig)
+        if "unique" in detail.lower() or "duplicate" in detail.lower():
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=f"Invoice number '{body.invoice_number}' already exists",
+            )
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Database constraint error: {detail[:200]}",
+        )
 
 
 @router.patch("/invoices/{invoice_id}", response_model=InvoiceOut, tags=["Invoices"])
@@ -1383,8 +1766,21 @@ async def create_tenant_payment(
     db: Session = Depends(get_db),
     user: TokenPayload = Depends(get_current_active_user),
 ) -> SaaSPaymentOut:
-    from app.models.saas import SaaSPayment as SaaSPaymentModel
+    from app.models.saas import SaaSPayment as SaaSPaymentModel, Invoice as InvoiceModel
+    from sqlalchemy.exc import IntegrityError
     from uuid import UUID as PyUUID
+
+    # Validate invoice exists for this tenant
+    invoice = db.query(InvoiceModel).filter(
+        InvoiceModel.invoice_id == body.invoice_id,
+        InvoiceModel.tenant_id == tenant_id,
+    ).first()
+    if not invoice:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            detail=f"Invoice {body.invoice_id} not found for tenant {tenant_id}. "
+                   f"Create an invoice first via POST /tenants/{tenant_id}/invoices",
+        )
 
     # Map Keycloak user to local super_admin_id.
     admin = db.query(SuperAdmin).filter(SuperAdmin.username == user.preferred_username).first()
@@ -1392,41 +1788,47 @@ async def create_tenant_payment(
     if recorded_by is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Super admin record required to record payments")
 
-    payment = SaaSPaymentModel(
-        invoice_id=body.invoice_id,
-        tenant_id=tenant_id,
-        amount=body.amount,
-        currency=body.currency,
-        payment_method=body.payment_method,
-        reference_number=body.reference_number,
-        receipt_sent_at=body.receipt_sent_at,
-        recorded_by=recorded_by,
-    )
-    db.add(payment)
-    db.commit()
-    db.refresh(payment)
-
-    # Sync invoice status and paid_at
-    from app.models.saas import Invoice as InvoiceModel
-    from datetime import datetime, timezone
-    invoice = db.query(InvoiceModel).filter(InvoiceModel.invoice_id == body.invoice_id).first()
-    if invoice:
-        # Sum all payments for this invoice
-        all_payments = (
-            db.query(SaaSPaymentModel)
-            .filter(SaaSPaymentModel.invoice_id == body.invoice_id)
-            .all()
+    try:
+        payment = SaaSPaymentModel(
+            invoice_id=body.invoice_id,
+            tenant_id=tenant_id,
+            amount=body.amount,
+            currency=body.currency,
+            payment_method=body.payment_method,
+            reference_number=body.reference_number,
+            receipt_sent_at=body.receipt_sent_at,
+            recorded_by=recorded_by,
         )
-        total_paid = sum(p.amount for p in all_payments)
-        if total_paid >= invoice.amount:
-            invoice.status = "paid"
-            if not invoice.paid_at:
-                invoice.paid_at = payment.paid_at or datetime.now(timezone.utc)
-        elif total_paid > 0:
-            invoice.status = "partially_paid"
+        db.add(payment)
         db.commit()
+        db.refresh(payment)
 
-    return SaaSPaymentOut.model_validate(payment)
+        # Sync invoice status and paid_at
+        from app.models.saas import Invoice as InvoiceModel
+        from datetime import datetime, timezone
+        invoice = db.query(InvoiceModel).filter(InvoiceModel.invoice_id == body.invoice_id).first()
+        if invoice:
+            all_payments = (
+                db.query(SaaSPaymentModel)
+                .filter(SaaSPaymentModel.invoice_id == body.invoice_id)
+                .all()
+            )
+            total_paid = sum(p.amount for p in all_payments)
+            if total_paid >= invoice.amount:
+                invoice.status = "paid"
+                if not invoice.paid_at:
+                    invoice.paid_at = payment.paid_at or datetime.now(timezone.utc)
+            elif total_paid > 0:
+                invoice.status = "partially_paid"
+            db.commit()
+
+        return SaaSPaymentOut.model_validate(payment)
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Payment creation failed: {str(e.orig)[:200]}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1677,7 +2079,7 @@ async def get_tenant_usage_stats(
 
     return {
         "tenant_id": tenant_id,
-        "tenant_name": tenant.name,
+        "tenant_name": tenant.hospital_name,
         "user_count": user_count,
         "active_user_count": active_user_count,
         "kc_user_count": kc_user_count,
@@ -1741,7 +2143,7 @@ async def get_aggregated_usage_telemetry(
             user_count = result.scalar() or 0
             results.append({
                 "tenant_id": tenant.tenant_id,
-                "name": tenant.name,
+                "name": tenant.hospital_name,
                 "db_size_bytes": db_size_bytes,
                 "db_size_mb": round(db_size_bytes / 1024 / 1024, 2),
                 "user_count": user_count,
@@ -1750,7 +2152,7 @@ async def get_aggregated_usage_telemetry(
         except Exception as exc:
             results.append({
                 "tenant_id": tenant.tenant_id,
-                "name": tenant.name,
+                "name": tenant.hospital_name,
                 "error": str(exc)[:100],
             })
     return results
@@ -1833,7 +2235,7 @@ async def get_tenant_analytics(
 
     return {
         "tenant_id": tenant_id,
-        "tenant_name": tenant.name,
+        "tenant_name": tenant.hospital_name,
         "patient_registration_trends": patient_registration_trends,
         "active_user_counts": active_user_counts,
         "module_usage": module_usage,
@@ -2028,6 +2430,55 @@ async def create_incident(
     db.commit()
     db.refresh(incident)
     return IncidentOut.model_validate(incident)
+
+
+# ---------------------------------------------------------------------------
+# Tenant Data Export (pre-termination)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tenants/{tenant_id}/export", tags=["Tenant Data"])
+@limiter.limit("5/minute")
+async def export_tenant_data(
+    request: Request,
+    tenant_id: str,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+):
+    """Export all tenant data as a downloadable JSON file.
+
+    Returns a JSON object with one key per table (patients, visits, queues,
+    users, etc.). Use this endpoint *before* terminating a tenant to archive
+    their data.
+    """
+    from fastapi.responses import JSONResponse
+    from app.services.export_service import export_tenant_data as _do_export
+
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    try:
+        data = _do_export(db, tenant_id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to export tenant data for %s", tenant_id)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Export failed: {str(e)}",
+        )
+
+    filename = f"tenant_{tenant_id}_export.json"
+    return JSONResponse(
+        content={
+            "tenant_id": tenant_id,
+            "hospital_name": tenant.hospital_name,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "data": data,
+        },
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/incidents/{incident_id}", response_model=IncidentOut, tags=["Incidents"])

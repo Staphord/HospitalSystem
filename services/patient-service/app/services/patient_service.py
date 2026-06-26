@@ -15,13 +15,14 @@ def register_patient(
     full_name: str,
     date_of_birth: date_type,
     gender: str,
-    phone: Optional[str] = None,
+    phone_primary: str,
+    phone_secondary: Optional[str] = None,
     email: Optional[str] = None,
     address: Optional[str] = None,
-    emergency_contact_name: Optional[str] = None,
-    emergency_contact_phone: Optional[str] = None,
+    next_of_kin_name: Optional[str] = None,
+    next_of_kin_phone: Optional[str] = None,
+    next_of_kin_relationship: Optional[str] = None,
     national_id: Optional[str] = None,
-    medical_history: Optional[str] = None,
     allergies: Optional[str] = None,
     blood_group: Optional[str] = None,
     created_by: Optional[str] = None,
@@ -34,13 +35,14 @@ def register_patient(
         full_name=full_name,
         date_of_birth=date_of_birth,
         gender=gender,
-        phone=phone,
+        phone_primary=phone_primary,
+        phone_secondary=phone_secondary,
         email=email,
         address=address,
-        emergency_contact_name=emergency_contact_name,
-        emergency_contact_phone=emergency_contact_phone,
+        next_of_kin_name=next_of_kin_name,
+        next_of_kin_phone=next_of_kin_phone,
+        next_of_kin_relationship=next_of_kin_relationship,
         national_id=national_id,
-        medical_history=medical_history,
         allergies=allergies,
         blood_group=blood_group,
         created_by=created_by,
@@ -72,7 +74,7 @@ def search_patients(
             or_(
                 TenantPatient.full_name.ilike(search),
                 TenantPatient.patient_number.ilike(search),
-                TenantPatient.phone.ilike(search),
+                TenantPatient.phone_primary.ilike(search),
                 TenantPatient.email.ilike(search),
                 TenantPatient.national_id.ilike(search),
             )
@@ -110,6 +112,60 @@ def delete_patient(db: Session, hospital_id: str, patient_id: str) -> bool:
     db.delete(patient)
     db.commit()
     return True
+
+
+def update_patient(
+    db: Session,
+    hospital_id: str,
+    patient_id: str,
+    full_name: Optional[str] = None,
+    date_of_birth: Optional[date_type] = None,
+    gender: Optional[str] = None,
+    phone_primary: Optional[str] = None,
+    phone_secondary: Optional[str] = None,
+    email: Optional[str] = None,
+    address: Optional[str] = None,
+    next_of_kin_name: Optional[str] = None,
+    next_of_kin_phone: Optional[str] = None,
+    next_of_kin_relationship: Optional[str] = None,
+    national_id: Optional[str] = None,
+    allergies: Optional[str] = None,
+    blood_group: Optional[str] = None,
+) -> Optional[TenantPatient]:
+    patient = get_patient_by_id(db, hospital_id, patient_id)
+    if not patient:
+        return None
+
+    if full_name is not None:
+        patient.full_name = full_name
+    if date_of_birth is not None:
+        patient.date_of_birth = date_of_birth
+    if gender is not None:
+        patient.gender = gender
+    if phone_primary is not None:
+        patient.phone_primary = phone_primary
+    if phone_secondary is not None:
+        patient.phone_secondary = phone_secondary
+    if email is not None:
+        patient.email = email
+    if address is not None:
+        patient.address = address
+    if next_of_kin_name is not None:
+        patient.next_of_kin_name = next_of_kin_name
+    if next_of_kin_phone is not None:
+        patient.next_of_kin_phone = next_of_kin_phone
+    if next_of_kin_relationship is not None:
+        patient.next_of_kin_relationship = next_of_kin_relationship
+    if national_id is not None:
+        patient.national_id = national_id
+    if allergies is not None:
+        patient.allergies = allergies
+    if blood_group is not None:
+        patient.blood_group = blood_group
+
+    db.commit()
+    db.refresh(patient)
+    return patient
 
 
 def get_patient_count(db: Session, hospital_id: str) -> int:

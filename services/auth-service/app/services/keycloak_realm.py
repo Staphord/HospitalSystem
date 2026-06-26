@@ -233,12 +233,32 @@ async def delete_tenant_realm(realm: str) -> None:
             r.raise_for_status()
 
 
+async def set_realm_token_lifespan(realm: str, lifespan_seconds: int = 300) -> None:
+    """Set the Keycloak realm's access token lifespan."""
+    hdrs = await _admin_headers()
+    url = f"{settings.keycloak_url}/admin/realms/{realm}"
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url, headers=hdrs)
+        if not r.is_success:
+            logger.warning("Cannot read realm %s config (status %s)", realm, r.status_code)
+            return
+        config = r.json()
+        current = config.get("accessTokenLifespan", 0)
+        if current == lifespan_seconds:
+            return
+        config["accessTokenLifespan"] = lifespan_seconds
+        pr = await client.put(url, json=config, headers=hdrs)
+        if pr.is_success:
+            logger.info("Set accessTokenLifespan to %s for realm %s", lifespan_seconds, realm)
+        else:
+            logger.warning("Failed to set token lifespan for realm %s: %s", realm, pr.status_code)
 async def setup_tenant_realm(realm: str) -> None:
     """Idempotently create realm, client, and roles for a tenant."""
     await create_tenant_realm(realm)
     await create_realm_client(realm)
     await ensure_realm_roles(realm)
     await add_tenant_id_to_user_profile(realm)
+    await set_realm_token_lifespan(realm, settings.keycloak_access_token_lifespan)
 
 
 async def list_all_realms() -> list[str]:

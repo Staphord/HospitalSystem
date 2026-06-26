@@ -14,7 +14,80 @@ SADMIN_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -d '{"username":"superadmin","password":"superadmin123"}' | jq -r .access_token)
 ```
 
-## 1. Architecture & Authentication
+## 1. Token Expiry
+
+Access tokens expire in **5 minutes** (configurable via `KEYCLOAK_ACCESS_TOKEN_LIFESPAN` in root `.env`). When your token expires, requests return **401**. Get a fresh token:
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"hadmin1","password":"admin12345"}' | jq -r .access_token
+```
+
+## 2. Testing via Swagger UI
+
+Each microservice has its own Swagger UI at `http://localhost:<PORT>/docs`.
+
+### Patient Service — Swagger UI (port 8005)
+
+1. Open `http://localhost:8005/docs`
+2. Click **Authorize**, paste your **hospital admin** token, click **Authorize**
+3. Expand `POST /api/v1/patients/register`
+4. Click **Try it out**, enter patient data, click **Execute**
+5. The service resolves the tenant DB from your JWT's `tenant_id` claim — no `X-Tenant-DB` header needed
+
+Available endpoints in Swagger:
+| Endpoint | Method | Auth Required |
+|----------|--------|--------------|
+| `/api/v1/patients/register` | POST | hospital_admin |
+| `/api/v1/patients` | GET | hospital_admin (list) |
+| `/api/v1/patients/search` | GET | hospital_admin |
+| `/api/v1/patients/{patient_id}` | GET | hospital_admin |
+| `/api/v1/patients/{patient_id}` | DELETE | hospital_admin |
+| `/health` | GET | none |
+
+### Visit Service — Swagger UI (port 8006)
+
+1. Open `http://localhost:8006/docs`
+2. Click **Authorize**, paste your **hospital admin** token, click **Authorize**
+3. Expand `POST /api/v1/visits`
+4. Click **Try it out**, enter visit data (requires existing patient UUID), click **Execute**
+
+Available endpoints in Swagger:
+| Endpoint | Method | Auth Required |
+|----------|--------|--------------|
+| `/api/v1/visits` | POST | hospital_admin |
+| `/api/v1/visits/{visit_id}` | GET | hospital_admin |
+| `/api/v1/visits/{visit_id}/status` | PATCH | hospital_admin |
+| `/api/v1/visits/queues/{queue_type}` | GET | hospital_admin |
+| `/api/v1/visits/queues/{queue_type}/next` | GET | hospital_admin |
+| `/api/v1/visits/queues/{queue_id}/status` | PATCH | hospital_admin |
+| `/api/v1/visits/queues/add` | POST | hospital_admin |
+| `/api/v1/visits/queues/triage/today` | GET | hospital_admin |
+| `/health` | GET | none |
+
+### Reception Service (Orchestrator) — Swagger UI (port 8010)
+
+1. Open `http://localhost:8010/docs`
+2. Click **Authorize**, paste your **hospital admin** token, click **Authorize**
+3. Choose an orchestration endpoint (see [Orchestrator section](#8-reception-service-port-8010--orchestrator) below)
+
+### API Gateway — Swagger UI (port 8000)
+
+The gateway proxies to all services, so you can test everything from one URL:
+- Open `http://localhost:8000/docs`
+- Authorize with your hospital admin token
+- Find the endpoint under the appropriate tag
+
+### Super Admin Endpoints — Swagger UI (port 8002)
+
+- Open `http://localhost:8002/docs`
+- Authorize with your **super admin** token
+- Incidents, monitoring, tenant management, and subscription endpoints all in one place
+
+---
+
+## 3. Architecture & Authentication
 
 ### Gateway vs. Direct Access
 
@@ -49,10 +122,11 @@ SADMIN_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
 
 ### X-Tenant-DB Header
 
-- **Type**: Internal header injected by the API gateway
+- **Type**: Internal header injected by the API gateway (not shown in Swagger)
 - **Value**: A full PostgreSQL connection URL (e.g. `postgresql://postgres:nasr@postgres-master:5432/tenant_hosp-abc12345`)
-- **When accessing directly**: You can optionally provide it, but it must be a **database URL**, not a tenant ID
-- **From token fallback**: If omitted and the JWT has a `tenant_id` claim, the service resolves the DB URL automatically from the Master DB
+- **When accessing directly**: You can optionally provide it, but it must be a **PostgreSQL URL** (starting with `postgresql://`). If you pass a tenant ID (e.g. `hosp-abc`), it will be **ignored** and the service falls back to JWT-based resolution.
+- **From token fallback**: If omitted or invalid, the service resolves the DB URL automatically from the Master DB using the JWT's `tenant_id` claim
+- **Swagger UI**: The `x-tenant-db` header no longer appears in Swagger — just authorize with your token and execute
 
 ### Required JWT Claims
 
@@ -257,7 +331,7 @@ curl -X PATCH http://localhost:8000/api/v1/superadmin/incidents/<UUID> \
 
 ---
 
-## 4. /api/v1/me — Profile Endpoint
+## 5. /api/v1/me — Profile Endpoint
 
 Available at `http://localhost:8001/docs` (auth-service).
 
@@ -293,7 +367,7 @@ Available at `http://localhost:8001/docs` (auth-service).
 
 ---
 
-## 5. Running the stack
+## 6. Running the stack
 
 ```bash
 docker compose -f infrastructure/docker-compose.yml up --build -d
@@ -311,7 +385,7 @@ For unit tests:
 cd services/patient-service
 $env:PYTHONPATH="."; python -m pytest tests/ -v
 
-# Visit service tests (11 tests)
+# Visit service tests (23 tests - 11 original + 12 new queue/status tests)
 cd services/visit-service
 $env:PYTHONPATH="."; python -m pytest tests/ -v
 
@@ -322,7 +396,7 @@ $env:PYTHONPATH="."; pytest tests/unit/test_subscription_service.py -v
 
 ---
 
-## 6. Patient Service (port 8005)
+## 7. Patient Service (port 8005)
 
 ### How to Test on Swagger UI
 
@@ -370,7 +444,7 @@ The patient-service will:
 
 ### POST /api/v1/patients/register — Register a new patient
 
-**Required fields:** `full_name`, `date_of_birth`, `gender`
+**Required fields:** `full_name`, `date_of_birth`, `gender`, `phone_primary`
 
 **Request body:**
 ```json
@@ -378,13 +452,14 @@ The patient-service will:
   "full_name": "John Doe",
   "date_of_birth": "1990-01-15",
   "gender": "male",
-  "phone": "+1234567890",
+  "phone_primary": "+1234567890",
+  "phone_secondary": "+1234567891",
   "email": "john@example.com",
   "address": "123 Main St",
-  "emergency_contact_name": "Jane Doe",
-  "emergency_contact_phone": "+1987654321",
+  "next_of_kin_name": "Jane Doe",
+  "next_of_kin_phone": "+1987654321",
+  "next_of_kin_relationship": "Spouse",
   "national_id": "NAT-001",
-  "medical_history": "Asthma",
   "allergies": "Penicillin",
   "blood_group": "O+"
 }
@@ -400,13 +475,14 @@ The patient-service will:
   "full_name": "John Doe",
   "date_of_birth": "1990-01-15",
   "gender": "male",
-  "phone": "+1234567890",
+  "phone_primary": "+1234567890",
+  "phone_secondary": "+1234567891",
   "email": "john@example.com",
   "address": "123 Main St",
-  "emergency_contact_name": "Jane Doe",
-  "emergency_contact_phone": "+1987654321",
+  "next_of_kin_name": "Jane Doe",
+  "next_of_kin_phone": "+1987654321",
+  "next_of_kin_relationship": "Spouse",
   "national_id": "NAT-001",
-  "medical_history": "Asthma",
   "allergies": "Penicillin",
   "blood_group": "O+",
   "is_active": true,
@@ -418,14 +494,15 @@ The patient-service will:
 
 **Validation rules:**
 - `full_name` cannot be empty
-- `gender` must be one of `male`, `female`, `other`
+- `gender` must be one of `male`, `female`, `other` (stored as Enum)
+- `phone_primary` is required (max 20 chars)
 - `national_id` must be unique per tenant (duplicate → 409 Conflict)
 - `date_of_birth` must be a valid date in `YYYY-MM-DD` format
 
 ### GET /api/v1/patients/search — Search patients
 
 **Query parameters** (at least one of `query`, `national_id`, or `patient_number` required):
-- `query` — partial case-insensitive search on name, phone, email, patient number, national ID
+- `query` — partial case-insensitive search on name, phone_primary, email, patient number, national ID
 - `national_id` — exact match
 - `patient_number` — exact match
 - `limit` (default 20, max 100)
@@ -566,16 +643,141 @@ Headers:
 - `status` — defaults to `registered`
 - Queue entry created with `priority: non_urgent`, `status: waiting`
 
+### Visit Status Lifecycle
+
+The visit status follows this state machine:
+
+```
+registered → triaged → in_consultation → in_lab ──→ completed
+                      → cancelled         → in_pharmacy ──→ completed
+                                           → cancelled
+```
+
+Transitions are enforced server-side. Invalid transitions (e.g. `registered → completed`) return **400**.
+
+### PATCH /api/v1/visits/{visit_id}/status — Transition visit status
+
+**Request:**
+```json
+{
+  "status": "triaged"
+}
+```
+
+**Valid status transitions:**
+
+| Current Status | Allowed Next |
+|----------------|-------------|
+| registered | triaged, cancelled |
+| triaged | in_consultation, cancelled |
+| in_consultation | in_lab, in_pharmacy, completed, cancelled |
+| in_lab | in_consultation, completed, cancelled |
+| in_pharmacy | completed, cancelled |
+| completed | — |
+| cancelled | — |
+
 ### GET /api/v1/visits/queues/triage/today — Today's triage queue
 
 Returns all triage queue entries created today, ordered oldest first.
 
+### Queue Management Endpoints
+
+All queue endpoints are under `/api/v1/visits/queues/`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/v1/visits/queues/{queue_type}` | List queue by type, optional `?status=` filter |
+| GET | `/api/v1/visits/queues/{queue_type}/next` | Call next waiting patient |
+| PATCH | `/api/v1/visits/queues/{queue_id}/status` | Update queue entry status |
+| POST | `/api/v1/visits/queues/add` | Add patient to a queue |
+
+#### GET /api/v1/visits/queues/{queue_type} — List queue
+
+**Path param:** `queue_type` — `triage`, `doctor`, `lab`, `radiology`, `pharmacy`, `billing`
+
+**Query params:** `?status=waiting` (optional filter), `?limit=50` (default 50, max 200)
+
+Returns entries ordered by priority (emergency first) then created_at (oldest first).
+
+#### GET /api/v1/visits/queues/{queue_type}/next — Call next patient
+
+Calls the next `waiting` patient in the specified queue. Returns the queue entry with `status: in_progress` and `called_at` timestamp. Returns **404** if queue is empty.
+
+**Ordering logic:** Highest priority first, then FIFO within same priority. Priority order: `emergency` > `urgent` > `semi_urgent` > `non_urgent`.
+
+#### PATCH /api/v1/visits/queues/{queue_id}/status — Update queue entry
+
+**Request:**
+```json
+{
+  "status": "completed"
+}
+```
+
+**Valid queue status transitions:**
+
+| Current Status | Allowed Next |
+|----------------|-------------|
+| waiting | in_progress, skipped |
+| in_progress | completed, skipped |
+| completed | — |
+| skipped | — |
+
+When status changes to `completed`, `completed_at` is auto-set. When status changes to `in_progress`, `called_at` is auto-set if not already set.
+
+#### POST /api/v1/visits/queues/add — Add patient to queue manually
+
+**Request:**
+```json
+{
+  "visit_id": "uuid",
+  "patient_id": "uuid",
+  "queue_type": "doctor",
+  "priority": "urgent"
+}
+```
+
+**Validation:** A patient can only have one active (waiting/in_progress) entry per queue type. Duplicate → **409**.
+
+### How the Queue System Works
+
+The visit-service implements a unified queue system with the following flow:
+
+```
+1. Visit Created
+   ├── Queue entry auto-created for "triage" with status=waiting
+   └── priority defaults to "non_urgent" (set during triage)
+
+2. Nurse calls next triage patient
+   └── GET /queues/triage/next
+       └── Queue status changes to "in_progress", called_at set
+
+3. Nurse completes triage
+   └── PATCH /queues/{id}/status → "completed"
+       └── completed_at set
+
+4. Doctor queue entry added (by triage service or manually)
+   └── POST /queues/add { queue_type: "doctor", priority: "urgent" }
+
+5. Doctor calls next patient
+   └── GET /queues/doctor/next
+
+6. Visit status transitions follow the clinical workflow
+   └── PATCH /visits/{id}/status → "in_consultation", "in_lab", etc.
+
+7. When all clinical activity is done → "completed"
+```
+
+Queue types supported: `triage`, `doctor`, `lab`, `radiology`, `pharmacy`, `billing`
+
+Each queue type has its own daily resetting number sequence (prefix: T-, D-, L-, R-, P-, B-).
+
 ### Database Tables Created in Tenant DB
 
 When a visit is created, the service auto-creates these tables in the tenant database:
-- `patient_insurance` — insurance policies for patients
+- `patient_insurance` — insurance policies for patients (with `verified_at` column)
 - `visits` — visit/encounter records
-- `queues` — queue entries (triage, doctor, lab, etc.)
+- `queues` — queue entries (with `called_at`, `completed_at` columns)
 - `visit_number_sequences` — daily visit number counter
 - `queue_number_sequences` — daily queue number counter per type
 
@@ -604,7 +806,7 @@ cd services/visit-service
 python -m pytest tests/ -v
 ```
 
-All 11 tests cover:
+All 23 tests cover:
 - Visit creation with cash (visit_number, queue entry, queue_number format)
 - Visit with verified insurance (insurance_id linked, no verification flag)
 - Visit with pending insurance (insurance linked, flag = manual_review_required)
@@ -613,33 +815,114 @@ All 11 tests cover:
 - Visit with insurance but missing insurer/policy fields (400 error)
 - Visit number generation (format, increment)
 - Queue number generation (format, increment, per-type isolation)
+- Visit status transitions (registered → triaged → in_consultation → completed)
+- Visit status invalid transition (400 error)
+- Call next patient in queue (status → in_progress, called_at set)
+- Call next on empty queue (returns null)
+- Update queue entry status (status → completed, completed_at set)
+- Add patient to queue manually (doctor queue, urgent priority)
+- Duplicate queue entry prevention (409 error)
+- List queue by type (filters correctly)
+- List queue with status filter (waiting vs completed)
 
 ---
 
 ## 8. Reception Service (port 8010) — Orchestrator
 
-The reception-service does **not** store data itself. It orchestrates calls between patient-service and visit-service so the reception desk has a single API to work with.
+The reception-service does **not** store data itself. It **orchestrates** calls between patient-service and visit-service so the reception desk has a single unified API.
+
+### How the orchestrator works
+
+```
+Client → reception-service → HTTP forward (JWT passthrough) → downstream service
+                                    ↑
+                           httpx.AsyncClient (30s timeout)
+                           Forwards all headers except Host/Content-Length/X-Tenant-DB
+                           Returns JSON response as-is (or raises HTTPException)
+```
+
+The orchestrator uses `httpx.AsyncClient` to forward requests to downstream services. The JWT token is forwarded **unchanged** — each downstream service independently authenticates and resolves the tenant database from the JWT's `tenant_id` claim. No tokens are generated or modified by the orchestrator.
 
 ### Architecture
 
 ```
-Reception Desk
+Reception Desk (port 8010)
   │
-  ├── POST /reception/patients/register
-  │     └──► patient-service /patients/register (JWT passthrough)
+  ├── POST /reception/patients/register           ──► patient-service:8005
+  │     Delegates directly, returns same response
   │
-  ├── POST /reception/visits
-  │     └──► visit-service /visits (JWT passthrough)
+  ├── POST /reception/visits                       ──► visit-service:8006
+  │     Delegates directly, returns same response
   │
-  ├── POST /reception/register-and-visit      ← Combined flow
-  │     ├──► patient-service /patients/register
-  │     └──► visit-service /visits (auto-injects patient_id)
+  ├── POST /reception/register-and-visit           ◄── Combined flow (flagship)
+  │     1. POST patients/register → patient-service
+  │     2. Extract patient_id from response
+  │     3. Inject patient_id into visit payload
+  │     4. POST visits → visit-service
+  │     5. Return {patient: ..., visit: ...}
   │
-  └── GET /reception/visits/queues/triage/today
-        └──► visit-service /visits/queues/triage/today
+  ├── GET /reception/patients/search               ──► patient-service:8005
+  │     Delegates directly (JWT passthrough)
+  │
+  ├── GET /reception/patients/{patient_id}         ──► patient-service:8005
+  │     Delegates directly
+  │
+  ├── DELETE /reception/patients/{patient_id}      ──► patient-service:8005
+  │     Delegates directly
+  │
+  ├── GET /reception/visits/queues/triage/today   ──► visit-service:8006
+  │     Delegates directly
+  │
+  ├── GET /reception/visits/queues/{queue_type}   ──► visit-service:8006
+  │     Delegates directly (list queue by type)
+  │
+  └── GET /reception/visits/queues/{queue_type}/next  ──► visit-service:8006
+        Delegates directly (call next patient)
 ```
 
-The JWT token is forwarded as-is to downstream services. Each service independently authenticates and resolves the tenant database from the JWT's `tenant_id` claim.
+### Logical flow of `register-and-visit`
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌───────────────┐
+│  Client     │     │ reception-service │     │ downstream    │
+│ (Swagger)   │     │  (orchestrator)   │     │ services      │
+└──────┬──────┘     └────────┬─────────┘     └───────┬───────┘
+       │                     │                        │
+       │ POST register-and-visit                      │
+       │ (patient + visit data)                       │
+       │────────────────────►│                        │
+       │                     │                        │
+       │                     │ POST /patients/register│
+       │                     │ (JWT passthrough)      │
+       │                     │───────────────────────►│
+       │                     │                        │
+       │                     │ 201 {id, patient_id..} │
+       │                     │◄───────────────────────│
+       │                     │                        │
+       │                     │  Extract patient_id    │
+       │                     │                        │
+       │                     │ POST /visits           │
+       │                     │ (patient_id injected)  │
+       │                     │───────────────────────►│
+       │                     │                        │
+       │                     │ 201 {visit, queue...}  │
+       │                     │◄───────────────────────│
+       │                     │                        │
+       │ 201 {patient, visit}│                        │
+       │◄────────────────────│                        │
+```
+
+### Why use the orchestrator instead of calling services directly?
+
+| Benefit | Description |
+|---------|-------------|
+| **Single API** | One URL for all reception desk operations |
+| **Atomic flow** | `register-and-visit` registers patient + creates visit in one request |
+| **JWT passthrough** | No service key needed — downstream services verify the same user token |
+| **Audit ready** | Middleware can log every orchestrated action to audit logs |
+| **Future-proof** | Add business logic (ID verification, duplicate checks) in one place |
+
+Key source code: `services/reception-service/app/services/orchestrator.py` — `< 80 lines of forwarding logic`.
 
 ### How to Test on Swagger UI
 
@@ -789,3 +1072,320 @@ def get_tenant_session(db_url: str) -> Session:
 - Two migration files share the same parent revision
 - Either chain them (one depends on the other) or create a merge migration
 - Current fix: `0007_add_incidents.py` now depends on `0007_add_superadmin_mfa_fields.py`
+
+---
+
+## 11. Invoice & Payment Endpoints (super_admin only)
+
+Invoice and payment endpoints are available under the **superadmin** router at `master-service:8002`. You can test them through the API gateway (`http://localhost:8000/docs`) or directly (`http://localhost:8002/docs`).
+
+All require a **super_admin** Bearer token.
+
+### Prerequisites — Get a tenant ID
+
+You need an existing tenant's `tenant_id` (e.g. `hosp-abc12345`). List all tenants:
+
+```bash
+SADMIN_TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"superadmin","password":"superadmin123"}' | jq -r .access_token)
+
+curl -s http://localhost:8000/api/v1/superadmin/tenants \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq -r '.[].tenant_id'
+```
+
+Pick a tenant and save it:
+
+```bash
+TENANT_ID="hosp-<your-tenant-id>"
+```
+
+### GET /api/v1/superadmin/tenants/{tenant_id}/invoices — List invoices
+
+Lists all invoices for a tenant, newest first.
+
+**curl:**
+```bash
+curl -s http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/invoices \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq
+```
+
+**Expected response (200):**
+```json
+[
+  {
+    "invoice_id": "uuid",
+    "tenant_id": "hosp-...",
+    "subscription_id": "uuid",
+    "invoice_number": "PR-hosp-abc-1234ABCD",
+    "billing_period_start": "2026-06-01",
+    "billing_period_end": "2026-07-01",
+    "plan_name": "standard",
+    "amount": "99.00",
+    "currency": "USD",
+    "due_date": "2026-07-01",
+    "status": "paid",
+    "issued_at": "2026-06-25T12:00:00Z",
+    "paid_at": "2026-06-25T12:00:00Z"
+  }
+]
+```
+
+Returns `[]` when no invoices exist.
+
+### POST /api/v1/superadmin/tenants/{tenant_id}/invoices — Create invoice
+
+Manually create an invoice for a tenant. The `subscription_id` is auto-resolved from the tenant's active subscription — no need to provide it.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/invoices \
+  -H "Authorization: Bearer $SADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"invoice_number\": \"INV-2026-001\",
+    \"billing_period_start\": \"2026-06-01\",
+    \"billing_period_end\": \"2026-07-01\",
+    \"plan_name\": \"standard\",
+    \"amount\": 99.00,
+    \"currency\": \"USD\",
+    \"due_date\": \"2026-07-15\",
+    \"status\": \"unpaid\"
+  }" | jq
+```
+
+**Expected response (201):**
+```json
+{
+  "invoice_id": "uuid",
+  "tenant_id": "hosp-...",
+  "subscription_id": "uuid",
+  "invoice_number": "INV-2026-001",
+  "billing_period_start": "2026-06-01",
+  "billing_period_end": "2026-07-01",
+  "plan_name": "standard",
+  "amount": "99.00",
+  "currency": "USD",
+  "due_date": "2026-07-15",
+  "status": "unpaid",
+  "issued_at": "2026-06-25T...",
+  "paid_at": null
+}
+```
+
+**Invoice status values:** `unpaid`, `paid`, `overdue`, `void`
+
+### PATCH /api/v1/superadmin/invoices/{invoice_id} — Update invoice
+
+Update the `status` and/or `paid_at` of an existing invoice.
+
+**Step 1:** Get an invoice ID:
+```bash
+INV_ID=$(curl -s http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/invoices \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq -r '.[0].invoice_id')
+echo $INV_ID
+```
+
+**Step 2:** Mark the invoice as paid:
+```bash
+curl -X PATCH http://localhost:8000/api/v1/superadmin/invoices/$INV_ID \
+  -H "Authorization: Bearer $SADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"status\": \"paid\",
+    \"paid_at\": \"2026-06-25T12:00:00Z\"
+  }" | jq
+```
+
+**Expected response (200):**
+```json
+{
+  "invoice_id": "uuid",
+  "tenant_id": "hosp-...",
+  "subscription_id": "uuid",
+  "invoice_number": "INV-2026-001",
+  "billing_period_start": "2026-06-01",
+  "billing_period_end": "2026-07-01",
+  "plan_name": "standard",
+  "amount": "99.00",
+  "currency": "USD",
+  "due_date": "2026-07-15",
+  "status": "paid",
+  "issued_at": "2026-06-25T...",
+  "paid_at": "2026-06-25T12:00:00Z"
+}
+```
+
+### GET /api/v1/superadmin/tenants/{tenant_id}/payments — List payments
+
+Lists all payment records for a tenant, newest first.
+
+```bash
+curl -s http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/payments \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq
+```
+
+**Expected response (200):**
+```json
+[
+  {
+    "payment_id": "uuid",
+    "invoice_id": "uuid",
+    "tenant_id": "hosp-...",
+    "amount": "99.00",
+    "currency": "USD",
+    "payment_method": "credit_card",
+    "reference_number": "TXN-001",
+    "recorded_by": "super-admin-uuid",
+    "receipt_sent_at": null,
+    "paid_at": "2026-06-25T12:00:00Z"
+  }
+]
+```
+
+Returns `[]` when no payments exist.
+
+### POST /api/v1/superadmin/tenants/{tenant_id}/payments — Record payment
+
+Record a payment against an invoice. Requires:
+- `invoice_id` — must be an existing invoice UUID
+- `payment_method` — e.g. `credit_card`, `bank_transfer`
+- You must be logged in as a super_admin with a matching local `super_admins` record
+
+**Step 1:** Get an invoice ID (unpaid):
+```bash
+INV_ID=$(curl -s http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/invoices \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq -r '.[] | select(.status == "unpaid") | .invoice_id' | head -1)
+```
+
+**Step 2:** Record the payment:
+```bash
+curl -X POST http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/payments \
+  -H "Authorization: Bearer $SADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"invoice_id\": \"$INV_ID\",
+    \"amount\": 99.00,
+    \"currency\": \"USD\",
+    \"payment_method\": \"bank_transfer\",
+    \"reference_number\": \"TXN-2026-001\",
+    \"receipt_sent_at\": null
+  }" | jq
+```
+
+**Expected response (201):**
+```json
+{
+  "payment_id": "uuid",
+  "invoice_id": "uuid",
+  "tenant_id": "hosp-...",
+  "amount": "99.00",
+  "currency": "USD",
+  "payment_method": "bank_transfer",
+  "reference_number": "TXN-2026-001",
+  "recorded_by": "super-admin-uuid",
+  "receipt_sent_at": null,
+  "paid_at": "2026-06-25T12:00:00Z"
+}
+```
+
+**Important:** The `recorded_by` field is auto-populated from your super_admin local record. If you get a 403 "Super admin record required to record payments", ensure your super admin user exists in the local `super_admins` table. Create one via `POST /api/v1/superadmin/users` if needed.
+
+### Suggested testing flow (end-to-end)
+
+```bash
+# 1. Set up tokens and tenant ID
+SADMIN_TOKEN="eyJ..."
+TENANT_ID="hosp-abc12345"
+
+# 2. Check existing invoices (should be empty on new tenant)
+curl -s "http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/invoices" \
+  -H "Authorization: Bearer $SADMIN_TOKEN"
+
+# 3. Create an invoice (subscription_id auto-resolved)
+curl -s -X POST "http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/invoices" \
+  -H "Authorization: Bearer $SADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"invoice_number\": \"INV-001\", \"billing_period_start\": \"2026-06-01\", \"billing_period_end\": \"2026-07-01\", \"plan_name\": \"standard\", \"amount\": 99.00, \"currency\": \"USD\", \"due_date\": \"2026-07-15\", \"status\": \"unpaid\"}" | jq
+
+# 4. Extract the new invoice ID
+INV_ID=$(curl -s "http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/invoices" \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq -r '.[0].invoice_id')
+
+# 5. Mark invoice as paid
+curl -s -X PATCH "http://localhost:8000/api/v1/superadmin/invoices/$INV_ID" \
+  -H "Authorization: Bearer $SADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status": "paid", "paid_at": "2026-06-25T12:00:00Z"}' | jq
+
+# 6. Record a payment
+curl -s -X POST "http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/payments" \
+  -H "Authorization: Bearer $SADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"invoice_id\": \"$INV_ID\", \"amount\": 99.00, \"currency\": \"USD\", \"payment_method\": \"bank_transfer\", \"reference_number\": \"TXN-001\"}" | jq
+
+# 7. Verify payments list
+curl -s "http://localhost:8000/api/v1/superadmin/tenants/$TENANT_ID/payments" \
+  -H "Authorization: Bearer $SADMIN_TOKEN" | jq
+```
+
+### Swagger UI testing steps
+
+1. Open `http://localhost:8002/docs` (or `http://localhost:8000/docs` then navigate to the superadmin tag)
+2. Click **Authorize**, paste your **super admin** token, click **Authorize**
+3. Navigate to the **Invoices** tag:
+   - `GET /tenants/{tenant_id}/invoices` — click **Try it out**, enter `tenant_id`, click **Execute**
+   - `POST /tenants/{tenant_id}/invoices` — fill in dates, amount (subscription_id auto-resolved), click **Execute**
+   - `PATCH /invoices/{invoice_id}` — enter the invoice UUID from the create response, update status, click **Execute**
+4. Navigate to the **Payments** tag:
+   - `GET /tenants/{tenant_id}/payments` — enter `tenant_id`, click **Execute**
+   - `POST /tenants/{tenant_id}/payments` — fill in invoice_id, amount, payment_method, click **Execute**
+
+---
+
+## 12. PostgreSQL Database Commands
+
+### List all databases
+
+```bash
+docker exec hospital-postgres-master psql -U postgres -c "\l"
+```
+
+### Connect to a tenant database
+
+```bash
+docker exec -it hospital-postgres-master psql -U postgres -d tenant_hosp-17cb782c
+```
+> **Note:** On Windows (PowerShell), use `winpty docker exec -it hospital-postgres-master psql -U postgres -d tenant_hosp-17cb782c`
+
+### List tables in the current database
+
+```sql
+\dt
+```
+
+### Describe a table (show columns, types, constraints)
+
+```sql
+\d+ table_name
+```
+
+Or query information_schema directly:
+
+```sql
+SELECT column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_name = 'table_name'
+ORDER BY ordinal_position;
+```
+
+### Example — Check columns in the `users` table of a tenant database
+
+```bash
+docker exec hospital-postgres-master psql -U postgres -d tenant_hosp-43be392c -c "\d+ users"
+```
+
+Or:
+
+```bash
+docker exec hospital-postgres-master psql -U postgres -d tenant_hosp-43be392c -c "SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = 'users' ORDER BY ordinal_position;"
+```

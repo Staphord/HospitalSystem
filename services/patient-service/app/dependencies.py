@@ -1,4 +1,4 @@
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -36,7 +36,7 @@ def resolve_tenant_db_url(tenant_id: str) -> str | None:
     db = get_master_db()
     try:
         row = db.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
             {"tid": tenant_id},
         ).scalar()
         if not row:
@@ -61,11 +61,12 @@ async def get_tenant_id_from_token(
 
 
 async def get_tenant_db_url_from_request(
-    x_tenant_db: str | None = Header(None),
+    request: Request,
     payload: dict = Depends(get_current_active_user),
 ) -> str | None:
-    if x_tenant_db:
-        return x_tenant_db
+    db_url = request.headers.get("x-tenant-db")
+    if db_url and db_url.startswith("postgresql://"):
+        return db_url
     return None
 
 

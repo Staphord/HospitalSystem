@@ -9,7 +9,11 @@ from app.models.saas import (
     SaaSPayment,
     SuperAdminAuditLog,
     Announcement,
+    SystemRole,
+    TenantSystemRoleAssignment,
     SubscriptionAuditLog,
+    GlobalRole,
+    TenantRole,
 )
 from app.models.incident import Incident
 
@@ -25,6 +29,10 @@ __all__ = [
     "SaaSPayment",
     "SuperAdminAuditLog",
     "Announcement",
+    "SystemRole",
+    "TenantSystemRoleAssignment",
     "SubscriptionAuditLog",
+    "GlobalRole",
+    "TenantRole",
     "Incident",
 ]

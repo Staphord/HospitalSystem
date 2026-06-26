@@ -2,20 +2,21 @@ from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, field_validator
 
 
 class PatientRegisterRequest(BaseModel):
     full_name: str
     date_of_birth: date
     gender: str
-    phone: Optional[str] = None
+    phone_primary: str
+    phone_secondary: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
-    emergency_contact_name: Optional[str] = None
-    emergency_contact_phone: Optional[str] = None
+    next_of_kin_name: Optional[str] = None
+    next_of_kin_phone: Optional[str] = None
+    next_of_kin_relationship: Optional[str] = None
     national_id: Optional[str] = None
-    medical_history: Optional[str] = None
     allergies: Optional[str] = None
     blood_group: Optional[str] = None
 
@@ -48,13 +49,14 @@ class PatientResponse(BaseModel):
     full_name: str
     date_of_birth: date
     gender: str
-    phone: Optional[str] = None
+    phone_primary: Optional[str] = None
+    phone_secondary: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
-    emergency_contact_name: Optional[str] = None
-    emergency_contact_phone: Optional[str] = None
+    next_of_kin_name: Optional[str] = None
+    next_of_kin_phone: Optional[str] = None
+    next_of_kin_relationship: Optional[str] = None
     national_id: Optional[str] = None
-    medical_history: Optional[str] = None
     allergies: Optional[str] = None
     blood_group: Optional[str] = None
     created_at: datetime
@@ -67,6 +69,22 @@ class PatientResponse(BaseModel):
 class PatientSearchResponse(BaseModel):
     patients: list[PatientResponse]
     total: int
+
+
+class PatientUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    gender: Optional[str] = None
+    phone_primary: Optional[str] = None
+    phone_secondary: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    next_of_kin_name: Optional[str] = None
+    next_of_kin_phone: Optional[str] = None
+    next_of_kin_relationship: Optional[str] = None
+    national_id: Optional[str] = None
+    allergies: Optional[str] = None
+    blood_group: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):

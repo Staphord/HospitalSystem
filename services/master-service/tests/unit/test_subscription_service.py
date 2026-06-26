@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
@@ -39,10 +40,11 @@ def db():
 def _make_tenant(db, **overrides):
     defaults = {
         "tenant_id": "hosp-test001",
-        "name": "Test Hospital",
-        "db_dsn_encrypted": "enc",
+        "hospital_name": "Test Hospital",
+        "db_connection_string": "enc",
         "status": "active",
         "is_active": True,
+        "created_by": uuid.uuid4(),
         "subscription_plan": "standard",
         "subscription_status": SubscriptionStatus.ACTIVE.value,
         "subscription_billing_cycle": BillingCycle.MONTHLY.value,

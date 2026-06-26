@@ -1,8 +1,11 @@
+from datetime import datetime
+from uuid import UUID
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from shared.security import validate_password, sanitize_username
 
-ALLOWED_HOSPITAL_ROLES = r"^(hospital_admin|hospital_user|nurse|clinician|doctor|patient)$"
+ALLOWED_HOSPITAL_ROLES = r"^[a-zA-Z_][a-zA-Z0-9_]*$"
 
 
 class HospitalUserCreate(BaseModel):
@@ -76,3 +79,51 @@ class RoleOut(BaseModel):
     composite: bool | None = None
     clientRole: bool | None = None
     containerId: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Global role output schema (hospital admin read-only view)
+# ---------------------------------------------------------------------------
+
+
+class GlobalRoleOut(BaseModel):
+    global_role_id: UUID
+    name: str
+    description: str | None
+    scope: dict | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Tenant role management schemas (hospital admin)
+# ---------------------------------------------------------------------------
+
+
+class TenantRoleCreate(BaseModel):
+    name: str = Field(..., max_length=50, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str | None = Field(default=None, max_length=500)
+    scope: dict | None = None
+
+
+class TenantRoleUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=50, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str | None = Field(default=None, max_length=500)
+    scope: dict | None = None
+
+
+class TenantRoleOut(BaseModel):
+    tenant_role_id: UUID
+    tenant_id: str
+    name: str
+    description: str | None
+    scope: dict | None = None
+    created_by: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

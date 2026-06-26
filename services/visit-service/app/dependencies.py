@@ -1,4 +1,4 @@
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.core.security import get_current_active_user
 from app.config import settings
 from app.db.base import Base
+from app.db.sync import sync_tenant_schema
 
 _tenant_engine_cache: dict[str, tuple] = {}
 _master_engine = None
@@ -35,7 +36,7 @@ def resolve_tenant_db_url(tenant_id: str) -> str | None:
     db = get_master_db()
     try:
         row = db.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
             {"tid": tenant_id},
         ).scalar()
         if not row:
@@ -60,18 +61,21 @@ async def get_tenant_id_from_token(
 
 
 async def get_tenant_db_url_from_request(
-    x_tenant_db: str | None = Header(None),
+    request: Request,
 ) -> str | None:
-    return x_tenant_db
+    db_url = request.headers.get("x-tenant-db")
+    if db_url and db_url.startswith("postgresql://"):
+        return db_url
+    return None
 
 
 def get_tenant_session(db_url: str) -> Session:
     if db_url not in _tenant_engine_cache:
         engine = create_engine(db_url, pool_pre_ping=True, pool_size=5, max_overflow=10)
-        Base.metadata.create_all(bind=engine)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         _tenant_engine_cache[db_url] = (engine, SessionLocal)
-    _, SessionLocal = _tenant_engine_cache[db_url]
+    engine, SessionLocal = _tenant_engine_cache[db_url]
+    sync_tenant_schema(engine, Base.metadata)
     return SessionLocal()
 
 

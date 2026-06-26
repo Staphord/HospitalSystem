@@ -14,7 +14,7 @@ class PatientInsurance(Base):
     __tablename__ = "patient_insurance"
 
     insurance_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    patient_id = Column(String(36), nullable=False, index=True)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True)
     insurer_name = Column(String(150), nullable=False)
     policy_number = Column(String(100), nullable=False)
     coverage_limit = Column(Numeric(12, 2))
@@ -23,6 +23,7 @@ class PatientInsurance(Base):
         Enum("pending", "verified", "rejected", name="verification_status_enum"),
         nullable=False, default="pending",
     )
+    verified_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -31,7 +32,7 @@ class Visit(Base):
     __tablename__ = "visits"
 
     visit_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    patient_id = Column(String(36), nullable=False, index=True)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True)
     visit_number = Column(String(20), unique=True, nullable=False, index=True)
     visit_date = Column(Date, nullable=False, default=date.today)
     visit_type = Column(
@@ -53,7 +54,7 @@ class Visit(Base):
         ),
         nullable=False, default="registered",
     )
-    registered_by = Column(String(36), nullable=False)
+    registered_by = Column(UUID(as_uuid=True), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -63,7 +64,7 @@ class Queue(Base):
 
     queue_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=False)
-    patient_id = Column(String(36), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
     queue_type = Column(
         Enum(
             "triage", "doctor", "lab", "radiology", "pharmacy", "billing",
@@ -80,6 +81,8 @@ class Queue(Base):
         Enum("waiting", "in_progress", "completed", "skipped", name="queue_status_enum"),
         nullable=False, default="waiting",
     )
+    called_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
