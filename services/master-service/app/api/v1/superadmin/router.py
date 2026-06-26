@@ -2456,7 +2456,7 @@ async def export_tenant_data(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
     try:
-        data = _do_export(db, tenant_id)
+        data = await _do_export(db, tenant_id)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
