@@ -52,12 +52,15 @@ def create_superadmin(
         raise BadRequestError("Email already exists")
 
     import json
+    import pyotp
     
-    secret = mfa_secret or secrets.token_hex(16)
+    secret = mfa_secret or pyotp.random_base32()
     
     # Generate 10 random 8-character backup codes
     backup_codes_list = [secrets.token_hex(4).upper() for _ in range(10)]
-    backup_codes_json = json.dumps(backup_codes_list)
+    import hashlib
+    hashed_codes = [hashlib.sha256(c.encode()).hexdigest() for c in backup_codes_list]
+    backup_codes_json = json.dumps(hashed_codes)
     
     admin = SuperAdmin(
         username=username,
@@ -69,10 +72,12 @@ def create_superadmin(
         mfa_enabled=True,
         backup_codes=backup_codes_json,
         is_active=True,
+        created_at=datetime.now(timezone.utc),
     )
     db.add(admin)
     db.commit()
     db.refresh(admin)
+    admin.plaintext_backup_codes = backup_codes_list
     return admin
 
 

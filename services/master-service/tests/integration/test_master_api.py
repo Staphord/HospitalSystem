@@ -584,3 +584,32 @@ def test_revoke_all_sessions(client, db_session):
     db.refresh(session2)
     assert session1.is_revoked is True
     assert session2.is_revoked is True
+
+
+def test_create_superadmin_user(client, db_session):
+    payload = {
+        "username": "new_superadmin_test",
+        "email": "new_test_admin@example.com",
+        "password": "SecureP@ss123!",
+        "full_name": "New Test Admin",
+        "role": "super_admin"
+    }
+
+    # Patch settings to simulate configured SMTP and patch aiosmtplib.send to verify calling
+    with patch("app.api.v1.superadmin.router.settings.smtp_user", "smtp_user"), \
+         patch("app.api.v1.superadmin.router.settings.smtp_password", "smtp_pass"), \
+         patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send_email:
+        
+        response = client.post("/api/v1/superadmin/users", json=payload)
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["username"] == "new_superadmin_test"
+        assert data["email"] == "new_test_admin@example.com"
+        
+        # Verify email dispatch was triggered
+        assert mock_send_email.call_count == 1
+        sent_msg = mock_send_email.call_args[0][0]
+        assert sent_msg["To"] == "new_test_admin@example.com"
+        assert "Welcome to HospitalFlow - Platform Administrator Credentials" in sent_msg["Subject"]
+
