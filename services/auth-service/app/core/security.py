@@ -81,8 +81,8 @@ async def _decode_token(token: str) -> Dict[str, Any]:
 
     kid = headers.get("kid")
 
-    # Local superadmin tokens are HS256 signed with SECRET_KEY and have no kid
-    if not kid:
+    # Local superadmin and impersonation tokens are HS256 signed with SECRET_KEY
+    if kid == "impersonation-key" or not kid:
         try:
             payload = jwt.decode(
                 token,
@@ -177,7 +177,8 @@ async def get_current_active_user(
     token = credentials.credentials
     payload = await _decode_token(token)
 
-    if settings.keycloak_introspect:
+    # Skip Keycloak introspection for impersonation tokens
+    if settings.keycloak_introspect and not payload.get("impersonator") and not payload.get("impersonation"):
         await _introspect_token(token)
 
     token_payload = TokenPayload(

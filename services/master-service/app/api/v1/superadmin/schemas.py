@@ -140,6 +140,8 @@ class TenantUpdate(BaseModel):
     hospital_name: str | None = None
     status: str | None = None
     is_active: bool | None = None
+    reason: str | None = None
+    suspension_reason: str | None = None
 
     country: str | None = Field(default=None, max_length=100)
     city: str | None = Field(default=None, max_length=100)
@@ -404,6 +406,7 @@ class SubscriptionOut(BaseModel):
     subscription_id: UUID
     tenant_id: str
     plan_id: UUID
+    plan_name: str
     billing_cycle: str
     start_date: date
     end_date: date
@@ -433,6 +436,10 @@ class InvoiceOut(BaseModel):
     status: str
     issued_at: datetime
     paid_at: datetime | None
+    amount_paid: Decimal | None = None
+    payment_method: str | None = None
+    reference_number: str | None = None
+    payment_date: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -559,6 +566,9 @@ class InvoiceCreate(BaseModel):
 class InvoiceUpdate(BaseModel):
     status: str | None = Field(default=None, max_length=32)
     paid_at: datetime | None = None
+    amount_paid: Decimal | None = None
+    payment_method: str | None = None
+    reference_number: str | None = None
 
 
 class SaaSPaymentCreate(BaseModel):
