@@ -138,11 +138,13 @@ async def create_user(
             detail=f"Failed to create user in Keycloak: {e}",
         )
 
+    full_name_val = (body.full_name and body.full_name.strip()) or body.username
+
     create_local_user(
         db=db,
         keycloak_sub=kc_sub,
         username=body.username,
-        full_name=body.full_name or None,
+        full_name=full_name_val,
         email=body.email,
         role=body.role,
         hospital_id=None,
@@ -153,7 +155,7 @@ async def create_user(
         username=body.username,
         email=body.email,
         password=body.password,
-        full_name=body.full_name,
+        full_name=full_name_val,
         role=body.role,
         mfa_secret=body.mfa_secret,
     )
@@ -178,13 +180,14 @@ async def update_user(
     # Look up the Keycloak user ID via the local User record
     user_record = db.query(User).filter(User.username == admin.username).first()
     kc_sub = user_record.keycloak_sub if user_record else None
-    if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()):
+    if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()) or body.is_active is not None:
         if kc_sub:
             await update_keycloak_user(
                 kc_sub,
                 username=body.username,
                 email=body.email,
                 full_name=body.full_name,
+                enabled=body.is_active,
                 realm="master",
             )
     if body.password is not None:
@@ -2521,3 +2524,130 @@ async def update_incident(
     db.commit()
     db.refresh(incident)
     return IncidentOut.model_validate(incident)
+@router.get("/sessions", response_model=list[SuperAdminSessionOut], tags=["Super Admin Sessions"])
+@limiter.limit("30/minute")
+async def list_super_admin_sessions(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: TokenPayload = Depends(get_current_active_user),
+) -> list[SuperAdminSessionOut]:
+    admin_users = db.query(User).filter(
+        User.role.in_(["super_admin", "billing_manager", "support"])
+    ).all()
+    admin_subs = {u.keycloak_sub for u in admin_users if u.keycloak_sub}
+    if current_user.sub:
+        admin_subs.add(current_user.sub)
+    
+    if not admin_subs:
+        return []
+    
+    from app.models.auth import RefreshToken
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    active_tokens = db.query(RefreshToken).filter(
+        RefreshToken.keycloak_sub.in_(list(admin_subs)),
+        RefreshToken.is_revoked == False,
+        RefreshToken.expires_at > now
+    ).all()
+    
+    user_map = {u.keycloak_sub: u for u in admin_users}
+    tenants = db.query(Tenant).all()
+    tenant_map = {t.tenant_id: t.name for t in tenants}
+    
+    sessions = []
+    for token in active_tokens:
+        user_info = user_map.get(token.keycloak_sub)
+        if not user_info and current_user.sub and token.keycloak_sub == current_user.sub:
+            class TempUser:
+                username = current_user.preferred_username or "superadmin"
+                email = current_user.email or ""
+                full_name = current_user.preferred_username or "Super Admin"
+                role = "super_admin"
+            user_info = TempUser()
+            
+        if not user_info:
+            continue
+            
+        is_impersonation = False
+        tenant_id = None
+        tenant_name = None
+        
+        if token.refresh_token_hash and token.refresh_token_hash.startswith("impersonation:"):
+            is_impersonation = True
+            tenant_id = token.refresh_token_hash.split(":", 1)[1]
+            tenant_name = tenant_map.get(tenant_id, tenant_id)
+            
+        device = "Web Browser"
+        if token.user_agent:
+            ua = token.user_agent.lower()
+            if "iphone" in ua:
+                device = "iPhone"
+            elif "ipad" in ua:
+                device = "iPad"
+            elif "android" in ua:
+                device = "Android Device"
+            elif "windows" in ua:
+                device = "Windows PC"
+            elif "macintosh" in ua or "mac os x" in ua:
+                device = "Mac"
+            elif "linux" in ua:
+                device = "Linux PC"
+
+        sessions.append({
+            "id": token.session_id,
+            "user_sub": token.keycloak_sub,
+            "username": user_info.username or "",
+            "email": user_info.email or "",
+            "full_name": user_info.full_name or user_info.username or "",
+            "role": user_info.role or "super_admin",
+            "login_time": token.created_at,
+            "expires_at": token.expires_at,
+            "is_impersonation": is_impersonation,
+            "impersonation_tenant_id": tenant_id,
+            "impersonation_tenant_name": tenant_name,
+            "ip_address": token.ip_address or "127.0.0.1",
+            "device": device
+        })
+    return sessions
+
+
+@router.delete("/sessions/{session_id}", status_code=204, tags=["Super Admin Sessions"])
+@limiter.limit("30/minute")
+async def revoke_super_admin_session(
+    request: Request,
+    session_id: str,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+):
+    from app.models.auth import RefreshToken
+    token = db.query(RefreshToken).filter(RefreshToken.session_id == session_id).first()
+    if not token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        
+    token.is_revoked = True
+    db.commit()
+    return None
+
+
+@router.delete("/sessions", status_code=204, tags=["Super Admin Sessions"])
+@limiter.limit("30/minute")
+async def revoke_all_super_admin_sessions(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+):
+    from app.models.auth import RefreshToken
+    
+    admin_users = db.query(User).filter(
+        User.role.in_(["super_admin", "billing_manager", "support"])
+    ).all()
+    admin_subs = [u.keycloak_sub for u in admin_users if u.keycloak_sub]
+    
+    if admin_subs:
+        db.query(RefreshToken).filter(
+            RefreshToken.keycloak_sub.in_(admin_subs),
+            RefreshToken.is_revoked == False
+        ).update({"is_revoked": True}, synchronize_session=False)
+        db.commit()
+        
+    return None

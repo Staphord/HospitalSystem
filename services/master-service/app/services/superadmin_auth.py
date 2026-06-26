@@ -51,7 +51,14 @@ def create_superadmin(
     if db.query(SuperAdmin).filter(SuperAdmin.email == email).first():
         raise BadRequestError("Email already exists")
 
+    import json
+    
     secret = mfa_secret or secrets.token_hex(16)
+    
+    # Generate 10 random 8-character backup codes
+    backup_codes_list = [secrets.token_hex(4).upper() for _ in range(10)]
+    backup_codes_json = json.dumps(backup_codes_list)
+    
     admin = SuperAdmin(
         username=username,
         email=email,
@@ -59,6 +66,8 @@ def create_superadmin(
         full_name=full_name,
         role=role,
         mfa_secret=secret,
+        mfa_enabled=True,
+        backup_codes=backup_codes_json,
         is_active=True,
     )
     db.add(admin)
