@@ -523,6 +523,59 @@ Returns a single patient record or 404 if not found.
 
 Returns 204 on success, 404 if not found.
 
+### Radiology Service — Swagger UI (port 8014)
+
+Radiology reports manage imaging study results. Each report tracks modality, findings, impressions,
+and the radiographer/radiologist who performed/reported the study.
+
+1. Open `http://localhost:8014/docs`
+2. Click **Authorize**, paste your **hospital admin** token, click **Authorize**
+3. Expand `POST /api/v1/radiology/reports` to create a new report
+
+Available endpoints:
+| Method | Path | Auth Required |
+|--------|------|--------------|
+| POST | `/reports` | hospital_admin |
+| GET | `/reports` | hospital_admin (list with optional filters) |
+| GET | `/reports/{report_id}` | hospital_admin |
+| PUT | `/reports/{report_id}` | hospital_admin |
+| DELETE | `/reports/{report_id}` | hospital_admin |
+| `/health` | GET | none |
+
+**POST /api/v1/radiology/reports — Create a radiology report**
+
+```json
+{
+  "request_id": "uuid",
+  "visit_id": "uuid",
+  "patient_id": "uuid",
+  "modality": "xray",
+  "body_part": "Chest",
+  "performed_by": "uuid",
+  "status": "scheduled"
+}
+```
+
+**Modality values:** `xray`, `ct`, `mri`, `ultrasound`, `fluoroscopy`, `mammography`, `other`
+**Status values:** `scheduled`, `performed`, `reported`, `verified`
+
+When status transitions to `reported`, `reported_at` is auto-set.
+
+### Radiology Service Unit Tests
+
+```bash
+cd services/radiology-service
+$env:PYTHONPATH="."; python -m pytest tests/unit/test_radiology.py -v
+```
+
+All 4 tests cover:
+- Create report with valid modality
+- Create report with invalid modality (400 error)
+- Get report not found (404 error)
+- List reports (empty result)
+
+All tests pass.
+
 ### Unit tests
 
 ```bash
@@ -534,6 +587,10 @@ All 14 tests cover:
 - Patient number generation (format, increment, per-hospital isolation, sequence table)
 - Patient registration (full and minimal fields)
 - Search by name, national_id, patient_number
+- Cross-hospital isolation
+- Patient retrieval by ID
+- Patient deletion (found + not found)
+- Patient count aggregation
 - Cross-hospital isolation
 - Patient retrieval by ID
 - Patient deletion (found + not found)
