@@ -132,9 +132,8 @@ async def update_me(
     ctx: TenantContext = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
-    # Check if user is a regular tenant user or super admin
-    user = getattr(request.state, "user", None)
-    is_super = user and user.get("super_admin_id")
+    is_super = ctx.is_super_admin
+    realm = "master" if is_super else (ctx.tenant_id or settings.keycloak_realm)
 
     # Update in Keycloak
     try:
@@ -143,12 +142,24 @@ async def update_me(
             username=body.username,
             email=body.email,
             full_name=body.full_name,
+            realm=realm,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to update user in identity provider: {str(e)}")
 
-    # Update local DB if tenant user
-    if not is_super and ctx.tenant_id:
+    # Update local DB
+    if is_super:
+        from app.models.admin import SuperAdmin
+        admin = db.query(SuperAdmin).filter(SuperAdmin.super_admin_id == ctx.user_sub).first()
+        if admin:
+            if body.username:
+                admin.username = body.username
+            if body.email:
+                admin.email = body.email
+            if body.full_name:
+                admin.full_name = body.full_name
+            db.commit()
+    elif ctx.tenant_id:
         from app.services.provision import get_tenant_db_session
         tenant_db = get_tenant_db_session(ctx.tenant_id)
         try:
@@ -173,19 +184,23 @@ async def change_password(
     ctx: TenantContext = Depends(get_current_tenant),
     db: Session = Depends(get_db),
 ) -> dict:
+    is_super = ctx.is_super_admin
+    realm = "master" if is_super else (ctx.tenant_id or settings.keycloak_realm)
+
     # Verify current password using login service
     try:
         await auth_service.login(
             username=ctx.preferred_username,
             password=body.current_password,
             db=db,
+            realm=realm,
         )
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid current password")
 
     # Update to new password
     try:
-        await set_user_password(user_id=ctx.user_sub, password=body.new_password)
+        await set_user_password(user_id=ctx.user_sub, password=body.new_password, realm=realm)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to change password: {str(e)}")
 

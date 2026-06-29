@@ -187,7 +187,12 @@ def create_user(
     print(f"\nCreating user '{username}'...")
 
     kc_admin = _get_kc_admin()
-    _ensure_realm_and_roles(kc_admin)
+    target_realm = "master" if "super_admin" in roles else KEYCLOAK_REALM
+    if target_realm == "master":
+        kc_admin.realm_name = "master"
+        kc_admin.connection.realm_name = "master"
+    else:
+        _ensure_realm_and_roles(kc_admin)
 
     user_id = kc_admin.get_user_id(username)
     if user_id:
@@ -348,12 +353,86 @@ def create_user(
             full_name = username.capitalize() + " User"
             from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
+
+            # Detect if a record with this username already exists but with a different super_admin_id (UUID mismatch)
+            existing_by_username = db.execute(
+                text("SELECT super_admin_id FROM super_admins WHERE username = :username"),
+                {"username": username}
+            ).scalar()
+
+            if existing_by_username and str(existing_by_username) != str(user_id):
+                print(f"  [MIGRATION] Superadmin username '{username}' exists with old ID '{existing_by_username}'. Migrating references to new ID '{user_id}'...")
+                
+                # 1. Create a temporary placeholder record with the new ID
+                temp_username = f"{username}_temp_{uuid.uuid4().hex[:8]}"
+                temp_email = f"temp_{uuid.uuid4().hex[:8]}@example.com"
+                
+                nested = db.begin_nested()
+                try:
+                    db.execute(
+                        text(
+                            """
+                            INSERT INTO super_admins (super_admin_id, username, email, password_hash, full_name, role, mfa_secret, mfa_enabled, is_active, created_at)
+                            VALUES (:super_admin_id, :username, :email, 'temp', 'Temp', 'super_admin', 'temp', false, true, NOW())
+                            """
+                        ),
+                        {
+                            "super_admin_id": user_id,
+                            "username": temp_username,
+                            "email": temp_email,
+                        }
+                    )
+                    nested.commit()
+                    print(f"    Created temporary placeholder record with ID '{user_id}'")
+                except Exception as e:
+                    nested.rollback()
+                    print(f"    Failed to create placeholder record: {e}")
+
+                # 2. Update references in all tables that depend on super_admin_id
+                referencing_tables = [
+                    ("tenants", "created_by"),
+                    ("system_roles", "created_by"),
+                    ("saas_payments", "recorded_by"),
+                    ("super_admin_audit_log", "super_admin_id"),
+                    ("announcements", "created_by"),
+                    ("incidents", "created_by"),
+                    ("incidents", "assigned_to"),
+                    ("global_roles", "created_by"),
+                ]
+                for tbl, col in referencing_tables:
+                    nested = db.begin_nested()
+                    try:
+                        db.execute(
+                            text(f"UPDATE {tbl} SET {col} = :new_id WHERE {col} = :old_id"),
+                            {"new_id": user_id, "old_id": existing_by_username}
+                        )
+                        nested.commit()
+                        print(f"    Updated references in table '{tbl}' column '{col}'")
+                    except Exception as e:
+                        # Rollback nested savepoint if table doesn't exist
+                        nested.rollback()
+                        print(f"    Failed to update {tbl}.{col}: {e}")
+                
+                # 3. Delete the old record to prevent conflicts before inserting the new one
+                nested = db.begin_nested()
+                try:
+                    db.execute(
+                        text("DELETE FROM super_admins WHERE super_admin_id = :old_id"),
+                        {"old_id": existing_by_username}
+                    )
+                    nested.commit()
+                    print(f"    Deleted stale super_admins record for ID '{existing_by_username}'")
+                except Exception as e:
+                    nested.rollback()
+                    print(f"    Failed to delete stale super_admins record: {e}")
+
             db.execute(
                 text(
                     """
                     INSERT INTO super_admins (super_admin_id, username, email, password_hash, full_name, role, mfa_secret, mfa_enabled, is_active, created_at)
                     VALUES (:super_admin_id, :username, :email, :password_hash, :full_name, :role, :mfa_secret, false, true, :created_at)
-                    ON CONFLICT (username) DO UPDATE SET
+                    ON CONFLICT (super_admin_id) DO UPDATE SET
+                        username = EXCLUDED.username,
                         email = EXCLUDED.email,
                         password_hash = EXCLUDED.password_hash,
                         full_name = EXCLUDED.full_name,
