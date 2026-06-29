@@ -32,7 +32,7 @@ def _keycloak_logout_endpoint(realm: str | None = None) -> str:
     return f"{settings.keycloak_url}/realms/{realm}/protocol/openid-connect/logout"
 
 
-async def login(username: str, password: str, db: Session, realm: str | None = None,ip_address: str | None = None, user_agent: str | None = None, client_id: str | None = None) -> Dict[str, Any]:
+async def login(username: str, password: str, db: Session, realm: str | None = None, client_id: str | None = None) -> Dict[str, Any]:
     data = {
         "grant_type": "password",
         "client_id": client_id or settings.keycloak_client_id,
@@ -60,8 +60,6 @@ async def login(username: str, password: str, db: Session, realm: str | None = N
         session_id=session_state,
         refresh_token=token_data["refresh_token"],
         expires_in=token_data.get("refresh_expires_in", 1800),
-        ip_address=ip_address,
-        user_agent=user_agent,
     )
 
     return {
@@ -75,12 +73,7 @@ async def login(username: str, password: str, db: Session, realm: str | None = N
     }
 
 
-async def refresh_access_token(
-    refresh_token: str,
-    db: Session,
-    ip_address: str | None = None,
-    user_agent: str | None = None,
-) -> Dict[str, Any]:
+async def refresh_access_token(refresh_token: str, db: Session) -> Dict[str, Any]:
     db_record = db.query(RefreshToken).filter(
         RefreshToken.refresh_token_hash == _hash_token(refresh_token),
         RefreshToken.is_revoked == False,
@@ -123,8 +116,6 @@ async def refresh_access_token(
         session_id=session_state,
         refresh_token=token_data["refresh_token"],
         expires_in=token_data.get("refresh_expires_in", 1800),
-        ip_address=ip_address,
-        user_agent=user_agent,
     )
 
     return {
@@ -184,13 +175,7 @@ def _extract_token_info(access_token: str, session_state_fallback: Optional[str]
 
 
 def _store_refresh_token(
-    db: Session,
-    keycloak_sub: str,
-    session_id: str,
-    refresh_token: str,
-    expires_in: int,
-    ip_address: str | None = None,
-    user_agent: str | None = None,
+    db: Session, keycloak_sub: str, session_id: str, refresh_token: str, expires_in: int
 ) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
@@ -201,10 +186,6 @@ def _store_refresh_token(
         record.refresh_token_hash = _hash_token(refresh_token)
         record.expires_at = expires_at
         record.is_revoked = False
-        if ip_address:
-            record.ip_address = ip_address
-        if user_agent:
-            record.user_agent = user_agent
     else:
         record = RefreshToken(
             session_id=session_id,
@@ -212,8 +193,6 @@ def _store_refresh_token(
             refresh_token_hash=_hash_token(refresh_token),
             expires_at=expires_at,
             is_revoked=False,
-            ip_address=ip_address,
-            user_agent=user_agent,
         )
         db.add(record)
 

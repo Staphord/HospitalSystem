@@ -16,8 +16,6 @@ def create_impersonation_token(
     super_admin_sub: str,
     super_admin_username: str,
     target_tenant_id: str,
-    ip_address: str | None = None,
-    user_agent: str | None = None,
 ) -> dict:
     now = datetime.now(timezone.utc)
     payload = {
@@ -40,29 +38,6 @@ def create_impersonation_token(
         algorithm="HS256",
         headers={"kid": "impersonation-key"},
     )
-
-    from app.db.master import get_master_db
-    from app.models.auth import RefreshToken
-
-    db = get_master_db()
-    try:
-        db.add(
-            RefreshToken(
-                session_id=payload["jti"],
-                keycloak_sub=super_admin_sub,
-                refresh_token_hash=f"impersonation:{target_tenant_id}",
-                expires_at=now + timedelta(seconds=settings.impersonation_token_ttl),
-                is_revoked=False,
-                ip_address=ip_address,
-                user_agent=user_agent,
-            )
-        )
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        raise e
-    finally:
-        db.close()
 
     return {
         "access_token": token,
