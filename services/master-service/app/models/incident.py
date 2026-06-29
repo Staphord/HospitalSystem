@@ -45,7 +45,7 @@ class Incident(Base):
         index=True,
     )
     assigned_to = Column(
-        String(64),
+        UUID(as_uuid=True),
         ForeignKey("super_admins.super_admin_id"),
         nullable=True,
     )
@@ -53,7 +53,7 @@ class Incident(Base):
     resolution_notes = Column(Text, nullable=True)
 
     created_by = Column(
-        String(64),
+        UUID(as_uuid=True),
         ForeignKey("super_admins.super_admin_id"),
         nullable=False,
     )
