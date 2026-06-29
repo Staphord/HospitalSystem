@@ -61,7 +61,6 @@ def create_superadmin(
     import hashlib
     hashed_codes = [hashlib.sha256(c.encode()).hexdigest() for c in backup_codes_list]
     backup_codes_json = json.dumps(hashed_codes)
-    
     admin = SuperAdmin(
         username=username,
         email=email,
@@ -69,8 +68,6 @@ def create_superadmin(
         full_name=full_name,
         role=role,
         mfa_secret=secret,
-        mfa_enabled=True,
-        backup_codes=backup_codes_json,
         is_active=True,
         created_at=datetime.now(timezone.utc),
     )

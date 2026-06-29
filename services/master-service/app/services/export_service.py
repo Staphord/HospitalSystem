@@ -3,6 +3,7 @@
 import logging
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from cryptography.fernet import Fernet
 from sqlalchemy import create_engine, inspect, text
@@ -20,6 +21,8 @@ def _serialize_value(val):
         return float(val)
     if isinstance(val, bytes):
         return val.decode()
+    if isinstance(val, UUID):
+        return str(val)
     return val
 
 
@@ -35,11 +38,11 @@ def _table_to_dicts(engine, table_name: str) -> list[dict]:
         return result
 
 
-def export_tenant_data(db: Session, tenant_id: str) -> dict:
+async def export_tenant_data(db: Session, tenant_id: str) -> dict:
     """Export all data from a tenant's database as a JSON-serializable dict."""
     from app.services.tenant_service import decrypt_dsn, get_tenant_db_dsn
 
-    dsn = get_tenant_db_dsn(db, tenant_id)
+    dsn = await get_tenant_db_dsn(db, tenant_id)
     if not dsn:
         raise ValueError(f"Could not resolve database URL for tenant {tenant_id}")
 
