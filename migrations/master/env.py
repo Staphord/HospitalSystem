@@ -7,13 +7,7 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 # Add the project root to the path so we can import app.db.base
-project_root = os.path.join(os.path.dirname(__file__), "..", "..")
-sys.path.insert(0, project_root)
-
-# Also check for local monorepo development layout where master-service is under services/master-service
-monorepo_dir = os.path.join(project_root, "services", "master-service")
-if os.path.isdir(monorepo_dir):
-    sys.path.insert(0, monorepo_dir)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 # We expect a Base in app.db.base
 # If it doesn't exist yet, the migration file is self-contained.

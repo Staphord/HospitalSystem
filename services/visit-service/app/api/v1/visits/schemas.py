@@ -34,7 +34,7 @@ class VisitCreateRequest(BaseModel):
         if not v.strip():
             raise ValueError("patient_id cannot be empty")
         try:
-            uuid.UUID(v)
+            UUID(v)
         except ValueError:
             raise ValueError("patient_id must be a valid UUID")
         return v.strip()
@@ -54,7 +54,7 @@ class VisitStatusUpdateRequest(BaseModel):
 
 class VisitResponse(BaseModel):
     visit_id: UUID
-    patient_id: str
+    patient_id: UUID
     visit_number: str
     visit_date: date
     visit_type: str
@@ -63,7 +63,7 @@ class VisitResponse(BaseModel):
     verification_flag: Optional[str] = None
     queue_number: Optional[str] = None
     status: str
-    registered_by: str
+    registered_by: UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -79,7 +79,7 @@ class VisitCreateResponse(BaseModel):
 class QueueTodayResponse(BaseModel):
     queue_id: UUID
     visit_id: UUID
-    patient_id: str
+    patient_id: UUID
     queue_type: str
     queue_number: str
     priority: str
@@ -129,7 +129,7 @@ class QueueStatusUpdateRequest(BaseModel):
 class QueueCallResponse(BaseModel):
     queue_id: UUID
     visit_id: UUID
-    patient_id: str
+    patient_id: UUID
     queue_type: str
     queue_number: str
     priority: str
@@ -142,7 +142,7 @@ class QueueCallResponse(BaseModel):
 class QueueListResponse(BaseModel):
     queue_id: UUID
     visit_id: UUID
-    patient_id: str
+    patient_id: UUID
     queue_type: str
     queue_number: str
     priority: str

@@ -8,9 +8,6 @@ import subprocess
 from sqlalchemy import create_engine, text
 
 
-from app.services.tenant_service import decrypt_dsn
-
-
 def get_active_tenants() -> list[tuple[str, str]]:
     master_db_url = os.getenv("MASTER_DB_URL", "postgresql://postgres:postgres@localhost:5432/hospital_master")
     engine = create_engine(master_db_url)
@@ -23,14 +20,14 @@ def get_active_tenants() -> list[tuple[str, str]]:
 
 def run_migrations(tenant_id: str, dsn: str) -> None:
     env = os.environ.copy()
-    env["TENANT_DB_URL"] = decrypt_dsn(dsn)
+    env["TENANT_DB_URL"] = dsn
     subprocess.run(
         ["alembic", "upgrade", "head"],
         cwd="migrations/tenant",
         env=env,
         check=True,
     )
-    print(f"[OK] {tenant_id}")
+    print(f"  [OK] {tenant_id}")
 
 
 def main():

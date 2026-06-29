@@ -33,3 +33,13 @@ app.add_middleware(
 )
 
 app.include_router(v1_router)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
+@app.get("/")
+async def root():
+    return {"service": "visit-service", "status": "running"}
