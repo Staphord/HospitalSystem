@@ -38,11 +38,16 @@ async def _forward(
             headers[k] = v
 
     client = _get_client()
+    kwargs = {"headers": headers}
+    if isinstance(body, dict):
+        kwargs["json"] = body
+    else:
+        kwargs["content"] = body
+
     response = await client.request(
         method=method,
         url=target,
-        headers=headers,
-        content=body,
+        **kwargs,
     )
 
     if response.status_code >= 400:
@@ -59,10 +64,10 @@ async def _forward(
         return {"status": "ok"}
 
 
-async def register_patient(request: Request) -> dict:
+async def register_patient(body: Any, request: Request) -> dict:
     """Register a new patient via patient-service."""
-    body = await request.body()
-    return await _forward("POST", settings.patient_service_url, "/api/v1/patients/register", request, body)
+    payload = body.model_dump(mode="json") if hasattr(body, "model_dump") else body
+    return await _forward("POST", settings.patient_service_url, "/api/v1/patients/register", request, payload)
 
 
 async def search_patients(request: Request) -> dict:
@@ -80,10 +85,10 @@ async def delete_patient(patient_id: str, request: Request) -> dict:
     return await _forward("DELETE", settings.patient_service_url, f"/api/v1/patients/{patient_id}", request)
 
 
-async def create_visit(request: Request) -> dict:
+async def create_visit(body: Any, request: Request) -> dict:
     """Create a visit via visit-service."""
-    body = await request.body()
-    return await _forward("POST", settings.visit_service_url, "/api/v1/visits", request, body)
+    payload = body.model_dump(mode="json") if hasattr(body, "model_dump") else body
+    return await _forward("POST", settings.visit_service_url, "/api/v1/visits", request, payload)
 
 
 async def triage_queue_today(request: Request) -> dict:
@@ -91,23 +96,9 @@ async def triage_queue_today(request: Request) -> dict:
     return await _forward("GET", settings.visit_service_url, "/api/v1/visits/queues/triage/today", request)
 
 
-async def register_and_create_visit(request: Request) -> dict:
-    """Combined: register patient then create a visit in one call.
-    
-    Expected body:
-    {
-      "patient": { ... patient registration fields ... },
-      "visit": { ... visit creation fields (without patient_id) ... }
-    }
-    """
-    import json
-
-    try:
-        raw = await request.body()
-        payload = json.loads(raw)
-    except Exception:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body")
-
+async def register_and_create_visit(body: Any, request: Request) -> dict:
+    """Combined: register patient then create a visit in one call."""
+    payload = body.model_dump(mode="json") if hasattr(body, "model_dump") else body
     patient_data = payload.get("patient")
     visit_data = payload.get("visit")
     if not patient_data or not visit_data:
@@ -116,8 +107,8 @@ async def register_and_create_visit(request: Request) -> dict:
             detail="Both 'patient' and 'visit' objects are required",
         )
 
+
     # Step 1: Register patient
-    import httpx as _httpx
     client = _get_client()
     headers = {}
     for k, v in request.headers.items():

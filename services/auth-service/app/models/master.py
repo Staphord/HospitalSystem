@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean
+from sqlalchemy import Column, DateTime, Integer, String, Text, Boolean, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
 
@@ -10,6 +11,11 @@ class Tenant(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String(64), unique=True, index=True, nullable=False)
     hospital_name = Column(String(200), nullable=False)
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("super_admins.super_admin_id"),
+        nullable=False,
+    )
     country = Column(String(100), nullable=False, default="")
     city = Column(String(100), nullable=False, default="")
     address = Column(Text, nullable=True)

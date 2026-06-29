@@ -38,7 +38,7 @@ def _get_tenant_db(hospital_id: str) -> Session | None:
     master_db = _get_db()
     try:
         row = master_db.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid"),
+            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid"),
             {"tid": hospital_id}
         ).fetchone()
         if not row or not row[0]:
@@ -220,7 +220,7 @@ def create_user(
         user_id = kc_admin.create_user(create_payload)
         # Explicitly clear any auto-added required actions
         kc_admin.update_user(user_id=user_id, payload=create_payload)
-        print(f"  Created Keycloak user (ID: {user_id})")
+        print(f"Created Keycloak user (ID: {user_id})")
 
     kc_admin.set_user_password(user_id=user_id, password=password, temporary=False)
 
@@ -272,8 +272,8 @@ def create_user(
             else:
                 db.execute(
                     text(
-                        "INSERT INTO users (keycloak_sub, username, full_name, email, role, hospital_id) "
-                        "VALUES (:sub, :username, :full_name, :email, :role, :hid)"
+                        "INSERT INTO users (keycloak_sub, username, full_name, email, role, hospital_id, mfa_enabled) "
+                        "VALUES (:sub, :username, :full_name, :email, :role, :hid, false)"
                     ),
                     {
                         "sub": user_id,
@@ -319,8 +319,8 @@ def create_user(
                     else:
                         tenant_db.execute(
                             text(
-                                "INSERT INTO users (keycloak_sub, username, full_name, email, role, hospital_id) "
-                                "VALUES (:sub, :username, :full_name, :email, :role, :hid)"
+                                "INSERT INTO users (keycloak_sub, username, full_name, email, role, hospital_id, mfa_enabled) "
+                                "VALUES (:sub, :username, :full_name, :email, :role, :hid, false)"
                             ),
                             {
                                 "sub": user_id,
@@ -342,27 +342,29 @@ def create_user(
 
         # Insert into super_admins table for super_admin role
         if "super_admin" in roles:
+            import pyotp
             password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
-            mfa_secret = secrets.token_hex(16)
+            mfa_secret = pyotp.random_base32()
             full_name = username.capitalize() + " User"
             from datetime import datetime, timezone
             now = datetime.now(timezone.utc)
             db.execute(
                 text(
                     """
-                    INSERT INTO super_admins (super_admin_id, username, email, password_hash, full_name, role, mfa_secret, is_active, created_at)
-                    VALUES (:super_admin_id, :username, :email, :password_hash, :full_name, :role, :mfa_secret, true, :created_at)
+                    INSERT INTO super_admins (super_admin_id, username, email, password_hash, full_name, role, mfa_secret, mfa_enabled, is_active, created_at)
+                    VALUES (:super_admin_id, :username, :email, :password_hash, :full_name, :role, :mfa_secret, false, true, :created_at)
                     ON CONFLICT (username) DO UPDATE SET
                         email = EXCLUDED.email,
                         password_hash = EXCLUDED.password_hash,
                         full_name = EXCLUDED.full_name,
                         role = EXCLUDED.role,
                         mfa_secret = EXCLUDED.mfa_secret,
+                        mfa_enabled = false,
                         is_active = true
                     """
                 ),
                 {
-                    "super_admin_id": str(uuid.uuid4()),
+                    "super_admin_id": user_id,
                     "username": username,
                     "email": email,
                     "password_hash": password_hash,

@@ -5,13 +5,9 @@ from sqlalchemy import Column, String, UUID, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
-from app.models.visit import PatientInsurance
+from app.models.visit import PatientInsurance, Patient
 
-
-class MockPatient(Base):
-    __tablename__ = "patients"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    hospital_id = Column(String(50), nullable=False)
+MockPatient = Patient
 
 
 @pytest.fixture

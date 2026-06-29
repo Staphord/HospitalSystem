@@ -50,13 +50,17 @@ async def find_user_realm_by_username(username: str) -> str | None:
             url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
             r = await client.get(f"{url}?username={username}&maxResults=1", headers=hdrs)
             if r.is_success and r.json():
+                if realm.startswith("hosp-"):
+                    from app.core.database import get_session_local
+                    from app.models.master import Tenant
+                    db = get_session_local()()
+                    try:
+                        tenant = db.query(Tenant).filter(Tenant.tenant_id == realm, Tenant.is_active == True).first()
+                        if not tenant:
+                            continue
+                    finally:
+                        db.close()
                 return realm
-
-        # If not found, search ALL realms
-        try:
-            realms_url = f"{settings.keycloak_url}/admin/realms"
-        except Exception:
-            return None
 
     # Get all realm names
     all_realms = await _list_all_realms()
@@ -67,6 +71,16 @@ async def find_user_realm_by_username(username: str) -> str | None:
             url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
             r = await client.get(f"{url}?username={username}&maxResults=1", headers=hdrs)
             if r.is_success and r.json():
+                if realm.startswith("hosp-"):
+                    from app.core.database import get_session_local
+                    from app.models.master import Tenant
+                    db = get_session_local()()
+                    try:
+                        tenant = db.query(Tenant).filter(Tenant.tenant_id == realm, Tenant.is_active == True).first()
+                        if not tenant:
+                            continue
+                    finally:
+                        db.close()
                 return realm
     return None
 

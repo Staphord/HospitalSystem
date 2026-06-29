@@ -5,6 +5,8 @@ SERVICES=(
   api-gateway
   auth-service
   master-service
+  patient-service
+  visit-service
   reception-service
   triage-service
   consultation-service
@@ -26,9 +28,9 @@ for svc in "${SERVICES[@]}"; do
     cd "services/$svc"
     if [ -f "pytest.ini" ] || [ -d "tests" ]; then
       if [ -f "../../.env" ]; then
-        export $(grep -v '^#' ../../.env | xargs)
+        export $(grep -v '^#' ../../.env | sed 's/#.*//g' | xargs)
       fi
-      PYTHONPATH=. pytest -q || echo "Tests failed for $svc"
+      PYTHONPATH=.:../.. pytest -q || echo "Tests failed for $svc"
     else
       echo "No tests found for $svc"
     fi

@@ -1,0 +1,24 @@
+Welcome to HospitalFlow!
+
+A new platform administrator account has been created for you.
+
+Your login credentials and MFA setup details are below:
+
+Username: {username}
+Temporary Password: {password}
+
+MFA Configuration:
+Multi-Factor Authentication (MFA) is enabled for your account. You can sign in using:
+1. Google Authenticator or any TOTP app using the secret key below.
+2. Email OTP (sent to your registered email address during login).
+3. The backup codes provided below.
+
+MFA Secret Key: {mfa_secret}
+
+Emergency Backup Codes (keep these secure):
+{backup_codes_text}
+
+To log in, please visit: {frontend_url}/login
+
+Best regards,
+The HospitalFlow Team

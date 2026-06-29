@@ -1,8 +1,22 @@
 from datetime import date, datetime
 from typing import Optional
+import uuid
 from uuid import UUID
 
 from pydantic import BaseModel, field_validator
+
+
+class TriageCompleteRequest(BaseModel):
+    priority: str
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority(cls, v: str) -> str:
+        allowed = {"emergency", "urgent", "semi_urgent", "non_urgent"}
+        if v.lower() not in allowed:
+            raise ValueError(f"priority must be one of {allowed}")
+        return v.lower()
+
 
 
 class VisitCreateRequest(BaseModel):

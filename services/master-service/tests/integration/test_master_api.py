@@ -47,7 +47,7 @@ app.router.lifespan_context = dummy_lifespan
 
 @pytest.fixture(name="db_session")
 def fixture_db_session():
-    engine = create_engine("sqlite:///file:testdb?mode=memory&cache=shared", connect_args={"check_same_thread": False})
+    engine = create_engine("sqlite:///file:testdb?mode=memory&cache=shared", connect_args={"check_same_thread": False, "uri": True})
     connection = engine.connect()
     
     # Create tables used in integration tests
@@ -137,7 +137,7 @@ def test_create_tenant(client, db_session):
     response = client.post("/api/v1/superadmin/tenants", json=payload)
     assert response.status_code == 201
     data = response.json()
-    assert data["name"] == "Test General Hospital"
+    assert data["hospital_name"] == "Test General Hospital"
     assert data["status"] == "trial"
     assert data["is_active"] is True
 
@@ -149,8 +149,9 @@ def test_create_tenant(client, db_session):
 
 # Test listing tenants
 def test_list_tenants(client, db_session):
-    tenant1 = Tenant(tenant_id="t1", name="Hosp 1", is_active=True, status="active", subscription_plan="basic", db_dsn_encrypted="dummy")
-    tenant2 = Tenant(tenant_id="t2", name="Hosp 2", is_active=False, status="suspended", subscription_plan="standard", db_dsn_encrypted="dummy")
+    import uuid
+    tenant1 = Tenant(tenant_id="t1", hospital_name="Hosp 1", is_active=True, status="active", subscription_plan="basic", db_connection_string="dummy", created_by=uuid.uuid4())
+    tenant2 = Tenant(tenant_id="t2", hospital_name="Hosp 2", is_active=False, status="suspended", subscription_plan="standard", db_connection_string="dummy", created_by=uuid.uuid4())
     db_session.add_all([tenant1, tenant2])
     db_session.commit()
 
@@ -164,7 +165,8 @@ def test_list_tenants(client, db_session):
 
 # Test fetching tenant details
 def test_get_tenant(client, db_session):
-    tenant = Tenant(tenant_id="t1", name="Hosp 1", is_active=True, status="active", subscription_plan="basic", db_dsn_encrypted="dummy")
+    import uuid
+    tenant = Tenant(tenant_id="t1", hospital_name="Hosp 1", is_active=True, status="active", subscription_plan="basic", db_connection_string="dummy", created_by=uuid.uuid4())
     db_session.add(tenant)
     db_session.commit()
 
@@ -172,21 +174,23 @@ def test_get_tenant(client, db_session):
     assert response.status_code == 200
     data = response.json()
     assert data["tenant_id"] == "t1"
-    assert data["name"] == "Hosp 1"
+    assert data["hospital_name"] == "Hosp 1"
 
 
 # Test updating tenant status via PATCH
 def test_update_tenant_status(client, db_session):
+    import uuid
     tenant = Tenant(
         tenant_id="t1",
-        name="Hosp 1",
+        hospital_name="Hosp 1",
         is_active=True,
         status="active",
         subscription_plan="basic",
         subscription_status="active",
         subscription_start=None,
         subscription_end=None,
-        db_dsn_encrypted="dummy",
+        db_connection_string="dummy",
+        created_by=uuid.uuid4(),
     )
     db_session.add(tenant)
     db_session.commit()
@@ -221,7 +225,8 @@ def test_update_tenant_status(client, db_session):
 
 # Test fetching tenant subscription state
 def test_get_tenant_subscription_state(client, db_session):
-    tenant = Tenant(tenant_id="t1", name="Hosp 1", is_active=True, status="active", subscription_plan="standard", db_dsn_encrypted="dummy")
+    import uuid
+    tenant = Tenant(tenant_id="t1", hospital_name="Hosp 1", is_active=True, status="active", subscription_plan="standard", db_connection_string="dummy", created_by=uuid.uuid4())
     db_session.add(tenant)
     db_session.commit()
 
@@ -236,7 +241,7 @@ def test_get_tenant_subscription_state(client, db_session):
 def test_generate_invoice(client, db_session):
     import uuid
     from datetime import date
-    tenant = Tenant(tenant_id="t1", name="Hosp 1", is_active=True, status="active", subscription_plan="standard", db_dsn_encrypted="dummy")
+    tenant = Tenant(tenant_id="t1", hospital_name="Hosp 1", is_active=True, status="active", subscription_plan="standard", db_connection_string="dummy", created_by=uuid.uuid4())
     db_session.add(tenant)
     
     plan = SubscriptionPlan(
@@ -285,11 +290,9 @@ def test_generate_invoice(client, db_session):
 def test_record_payment(client, db_session):
     import uuid
     from datetime import date, datetime
-    tenant = Tenant(tenant_id="t1", name="Hosp 1", is_active=True, status="active", subscription_plan="standard", db_dsn_encrypted="dummy")
-    db_session.add(tenant)
 
     admin = SuperAdmin(
-        super_admin_id="de305d54-75b4-431b-adb2-eb6b9e546014",
+        super_admin_id=uuid.UUID("de305d54-75b4-431b-adb2-eb6b9e546014"),
         username="superadmin",
         email="superadmin@example.com",
         password_hash="dummy",
@@ -300,6 +303,17 @@ def test_record_payment(client, db_session):
         created_at=datetime.utcnow(),
     )
     db_session.add(admin)
+
+    tenant = Tenant(
+        tenant_id="t1",
+        hospital_name="Hosp 1",
+        is_active=True,
+        status="active",
+        subscription_plan="standard",
+        db_connection_string="dummy",
+        created_by=uuid.UUID("de305d54-75b4-431b-adb2-eb6b9e546014"),
+    )
+    db_session.add(tenant)
 
     plan = SubscriptionPlan(
         plan_id=uuid.uuid4(),
@@ -418,6 +432,7 @@ from app.core.database import get_db
 from app.core.security import get_current_active_user, TokenPayload
 # Test list super admin sessions
 def test_list_super_admin_sessions(client, db_session):
+    import uuid
     from datetime import datetime, timezone, timedelta
     db = db_session
 
@@ -476,12 +491,26 @@ def test_list_super_admin_sessions(client, db_session):
     )
     db.add(session3)
 
+    admin = SuperAdmin(
+        super_admin_id=uuid.UUID("de305d54-75b4-431b-adb2-eb6b9e546014"),
+        username="superadmin",
+        email="superadmin@example.com",
+        password_hash="dummy",
+        full_name="Super Admin",
+        role="super_admin",
+        mfa_secret="dummy",
+        mfa_enabled=False,
+        created_at=now
+    )
+    db.add(admin)
+
     tenant = Tenant(
         tenant_id="tenant-abc",
-        name="Test Tenant Hospital",
-        db_dsn_encrypted="encrypted-dsn",
+        hospital_name="Test Tenant Hospital",
+        db_connection_string="encrypted-dsn",
         status="active",
-        is_active=True
+        is_active=True,
+        created_by=uuid.UUID("de305d54-75b4-431b-adb2-eb6b9e546014"),
     )
     db.add(tenant)
 
@@ -584,3 +613,32 @@ def test_revoke_all_sessions(client, db_session):
     db.refresh(session2)
     assert session1.is_revoked is True
     assert session2.is_revoked is True
+
+
+def test_create_superadmin_user(client, db_session):
+    payload = {
+        "username": "new_superadmin_test",
+        "email": "new_test_admin@example.com",
+        "password": "SecureP@ss123!",
+        "full_name": "New Test Admin",
+        "role": "super_admin"
+    }
+
+    # Patch settings to simulate configured SMTP and patch aiosmtplib.send to verify calling
+    with patch("app.api.v1.superadmin.router.settings.smtp_user", "smtp_user"), \
+         patch("app.api.v1.superadmin.router.settings.smtp_password", "smtp_pass"), \
+         patch("aiosmtplib.send", new_callable=AsyncMock) as mock_send_email:
+        
+        response = client.post("/api/v1/superadmin/users", json=payload)
+        
+        assert response.status_code == 201
+        data = response.json()
+        assert data["username"] == "new_superadmin_test"
+        assert data["email"] == "new_test_admin@example.com"
+        
+        # Verify email dispatch was triggered
+        assert mock_send_email.call_count == 1
+        sent_msg = mock_send_email.call_args[0][0]
+        assert sent_msg["To"] == "new_test_admin@example.com"
+        assert "Welcome to HospitalFlow - Platform Administrator Credentials" in sent_msg["Subject"]
+

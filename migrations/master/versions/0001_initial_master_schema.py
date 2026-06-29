@@ -47,7 +47,7 @@ def upgrade() -> None:
 
     op.create_table(
         "super_admins",
-        sa.Column("super_admin_id", sa.String(length=64), primary_key=True),
+        sa.Column("super_admin_id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("username", sa.String(length=128), nullable=False, unique=True),
         sa.Column("email", sa.String(length=255), nullable=False, unique=True),
         sa.Column("password_hash", sa.String(length=255), nullable=False),

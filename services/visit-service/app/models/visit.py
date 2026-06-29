@@ -10,6 +10,13 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.db.base import Base
 
 
+class Patient(Base):
+    __tablename__ = "patients"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(String(50), nullable=True)
+
+
 class PatientInsurance(Base):
     __tablename__ = "patient_insurance"
 
