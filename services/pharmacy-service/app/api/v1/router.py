@@ -3,6 +3,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import (
     AdjustInventoryRequest,
@@ -26,6 +27,8 @@ from app.api.v1.schemas import (
 )
 from app.core.security import TokenPayload, require_role
 from app.core.tenant_auth import get_current_tenant
+from app.dependencies import get_tenant_db
+from app.services import inventory as inventory_service
 from app.services import pharmacy as pharmacy_service
 
 router = APIRouter(
@@ -95,24 +98,27 @@ async def get_dispense_summary(
 
 @router.get("/inventory/low-stock-alerts", response_model=LowStockAlertsResponse, tags=["Inventory"])
 async def get_low_stock_alerts(
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> LowStockAlertsResponse:
-    return pharmacy_service.get_low_stock_alerts()
+    return await inventory_service.get_low_stock_alerts(db)
 
 
 @router.post("/inventory/restock", response_model=RestockResponse, status_code=201, tags=["Inventory"])
 async def restock_inventory(
     body: RestockRequest,
     user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> RestockResponse:
-    return pharmacy_service.restock_inventory(body, user)
+    return await inventory_service.restock_inventory(db, body, user)
 
 
 @router.post("/inventory/adjust", response_model=AdjustInventoryResponse, status_code=201, tags=["Inventory"])
 async def adjust_inventory(
     body: AdjustInventoryRequest,
     user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> AdjustInventoryResponse:
-    return pharmacy_service.adjust_inventory(body, user)
+    return await inventory_service.adjust_inventory(db, body, user)
 
 
 @router.get("/inventory", response_model=InventoryListResponse, tags=["Inventory"])
@@ -122,16 +128,17 @@ async def list_inventory(
     low_stock: bool | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> InventoryListResponse:
-    return pharmacy_service.list_inventory(search, category, low_stock, page, page_size)
+    return await inventory_service.list_inventory(db, search, category, low_stock, page, page_size)
 
 
 @router.get("/inventory/{inventory_id}", response_model=InventoryDetailResponse, tags=["Inventory"])
 async def get_inventory_detail(
     inventory_id: UUID,
-    user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> InventoryDetailResponse:
-    return pharmacy_service.get_inventory_detail(inventory_id, user)
+    return await inventory_service.get_inventory_detail(db, inventory_id)
 
 
 # ── Labels ─────────────────────────────────────────────────────────────────────

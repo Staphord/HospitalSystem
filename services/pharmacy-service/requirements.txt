@@ -13,4 +13,5 @@ psycopg2-binary
 cryptography
 pytest
 pytest-asyncio
+aiosqlite
 aio-pika

@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
-from app.services import pharmacy as svc
+from app.services import pharmacy as pharmacy_svc
 
 
 def test_health(pharmacist_client: TestClient):
@@ -23,8 +23,8 @@ def test_get_inventory_list(pharmacist_client: TestClient):
     response = pharmacist_client.get("/api/v1/pharmacy/inventory")
     assert response.status_code == 200
     data = response.json()
-    assert data["total"] == 1
-    assert data["items"][0]["drug_name"] == "Amoxicillin"
+    assert data["total"] == 2
+    assert any(item["drug_name"] == "Amoxicillin" for item in data["items"])
 
 
 def test_get_low_stock_alerts_before_inventory_id_route(pharmacist_client: TestClient):
@@ -37,8 +37,8 @@ def test_dispense_validation_rejects_past_expiry(pharmacist_client: TestClient):
     response = pharmacist_client.post(
         "/api/v1/pharmacy/dispense",
         json={
-            "prescription_id": str(svc.STUB_PRESCRIPTION_PENDING_ID),
-            "visit_id": str(svc.STUB_VISIT_ID),
+            "prescription_id": str(pharmacy_svc.STUB_PRESCRIPTION_PENDING_ID),
+            "visit_id": str(pharmacy_svc.STUB_VISIT_ID),
             "drug_name": "Amoxicillin",
             "batch_number": "BATCH-2025-089",
             "expiry_date": "2020-01-01",
@@ -54,8 +54,8 @@ def test_dispense_success(pharmacist_client: TestClient):
     response = pharmacist_client.post(
         "/api/v1/pharmacy/dispense",
         json={
-            "prescription_id": str(svc.STUB_PRESCRIPTION_PENDING_ID),
-            "visit_id": str(svc.STUB_VISIT_ID),
+            "prescription_id": str(pharmacy_svc.STUB_PRESCRIPTION_PENDING_ID),
+            "visit_id": str(pharmacy_svc.STUB_VISIT_ID),
             "drug_name": "Amoxicillin",
             "batch_number": "BATCH-2025-089",
             "expiry_date": (date.today() + timedelta(days=365)).isoformat(),
