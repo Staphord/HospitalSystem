@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     suspended_tenant_blocklist_ttl: int = Field(default=3600, alias="SUSPENDED_BLOCKLIST_TTL")
 
     password_reset_token_ttl: int = Field(default=3600, alias="PASSWORD_RESET_TOKEN_TTL")
+    keycloak_access_token_lifespan: int = Field(default=300, alias="KEYCLOAK_ACCESS_TOKEN_LIFESPAN")
 
     audit_db_url: str | None = Field(default=None, alias="AUDIT_DATABASE_URL")
     db_admin_url: str = Field(default="postgresql://postgres:postgres@localhost:5432/postgres", alias="DB_ADMIN_URL")

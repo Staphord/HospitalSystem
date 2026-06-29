@@ -15,10 +15,52 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.ext.hybrid import hybrid_property
 
 from app.db.base import Base
+
+
+class UUID(TypeDecorator):
+    """Platform-independent UUID type.
+    Uses PostgreSQL's UUID type, otherwise uses CHAR(36), storing as stringified hex values.
+    """
+    impl = CHAR
+    cache_ok = True
+
+    def __init__(self, as_uuid=True):
+        super().__init__()
+        self.as_uuid = as_uuid
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=self.as_uuid))
+        else:
+            return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        if dialect.name == "postgresql":
+            return str(value)
+        else:
+            if isinstance(value, uuid.UUID):
+                return str(value)
+            return value
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if self.as_uuid:
+            if isinstance(value, uuid.UUID):
+                return value
+            try:
+                return uuid.UUID(value)
+            except ValueError:
+                return value
+        return value
 
 
 def _utc_now() -> datetime:
@@ -97,6 +139,23 @@ class Subscription(Base):
 
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
+    @hybrid_property
+    def id(self):
+        return self.subscription_id
+
+    @id.setter
+    def id(self, value):
+        self.subscription_id = value
+
+    @property
+    def plan_name(self) -> str:
+        # Get subscription plan display name
+        from app.services.subscription_plans import PLAN_UUIDS, PLAN_CATALOG
+        for plan_enum, p_uuid in PLAN_UUIDS.items():
+            if p_uuid == self.plan_id:
+                return PLAN_CATALOG[plan_enum].display_name
+        return "Free Trial"
+
 
 class InvoiceStatus(str):
     unpaid = "unpaid"
@@ -140,6 +199,14 @@ class Invoice(Base):
     issued_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
     paid_at = Column(DateTime(timezone=True), nullable=True)
 
+    @hybrid_property
+    def id(self):
+        return self.invoice_id
+
+    @id.setter
+    def id(self, value):
+        self.invoice_id = value
+
 
 class SaaSPayment(Base):
     """Payment receipts from hospitals for subscriptions."""
@@ -176,6 +243,14 @@ class SaaSPayment(Base):
     )
     receipt_sent_at = Column(DateTime(timezone=True), nullable=True)
     paid_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    @hybrid_property
+    def id(self):
+        return self.payment_id
+
+    @id.setter
+    def id(self, value):
+        self.payment_id = value
 
 
 class SuperAdminAuditLog(Base):
@@ -235,6 +310,115 @@ class Announcement(Base):
         nullable=True,
     )
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+    @hybrid_property
+    def id(self):
+        return self.announcement_id
+
+    @id.setter
+    def id(self, value):
+        self.announcement_id = value
+
+
+class SystemRole(Base):
+    """Roles created by super admin assignable to specific or all tenants."""
+
+    __tablename__ = "system_roles"
+
+    system_role_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name = Column(String(50), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    scope = Column(JSONB, nullable=True)
+    is_global = Column(Boolean, nullable=False, default=False)
+
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("super_admins.super_admin_id"),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
+class TenantSystemRoleAssignment(Base):
+    """Maps system roles to specific tenants (only when is_global=False)."""
+
+    __tablename__ = "tenant_system_roles"
+
+    assignment_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    system_role_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("system_roles.system_role_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    tenant_id = Column(
+        String(64),
+        ForeignKey("tenants.tenant_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+
+
+class GlobalRole(Base):
+    """Roles created by superadmin available to ALL tenants (no per-tenant assignment needed)."""
+
+    __tablename__ = "global_roles"
+
+    global_role_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name = Column(String(50), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    scope = Column(JSONB, nullable=True)
+
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("super_admins.super_admin_id"),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+
+class TenantRole(Base):
+    """Roles created by hospital admin within a specific tenant (stored in Master DB for cross-tenant visibility)."""
+
+    __tablename__ = "tenant_roles"
+
+    tenant_role_id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    tenant_id = Column(
+        String(64),
+        ForeignKey("tenants.tenant_id"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(50), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    scope = Column(JSONB, nullable=True)
+
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("name", "tenant_id", name="uq_tenant_role_name_per_tenant"),
+    )
 
 
 class SubscriptionEventType(str):

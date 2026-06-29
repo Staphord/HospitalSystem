@@ -83,6 +83,18 @@ class SignupRequest(BaseModel):
     admin_full_name: str = Field(default="", max_length=255)
     subscription_plan: str = Field(default="free_trial", max_length=50)
     subscription_billing_cycle: str = Field(default="monthly", max_length=16)
+    country: str | None = Field(default=None, max_length=100)
+    city: str | None = Field(default=None, max_length=100)
+    address: str | None = None
+    primary_contact_name: str | None = Field(default=None, max_length=200)
+    primary_contact_email: EmailStr | None = None
+    primary_contact_phone: str | None = Field(default=None, max_length=20)
+    billing_email: EmailStr | None = None
+    timezone: str | None = Field(default=None, max_length=50)
+    currency: str | None = Field(default=None, max_length=5)
+    date_format: str | None = Field(default=None, max_length=20)
+    logo_url: str | None = Field(default=None, max_length=255)
+    data_region: str | None = Field(default=None, max_length=50)
 
     @field_validator("admin_password")
     @classmethod
@@ -127,3 +139,18 @@ class SignupResponse(BaseModel):
     expires_in: int
     refresh_expires_in: int
     token_type: str = "Bearer"
+
+
+class MFAChallengeResponse(BaseModel):
+    mfa_required: bool = True
+    challenge_token: str
+
+
+class MFALoginVerifyRequest(BaseModel):
+    challenge_token: str = Field(..., min_length=1)
+    totp_code: str = Field(..., min_length=6, max_length=20)
+
+
+class MFAEmailSendLoginRequest(BaseModel):
+    challenge_token: str = Field(..., min_length=1)
+

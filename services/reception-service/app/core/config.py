@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     password_reset_token_ttl: int = Field(default=3600, alias="PASSWORD_RESET_TOKEN_TTL")
 
     audit_db_url: str | None = Field(default=None, alias="AUDIT_DATABASE_URL")
+    patient_service_url: str = Field(default="http://localhost:8005", alias="PATIENT_SERVICE_URL")
+    visit_service_url: str = Field(default="http://localhost:8006", alias="VISIT_SERVICE_URL")
 
     class Config:
         env_file = ".env"

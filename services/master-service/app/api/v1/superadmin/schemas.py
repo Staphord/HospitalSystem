@@ -10,7 +10,7 @@ class SuperAdminCreate(BaseModel):
     username: str = Field(..., max_length=50)
     password: str = Field(..., min_length=8)
     email: EmailStr
-    full_name: str = Field(..., max_length=200)
+    full_name: str | None = Field(default=None, max_length=200)
     role: str = Field(default="super_admin", max_length=50)
     mfa_secret: str | None = Field(default=None, max_length=100)
 
@@ -70,17 +70,17 @@ class SuperAdminDelete(BaseModel):
 class TenantOut(BaseModel):
     id: int
     tenant_id: str
-    name: str
-    country: str | None = None
-    city: str | None = None
+    hospital_name: str
+    country: str
+    city: str
     address: str | None = None
-    primary_contact_name: str | None = None
-    primary_contact_email: str | None = None
-    primary_contact_phone: str | None = None
-    billing_email: str | None = None
-    timezone: str | None = None
-    currency: str | None = None
-    date_format: str | None = None
+    primary_contact_name: str
+    primary_contact_email: str
+    primary_contact_phone: str
+    billing_email: str
+    timezone: str
+    currency: str
+    date_format: str
     logo_url: str | None = None
     data_region: str | None = None
     status: str
@@ -91,8 +91,21 @@ class TenantOut(BaseModel):
     subscription_end: datetime | None = None
     trial_start: datetime | None = None
     trial_end: datetime | None = None
-    has_used_trial: bool | None = None
+    trial_ends_at: datetime | None = None
+    has_used_trial: bool
+    auto_renew: bool
+    grace_period_end: datetime | None = None
+    pending_plan: str | None = None
+    pending_billing_cycle: str | None = None
+    suspended_at: datetime | None = None
+    suspended_reason: str | None = None
+    reactivated_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    terminated_at: datetime | None = None
+    termination_reason: str | None = None
+    payment_provider_id: str | None = None
     is_active: bool
+    created_by: UUID | None = None
     keycloak_realm: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -124,9 +137,11 @@ class TenantCreate(BaseModel):
 
 
 class TenantUpdate(BaseModel):
-    name: str | None = None
+    hospital_name: str | None = None
     status: str | None = None
     is_active: bool | None = None
+    reason: str | None = None
+    suspension_reason: str | None = None
 
     country: str | None = Field(default=None, max_length=100)
     city: str | None = Field(default=None, max_length=100)
@@ -144,6 +159,103 @@ class TenantUpdate(BaseModel):
 
 class RoleCreate(BaseModel):
     name: str
+
+
+# ---------------------------------------------------------------------------
+# System role management schemas
+# ---------------------------------------------------------------------------
+
+
+class SystemRoleCreate(BaseModel):
+    name: str = Field(..., max_length=50, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str | None = Field(default=None, max_length=500)
+    scope: dict | None = None
+    is_global: bool = False
+    target_tenant_ids: list[str] | None = None
+
+
+class SystemRoleUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=50, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str | None = Field(default=None, max_length=500)
+    scope: dict | None = None
+    is_global: bool | None = None
+    target_tenant_ids: list[str] | None = None
+
+
+class SystemRoleOut(BaseModel):
+    system_role_id: UUID
+    name: str
+    description: str | None
+    scope: dict | None = None
+    is_global: bool
+    target_tenant_ids: list[str] = []
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TenantSystemRoleAssignmentOut(BaseModel):
+    assignment_id: UUID
+    system_role_id: UUID
+    tenant_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Global role management schemas (superadmin)
+# ---------------------------------------------------------------------------
+
+
+class GlobalRoleCreate(BaseModel):
+    name: str = Field(..., max_length=50, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str | None = Field(default=None, max_length=500)
+    scope: dict | None = None
+
+
+class GlobalRoleUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=50, pattern=r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+    description: str | None = Field(default=None, max_length=500)
+    scope: dict | None = None
+
+
+class GlobalRoleOut(BaseModel):
+    global_role_id: UUID
+    name: str
+    description: str | None
+    scope: dict | None = None
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# All-roles response (global + per-tenant)
+# ---------------------------------------------------------------------------
+
+
+class AllRolesTenantRole(BaseModel):
+    tenant_role_id: UUID
+    tenant_id: str
+    name: str
+    description: str | None
+    scope: dict | None = None
+    created_by: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AllRolesOut(BaseModel):
+    global_roles: list[GlobalRoleOut]
+    tenant_roles: list[AllRolesTenantRole]
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +328,8 @@ class SubscriptionSnapshot(BaseModel):
     is_expired: bool
     in_grace_period: bool
     has_used_trial: bool
+    pending_plan: str | None = None
+    pending_billing_cycle: str | None = None
 
 
 class SuspensionSnapshot(BaseModel):
@@ -292,6 +406,7 @@ class SubscriptionOut(BaseModel):
     subscription_id: UUID
     tenant_id: str
     plan_id: UUID
+    plan_name: str
     billing_cycle: str
     start_date: date
     end_date: date
@@ -321,6 +436,10 @@ class InvoiceOut(BaseModel):
     status: str
     issued_at: datetime
     paid_at: datetime | None
+    amount_paid: Decimal | None = None
+    payment_method: str | None = None
+    reference_number: str | None = None
+    payment_date: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -434,7 +553,6 @@ class SuperAdminAuditLogOut(BaseModel):
 
 
 class InvoiceCreate(BaseModel):
-    subscription_id: UUID
     invoice_number: str = Field(..., max_length=30)
     billing_period_start: date
     billing_period_end: date
@@ -448,6 +566,9 @@ class InvoiceCreate(BaseModel):
 class InvoiceUpdate(BaseModel):
     status: str | None = Field(default=None, max_length=32)
     paid_at: datetime | None = None
+    amount_paid: Decimal | None = None
+    payment_method: str | None = None
+    reference_number: str | None = None
 
 
 class SaaSPaymentCreate(BaseModel):
@@ -457,3 +578,62 @@ class SaaSPaymentCreate(BaseModel):
     payment_method: str = Field(..., max_length=50)
     reference_number: str | None = Field(default=None, max_length=100)
     receipt_sent_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# Incident management schemas
+# ---------------------------------------------------------------------------
+
+
+class IncidentCreate(BaseModel):
+    title: str = Field(..., max_length=200)
+    description: str
+    severity: str = Field(default="warning", max_length=16)
+    source: str | None = Field(default=None, max_length=100)
+    tenant_id: str | None = Field(default=None, max_length=64)
+    assigned_to: UUID | None = None
+
+
+class IncidentUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    severity: str | None = Field(default=None, max_length=16)
+    status: str | None = Field(default=None, max_length=32)
+    source: str | None = Field(default=None, max_length=100)
+    tenant_id: str | None = Field(default=None, max_length=64)
+    assigned_to: UUID | None = None
+    resolution_notes: str | None = None
+
+
+class IncidentOut(BaseModel):
+    incident_id: UUID
+    title: str
+    description: str
+    severity: str
+    status: str
+    source: str | None
+    tenant_id: str | None
+    assigned_to: UUID | None
+    resolved_at: datetime | None
+    resolution_notes: str | None
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+    
+class SuperAdminSessionOut(BaseModel):
+    id: str
+    user_sub: str
+    username: str
+    email: str
+    full_name: str
+    role: str
+    login_time: datetime | None = None
+    expires_at: datetime | None = None
+    is_impersonation: bool
+    impersonation_tenant_id: str | None = None
+    impersonation_tenant_name: str | None = None
+    ip_address: str | None = None
+    device: str | None = None
+
+    class Config:
+        from_attributes = True

@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends, Request
 
-from app.core.database import close_hospital_context, get_hospital_context
 from app.core.limiter import limiter
-from app.core.security import get_current_hospital_id, require_role
+from app.core.tenant_auth import get_current_tenant, TenantContext
+from app.services.orchestrator import (
+    delete_patient,
+    get_patient,
+    register_patient,
+    search_patients,
+)
 
 router = APIRouter()
 
@@ -11,33 +16,44 @@ router = APIRouter()
 @limiter.limit("30/minute")
 async def list_patients(
     request: Request,
-    hospital_id: str = Depends(get_current_hospital_id),
-) -> dict:
-    context = get_hospital_context(hospital_id)
-    try:
-        return {
-            "hospital_id": context.hospital_id,
-            "patients": [
-                {"id": "p-001", "name": "Jane Doe"},
-                {"id": "p-002", "name": "John Doe"},
-            ],
-        }
-    finally:
-        close_hospital_context(context)
+    _ctx: TenantContext = Depends(get_current_tenant),
+):
+    return await search_patients(request)
 
 
-@router.post("/patients/create")
-@limiter.limit("10/minute")
-async def create_patient(
+@router.get("/patients/search")
+@limiter.limit("30/minute")
+async def search(
     request: Request,
-    hospital_id: str = Depends(get_current_hospital_id),
-    _user=Depends(require_role("hospital_admin")),
-) -> dict:
-    context = get_hospital_context(hospital_id)
-    try:
-        return {
-            "hospital_id": context.hospital_id,
-            "status": "created",
-        }
-    finally:
-        close_hospital_context(context)
+    _ctx: TenantContext = Depends(get_current_tenant),
+):
+    return await search_patients(request)
+
+
+@router.post("/patients/register")
+@limiter.limit("10/minute")
+async def register(
+    request: Request,
+    _ctx: TenantContext = Depends(get_current_tenant),
+):
+    return await register_patient(request)
+
+
+@router.get("/patients/{patient_id}")
+@limiter.limit("30/minute")
+async def get(
+    patient_id: str,
+    request: Request,
+    _ctx: TenantContext = Depends(get_current_tenant),
+):
+    return await get_patient(patient_id, request)
+
+
+@router.delete("/patients/{patient_id}")
+@limiter.limit("10/minute")
+async def remove(
+    patient_id: str,
+    request: Request,
+    _ctx: TenantContext = Depends(get_current_tenant),
+):
+    return await delete_patient(patient_id, request)

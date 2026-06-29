@@ -17,6 +17,7 @@ _http_client: httpx.AsyncClient | None = None
 ROUTE_TABLE = {
     "/api/v1/auth": settings.auth_service_url,
     "/api/v1/superadmin": settings.master_service_url,
+    "/api/v1/monitoring": settings.master_service_url,
     "/api/v1/admin": settings.admin_service_url,
     "/api/v1/tenant": settings.master_service_url,
     "/api/v1/reception": settings.reception_service_url,
@@ -30,7 +31,8 @@ ROUTE_TABLE = {
     "/api/v1/notifications": settings.notification_service_url,
     "/api/v1/reports": settings.report_service_url,
     "/api/v1/me": settings.auth_service_url,
-    "/api/v1/patients": settings.reception_service_url,
+    "/api/v1/patients": settings.patient_service_url,
+    "/api/v1/visits": settings.visit_service_url,
 }
 
 

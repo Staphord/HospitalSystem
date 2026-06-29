@@ -158,7 +158,7 @@ async def _revoke_keycloak_sessions(tenant_id: str) -> None:
 
 async def get_tenant_db_dsn(db: Session, tenant_id: str) -> str | None:
     row = db.execute(
-        text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+        text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
         {"tid": tenant_id},
     ).scalar()
     if not row:

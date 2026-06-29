@@ -16,21 +16,22 @@ def create_impersonation_token(
     super_admin_sub: str,
     super_admin_username: str,
     target_tenant_id: str,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> dict:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": super_admin_sub,
         "preferred_username": super_admin_username,
         "tenant_id": target_tenant_id,
-        "is_super_admin": True,
         "scope": "readonly",
         "impersonator": True,
-        "realm_access": {"roles": ["super_admin"]},
+        "impersonation": True,
+        "realm_access": {"roles": ["hospital_admin"]},
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=settings.impersonation_token_ttl)).timestamp()),
         "jti": str(uuid.uuid4()),
         "iss": _issuer(),
-        "impersonation": True,
     }
 
     token = jwt.encode(
@@ -39,6 +40,29 @@ def create_impersonation_token(
         algorithm="HS256",
         headers={"kid": "impersonation-key"},
     )
+
+    from app.db.master import get_master_db
+    from app.models.auth import RefreshToken
+
+    db = get_master_db()
+    try:
+        db.add(
+            RefreshToken(
+                session_id=payload["jti"],
+                keycloak_sub=super_admin_sub,
+                refresh_token_hash=f"impersonation:{target_tenant_id}",
+                expires_at=now + timedelta(seconds=settings.impersonation_token_ttl),
+                is_revoked=False,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
 
     return {
         "access_token": token,

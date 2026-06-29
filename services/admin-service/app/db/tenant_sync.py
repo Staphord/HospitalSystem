@@ -23,7 +23,7 @@ def _get_tenant_engine(tenant_id: str):
     try:
         from sqlalchemy import text
         result = db.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
             {"tid": tenant_id},
         )
         row = result.scalar()

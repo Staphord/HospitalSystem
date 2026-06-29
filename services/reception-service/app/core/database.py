@@ -45,24 +45,43 @@ def _migrate_user_table() -> None:
 def _migrate_super_admins_table() -> None:
     from sqlalchemy import inspect, text
 
+    # Check which dialect we are on
+    dialect = _engine.dialect.name  # "sqlite" or "postgresql"
+
     inspector = inspect(_engine)
     tables = inspector.get_table_names()
     if "super_admins" not in tables:
         with _engine.connect() as conn:
-            conn.execute(text("""
-                CREATE TABLE super_admins (
-                    super_admin_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    username VARCHAR(50) UNIQUE NOT NULL,
-                    email VARCHAR(150) UNIQUE NOT NULL,
-                    password_hash VARCHAR(255) NOT NULL,
-                    full_name VARCHAR(200) NOT NULL,
-                    role VARCHAR(50) NOT NULL DEFAULT 'super_admin',
-                    mfa_secret VARCHAR(100) NOT NULL,
-                    is_active BOOLEAN NOT NULL DEFAULT true,
-                    last_login_at TIMESTAMP,
-                    created_at TIMESTAMP NOT NULL DEFAULT now()
-                )
-            """))
+            if dialect == "sqlite":
+                conn.execute(text("""
+                    CREATE TABLE super_admins (
+                        super_admin_id TEXT PRIMARY KEY,
+                        username VARCHAR(50) UNIQUE NOT NULL,
+                        email VARCHAR(150) UNIQUE NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        full_name VARCHAR(200) NOT NULL,
+                        role VARCHAR(50) NOT NULL DEFAULT 'super_admin',
+                        mfa_secret VARCHAR(100) NOT NULL,
+                        is_active INTEGER NOT NULL DEFAULT 1,
+                        last_login_at TEXT,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    )
+                """))
+            else:
+                conn.execute(text("""
+                    CREATE TABLE super_admins (
+                        super_admin_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        username VARCHAR(50) UNIQUE NOT NULL,
+                        email VARCHAR(150) UNIQUE NOT NULL,
+                        password_hash VARCHAR(255) NOT NULL,
+                        full_name VARCHAR(200) NOT NULL,
+                        role VARCHAR(50) NOT NULL DEFAULT 'super_admin',
+                        mfa_secret VARCHAR(100) NOT NULL,
+                        is_active BOOLEAN NOT NULL DEFAULT true,
+                        last_login_at TIMESTAMP,
+                        created_at TIMESTAMP NOT NULL DEFAULT now()
+                    )
+                """))
             conn.commit()
 
 

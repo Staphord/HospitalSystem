@@ -15,5 +15,6 @@ logs/
 # Local execution scripts
 scripts/run_local_services.sh
 scripts/recreate_users.py
-
+docker-compose copy.yml
+keycloak_realm copy.py
 

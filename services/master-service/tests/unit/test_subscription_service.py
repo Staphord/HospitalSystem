@@ -1,4 +1,5 @@
 import pytest
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
@@ -10,6 +11,8 @@ from app.services.subscription_plans import BillingCycle, SubscriptionPlan, Subs
 from app.services.subscription_service import (
     SubscriptionError,
     activate_tenant,
+    apply_pending_plan_changes,
+    compute_prorated_amount,
     downgrade_subscription,
     get_subscription_state,
     reactivate_tenant,
@@ -37,10 +40,11 @@ def db():
 def _make_tenant(db, **overrides):
     defaults = {
         "tenant_id": "hosp-test001",
-        "name": "Test Hospital",
-        "db_dsn_encrypted": "enc",
+        "hospital_name": "Test Hospital",
+        "db_connection_string": "enc",
         "status": "active",
         "is_active": True,
+        "created_by": uuid.uuid4(),
         "subscription_plan": "standard",
         "subscription_status": SubscriptionStatus.ACTIVE.value,
         "subscription_billing_cycle": BillingCycle.MONTHLY.value,
@@ -188,3 +192,142 @@ def test_get_subscription_state(db):
     assert state["tenant_id"] == tenant.tenant_id
     assert state["subscription"]["plan"] == "standard"
     assert state["subscription"]["is_expired"] is False
+
+
+def test_upgrade_from_free_trial(db):
+    """Upgrade from free trial to a paid plan is now allowed."""
+    tenant = _make_tenant(
+        db,
+        subscription_plan=SubscriptionPlan.FREE_TRIAL.value,
+        subscription_status=SubscriptionStatus.TRIAL.value,
+    )
+    result = upgrade_subscription(
+        db,
+        tenant_id=tenant.tenant_id,
+        new_plan=SubscriptionPlan.BASIC,
+    )
+    assert result.tenant.subscription_plan == SubscriptionPlan.BASIC.value
+    assert result.tenant.subscription_status == SubscriptionStatus.ACTIVE.value
+
+
+def test_downgrade_deferred_sets_pending_plan(db):
+    """Deferred downgrade sets pending_plan instead of changing immediately."""
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.STANDARD.value)
+    result = downgrade_subscription(
+        db,
+        tenant_id=tenant.tenant_id,
+        new_plan=SubscriptionPlan.BASIC,
+        effective_at_end=True,
+    )
+    # Plan should NOT have changed yet.
+    assert tenant.subscription_plan == SubscriptionPlan.STANDARD.value
+    # Pending plan should be set.
+    assert tenant.pending_plan == SubscriptionPlan.BASIC.value
+    assert tenant.pending_billing_cycle == BillingCycle.MONTHLY.value
+    assert result.action == "downgrade_deferred"
+
+
+def test_downgrade_immediate_changes_plan(db):
+    """Immediate downgrade changes the plan right away."""
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.STANDARD.value)
+    downgrade_subscription(
+        db,
+        tenant_id=tenant.tenant_id,
+        new_plan=SubscriptionPlan.BASIC,
+        effective_at_end=False,
+    )
+    assert tenant.subscription_plan == SubscriptionPlan.BASIC.value
+    assert tenant.pending_plan is None
+
+
+def test_apply_pending_plan_at_renewal(db):
+    """Pending plan is applied when renew_subscription runs."""
+    tenant = _make_tenant(
+        db,
+        subscription_plan=SubscriptionPlan.STANDARD.value,
+        pending_plan=SubscriptionPlan.BASIC.value,
+        pending_billing_cycle=BillingCycle.MONTHLY.value,
+    )
+    result = renew_subscription(db, tenant_id=tenant.tenant_id)
+    # After renewal, the pending plan should have been applied.
+    assert tenant.subscription_plan == SubscriptionPlan.BASIC.value
+    assert tenant.pending_plan is None
+    assert tenant.pending_billing_cycle is None
+    assert result.previous_plan == SubscriptionPlan.STANDARD.value
+
+
+def test_apply_pending_plan_changes_function(db):
+    """apply_pending_plan_changes applies and clears pending_plan."""
+    tenant = _make_tenant(
+        db,
+        subscription_plan=SubscriptionPlan.PREMIUM.value,
+        pending_plan=SubscriptionPlan.STANDARD.value,
+        pending_billing_cycle=BillingCycle.ANNUAL.value,
+    )
+    result = apply_pending_plan_changes(db, tenant)
+    assert result is True
+    assert tenant.subscription_plan == SubscriptionPlan.STANDARD.value
+    assert tenant.pending_plan is None
+    assert tenant.pending_billing_cycle is None
+
+
+def test_apply_pending_plan_changes_noop_when_none(db):
+    """apply_pending_plan_changes returns False when no pending plan."""
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.BASIC.value)
+    result = apply_pending_plan_changes(db, tenant)
+    assert result is False
+    assert tenant.subscription_plan == SubscriptionPlan.BASIC.value
+
+
+def test_upgrade_clears_pending_plan(db):
+    """Upgrading clears any existing deferred downgrade."""
+    tenant = _make_tenant(
+        db,
+        subscription_plan=SubscriptionPlan.BASIC.value,
+        pending_plan=SubscriptionPlan.FREE_TRIAL,  # unlikely, but test the clear
+    )
+    upgrade_subscription(
+        db,
+        tenant_id=tenant.tenant_id,
+        new_plan=SubscriptionPlan.STANDARD,
+    )
+    assert tenant.pending_plan is None
+    assert tenant.pending_billing_cycle is None
+
+
+def test_compute_proration_upgrade(db):
+    """Proration computes a positive amount for upgrades."""
+    end = datetime.now(timezone.utc) + timedelta(days=15)
+    amount = compute_prorated_amount(
+        current_plan=SubscriptionPlan.BASIC,
+        new_plan=SubscriptionPlan.STANDARD,
+        billing_cycle=BillingCycle.MONTHLY,
+        subscription_end=end,
+    )
+    # Standard (299) - Basic (99) = 200 difference for 30-day cycle, ~half remaining.
+    # 200 * 15/30 = 100
+    assert amount > 0
+
+
+def test_compute_proration_downgrade(db):
+    """Proration computes a negative amount for downgrades (credit)."""
+    end = datetime.now(timezone.utc) + timedelta(days=15)
+    amount = compute_prorated_amount(
+        current_plan=SubscriptionPlan.STANDARD,
+        new_plan=SubscriptionPlan.BASIC,
+        billing_cycle=BillingCycle.MONTHLY,
+        subscription_end=end,
+    )
+    assert amount < 0
+
+
+def test_compute_proration_zero_when_expired(db):
+    """Proration returns 0 when subscription has expired."""
+    end = datetime.now(timezone.utc) - timedelta(days=1)
+    amount = compute_prorated_amount(
+        current_plan=SubscriptionPlan.BASIC,
+        new_plan=SubscriptionPlan.STANDARD,
+        billing_cycle=BillingCycle.MONTHLY,
+        subscription_end=end,
+    )
+    assert amount == 0
