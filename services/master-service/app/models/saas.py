@@ -19,7 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
-
+from sqlalchemy import TypeDecorator, CHAR
 from app.db.base import Base
 
 

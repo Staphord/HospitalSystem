@@ -240,6 +240,23 @@ def _record_subscription(
     if not inspect(db.bind).has_table(SubscriptionRecord.__tablename__):
         return None
     try:
+        # Dynamic check and seeding to prevent ForeignKeyViolation
+        from sqlalchemy import text
+        from app.services.subscription_plans import sync_plans_to_db
+        plan_id_str = str(plan_uuid(plan))
+        
+        # Check if the subscription plans table contains this plan
+        exists = db.execute(
+            text("SELECT 1 FROM subscription_plans WHERE plan_id = :pid"),
+            {"pid": plan_id_str}
+        ).scalar()
+        if not exists:
+            logger.info("Plan %s not found in database. Syncing plans...", plan.value)
+            sync_plans_to_db(db)
+    except Exception as e:
+        logger.warning("Failed to auto-seed/verify subscription plans: %s", e)
+
+    try:
         record = SubscriptionRecord(
             tenant_id=tenant_id,
             plan_id=plan_uuid(plan),
@@ -256,6 +273,7 @@ def _record_subscription(
     except Exception:
         logger.exception("Failed to record subscription history for %s", tenant_id)
         return None
+
 
 
 def _set_subscription_dates(

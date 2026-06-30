@@ -61,6 +61,14 @@ app = FastAPI(
     docs_url=docs_url,
     openapi_url=openapi_url,
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "Queue", "description": "Pharmacy patient queue — waiting list and call-next"},
+        {"name": "Prescriptions", "description": "View prescriptions and run drug interaction checks"},
+        {"name": "Dispensing", "description": "Dispense medication and view dispense summaries"},
+        {"name": "Inventory", "description": "Drug stock levels, restock, adjustments, and low-stock alerts"},
+        {"name": "Labels", "description": "Generate dispensing label data for printing"},
+        {"name": "Notifications", "description": "Pharmacist in-system notifications"},
+    ],
 )
 
 app.state.limiter = limiter

@@ -81,19 +81,30 @@ def upgrade() -> None:
         WHERE id IS NULL
     """)
     op.alter_column("patients", "id", nullable=False)
-    op.create_primary_key("pk_patients", "patients", ["id"])
+    
+    pk_constraint = inspector.get_pk_constraint("patients")
+    if not pk_constraint or not pk_constraint.get("constrained_columns"):
+        op.create_primary_key("pk_patients", "patients", ["id"])
 
     # Set NOT NULL on phone_primary for any existing rows (fill empty string)
     if "phone_primary" in [c["name"] for c in inspector.get_columns("patients")]:
         op.execute("UPDATE patients SET phone_primary = '' WHERE phone_primary IS NULL")
         op.alter_column("patients", "phone_primary", nullable=False)
 
-    # Create indexes for the new schema
-    op.create_index("idx_patients_hospital_id", "patients", ["hospital_id"])
-    op.create_index("idx_patients_patient_number", "patients", ["patient_number"])
-    op.create_index("idx_patients_full_name", "patients", ["full_name"])
-    op.create_unique_constraint("uq_hospital_patient_number", "patients", ["hospital_id", "patient_number"])
-    op.create_unique_constraint("uq_hospital_national_id", "patients", ["hospital_id", "national_id"])
+    # Create indexes/constraints for the new schema if they don't exist
+    existing_indexes = [idx["name"] for idx in inspector.get_indexes("patients")]
+    if "idx_patients_hospital_id" not in existing_indexes:
+        op.create_index("idx_patients_hospital_id", "patients", ["hospital_id"])
+    if "idx_patients_patient_number" not in existing_indexes:
+        op.create_index("idx_patients_patient_number", "patients", ["patient_number"])
+    if "idx_patients_full_name" not in existing_indexes:
+        op.create_index("idx_patients_full_name", "patients", ["full_name"])
+
+    existing_constraints = [c["name"] for c in inspector.get_unique_constraints("patients")]
+    if "uq_hospital_patient_number" not in existing_constraints:
+        op.create_unique_constraint("uq_hospital_patient_number", "patients", ["hospital_id", "patient_number"])
+    if "uq_hospital_national_id" not in existing_constraints:
+        op.create_unique_constraint("uq_hospital_national_id", "patients", ["hospital_id", "national_id"])
 
 
 def downgrade() -> None:

@@ -1,5 +1,5 @@
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, ConfigDict
 from datetime import datetime, date
 from decimal import Decimal
 
@@ -59,8 +59,7 @@ class SuperAdminOut(BaseModel):
     last_login_at: datetime | None = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SuperAdminDelete(BaseModel):
@@ -110,8 +109,7 @@ class TenantOut(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TenantCreate(BaseModel):
@@ -193,8 +191,7 @@ class SystemRoleOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TenantSystemRoleAssignmentOut(BaseModel):
@@ -203,8 +200,7 @@ class TenantSystemRoleAssignmentOut(BaseModel):
     tenant_id: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------------------------------------------------------------------------
@@ -233,8 +229,7 @@ class GlobalRoleOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------------------------------------------------------------------------
@@ -398,8 +393,7 @@ class SubscriptionPlanOut(BaseModel):
     is_active: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SubscriptionOut(BaseModel):
@@ -418,8 +412,7 @@ class SubscriptionOut(BaseModel):
     cancellation_reason: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InvoiceOut(BaseModel):
@@ -441,8 +434,7 @@ class InvoiceOut(BaseModel):
     reference_number: str | None = None
     payment_date: datetime | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SaaSPaymentOut(BaseModel):
@@ -457,8 +449,7 @@ class SaaSPaymentOut(BaseModel):
     receipt_sent_at: datetime | None
     paid_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SubscriptionAuditLogOut(BaseModel):
@@ -471,8 +462,7 @@ class SubscriptionAuditLogOut(BaseModel):
     reason: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AnnouncementOut(BaseModel):
@@ -486,8 +476,7 @@ class AnnouncementOut(BaseModel):
     created_by: UUID | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AnnouncementCreate(BaseModel):
@@ -548,8 +537,7 @@ class SuperAdminAuditLogOut(BaseModel):
     ip_address: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InvoiceCreate(BaseModel):
@@ -620,5 +608,4 @@ class IncidentOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

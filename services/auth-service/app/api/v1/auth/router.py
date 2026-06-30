@@ -351,13 +351,14 @@ async def superadmin_login(
         if existing is None:
             existing = db.query(SuperAdmin).filter(SuperAdmin.email == email).first()
         if existing is None:
+            import pyotp
             admin = SuperAdmin(
                 username=body.username,
                 email=email,
                 password_hash=_hash_password(body.password),
                 full_name=full_name,
                 role="super_admin",
-                mfa_secret=secrets.token_hex(16),
+                mfa_secret=pyotp.random_base32(),
                 is_active=True,
                 created_at=datetime.now(timezone.utc),
             )
