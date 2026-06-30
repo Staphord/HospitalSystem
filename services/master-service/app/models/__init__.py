@@ -1,7 +1,6 @@
 from app.models.user import User
 from app.models.master import Tenant, GlobalAuditLog
 from app.models.admin import SuperAdmin
-from app.models.auth import RefreshToken
 from app.models.saas import (
     SubscriptionPlan,
     Subscription,
@@ -22,7 +21,6 @@ __all__ = [
     "Tenant",
     "GlobalAuditLog",
     "SuperAdmin",
-    "RefreshToken",
     "SubscriptionPlan",
     "Subscription",
     "Invoice",

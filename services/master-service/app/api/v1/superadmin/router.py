@@ -239,13 +239,11 @@ async def create_user(
             detail=f"Failed to create user in Keycloak: {e}",
         )
 
-    full_name_val = (body.full_name and body.full_name.strip()) or body.username
-
     create_local_user(
         db=db,
         keycloak_sub=kc_sub,
         username=body.username,
-        full_name=full_name_val,
+        full_name=body.full_name or None,
         email=body.email,
         role=body.role,
         hospital_id=None,
@@ -256,7 +254,7 @@ async def create_user(
         username=body.username,
         email=body.email,
         password=body.password,
-        full_name=full_name_val,
+        full_name=body.full_name,
         role=body.role,
         mfa_secret=body.mfa_secret,
     )
@@ -299,14 +297,13 @@ async def update_user(
     # Look up the Keycloak user ID via the local User record
     user_record = db.query(User).filter(User.username == admin.username).first()
     kc_sub = user_record.keycloak_sub if user_record else None
-    if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()) or body.is_active is not None:
+    if body.username is not None or body.email is not None or (body.full_name is not None and body.full_name.strip()):
         if kc_sub:
             await update_keycloak_user(
                 kc_sub,
                 username=body.username,
                 email=body.email,
                 full_name=body.full_name,
-                enabled=body.is_active,
                 realm="master",
             )
     if body.password is not None:
@@ -2619,7 +2616,7 @@ async def export_tenant_data(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
     try:
-        data = _do_export(db, tenant_id)
+        data = await _do_export(db, tenant_id)
     except ValueError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:

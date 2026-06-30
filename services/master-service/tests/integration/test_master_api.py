@@ -33,7 +33,6 @@ from app.models import (
     SuperAdminAuditLog,
     Announcement,
     SubscriptionAuditLog,
-    RefreshToken,
 )
 
 # Override lifespan to bypass external dependencies during testing
@@ -55,15 +54,6 @@ def fixture_db_session():
     
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = SessionLocal()
-    
-    # Clean up tables to ensure test isolation
-    for table in reversed(Base.metadata.sorted_tables):
-        try:
-            session.execute(table.delete())
-        except Exception:
-            pass
-    session.commit()
-    
     try:
         yield session
     finally:
@@ -73,7 +63,7 @@ def fixture_db_session():
 
 async def override_get_current_active_user():
     return TokenPayload(
-        sub="de305d54-75b4-431b-adb2-eb6b9e546014",
+        sub="test-superadmin-sub",
         preferred_username="superadmin",
         email="superadmin@example.com",
         realm_access={"roles": ["super_admin"]},
@@ -95,10 +85,7 @@ def client(db_session):
     with TestClient(app) as test_client:
         yield test_client
 
-    if get_db in app.dependency_overrides:
-        del app.dependency_overrides[get_db]
-    if get_current_active_user in app.dependency_overrides:
-        del app.dependency_overrides[get_current_active_user]
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -135,7 +122,7 @@ def test_create_tenant(client, db_session):
         "currency": "KES"
     }
     response = client.post("/api/v1/superadmin/tenants", json=payload)
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
     assert data["hospital_name"] == "Test General Hospital"
     assert data["status"] == "trial"
@@ -243,45 +230,21 @@ def test_generate_invoice(client, db_session):
     from datetime import date
     tenant = Tenant(tenant_id="t1", hospital_name="Hosp 1", is_active=True, status="active", subscription_plan="standard", db_connection_string="dummy", created_by=uuid.uuid4())
     db_session.add(tenant)
-    
-    plan = SubscriptionPlan(
-        plan_id=uuid.uuid4(),
-        plan_name="standard",
-        monthly_price=1500,
-        annual_price=15000,
-    )
-    db_session.add(plan)
-    
-    sub = Subscription(
-        subscription_id=uuid.uuid4(),
-        tenant_id="t1",
-        plan_id=plan.plan_id,
-        billing_cycle="monthly",
-        start_date=date(2026, 1, 1),
-        end_date=date(2026, 12, 31),
-        status="active"
-    )
-    db_session.add(sub)
     db_session.commit()
 
     payload = {
-        "subscription_id": str(sub.subscription_id),
-        "invoice_number": "INV-2026-001",
-        "billing_period_start": "2026-01-01",
-        "billing_period_end": "2026-01-31",
-        "plan_name": "standard",
         "amount": 1500,
         "due_date": "2026-12-31",
-        "status": "unpaid"
+        "description": "Standard monthly sub"
     }
     response = client.post("/api/v1/superadmin/tenants/t1/invoices", json=payload)
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
-    assert float(data["amount"]) == 1500
+    assert data["amount"] == 1500
     assert data["status"] == "unpaid"
 
     # Verify invoice in DB
-    invoice = db_session.query(Invoice).filter(Invoice.invoice_id == data["invoice_id"]).first()
+    invoice = db_session.query(Invoice).filter(Invoice.id == data["id"]).first()
     assert invoice is not None
     assert invoice.tenant_id == "t1"
 
@@ -350,18 +313,18 @@ def test_record_payment(client, db_session):
     db_session.commit()
 
     payload = {
-        "invoice_id": str(invoice.invoice_id),
+        "invoice_id": invoice.id,
         "amount": 1500,
         "payment_method": "card",
         "reference_number": "REF123"
     }
     response = client.post("/api/v1/superadmin/tenants/t1/payments", json=payload)
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
-    assert float(data["amount"]) == 1500
+    assert data["amount"] == 1500
 
     # Verify payment and invoice state
-    payment = db_session.query(SaaSPayment).filter(SaaSPayment.payment_id == data["payment_id"]).first()
+    payment = db_session.query(SaaSPayment).filter(SaaSPayment.id == data["id"]).first()
     assert payment is not None
     db_session.refresh(invoice)
     assert invoice.status == "paid"
@@ -378,18 +341,18 @@ def test_system_health(client):
         response = client.get("/api/v1/superadmin/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["overall"] == "healthy" or data["overall"] == "unhealthy"
+        assert data["status"] == "healthy" or data["status"] == "unhealthy"
 
 
 # Test announcements endpoints
 def test_announcements(client, db_session):
-    from datetime import datetime, timezone
     # Create announcement
     payload = {
         "title": "System Update",
-        "body": "Scheduled maintenance",
-        "audience": "all",
-        "publish_at": datetime.now(timezone.utc).isoformat()
+        "message": "Scheduled maintenance",
+        "type": "maintenance",
+        "scope": "all",
+        "display_format": "banner"
     }
     response = client.post("/api/v1/superadmin/announcements", json=payload)
     assert response.status_code == 201
@@ -406,13 +369,7 @@ def test_announcements(client, db_session):
 
 # Test fetching global audit logs
 def test_global_audit_logs(client, db_session):
-    import uuid
-    log = SuperAdminAuditLog(
-        super_admin_id=uuid.uuid4(),
-        action="tenant.suspend",
-        tenant_id="t1",
-        action_detail={"reason": "test"}
-    )
+    log = GlobalAuditLog(tenant_id="t1", action="tenant.suspend", detail="{}")
     db_session.add(log)
     db_session.commit()
 

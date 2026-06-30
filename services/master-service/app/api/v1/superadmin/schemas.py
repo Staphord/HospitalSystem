@@ -10,7 +10,7 @@ class SuperAdminCreate(BaseModel):
     username: str = Field(..., max_length=50)
     password: str = Field(..., min_length=8)
     email: EmailStr
-    full_name: str | None = Field(default=None, max_length=200)
+    full_name: str = Field(..., max_length=200)
     role: str = Field(default="super_admin", max_length=50)
     mfa_secret: str | None = Field(default=None, max_length=100)
 
@@ -607,20 +607,5 @@ class IncidentOut(BaseModel):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
-    
-class SuperAdminSessionOut(BaseModel):
-    id: str
-    user_sub: str
-    username: str
-    email: str
-    full_name: str
-    role: str
-    login_time: datetime | None = None
-    expires_at: datetime | None = None
-    is_impersonation: bool
-    impersonation_tenant_id: str | None = None
-    impersonation_tenant_name: str | None = None
-    ip_address: str | None = None
-    device: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

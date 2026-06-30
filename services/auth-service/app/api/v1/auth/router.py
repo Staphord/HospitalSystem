@@ -230,8 +230,6 @@ async def superadmin_login(
                 password=body.password,
                 db=db,
                 realm=realm_candidate,
-                ip_address=ip,
-                user_agent=request.headers.get("user-agent"),
                 client_id=client,
             )
             realm_used = realm_candidate
@@ -525,8 +523,6 @@ async def login(
             password=body.password,
             db=db,
             realm=login_realm,
-            ip_address=ip,
-            user_agent=request.headers.get("user-agent"),
         )
     except HTTPException as exc:
         record_failed_attempt(body.username, ip)
@@ -671,12 +667,9 @@ async def refresh(
     body: RefreshRequest,
     db: Session = Depends(get_db),
 ) -> dict:
-    ip = request.client.host if request.client else None
     result = await auth_service.refresh_access_token(
         refresh_token=body.refresh_token,
         db=db,
-        ip_address=ip,
-        user_agent=request.headers.get("user-agent"),
     )
 
     # Enforce tenant suspension lockout on token refresh.
@@ -1206,16 +1199,13 @@ async def impersonate(
             detail="Only super admins can impersonate tenants",
         )
 
-    ip = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
     result = create_impersonation_token(
         super_admin_sub=user.sub,
         super_admin_username=user.preferred_username or "unknown",
         target_tenant_id=body.target_tenant_id,
-        ip_address=ip,
-        user_agent=user_agent,
     )
 
+    ip = request.client.host if request.client else None
     await log_impersonation_event(
         action="IMPERSONATION_START",
         super_admin_sub=user.sub,

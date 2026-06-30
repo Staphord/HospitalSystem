@@ -68,8 +68,6 @@ def create_superadmin(
         full_name=full_name,
         role=role,
         mfa_secret=secret,
-        mfa_enabled=True,
-        backup_codes=backup_codes_json,
         is_active=True,
         created_at=datetime.now(timezone.utc),
     )
