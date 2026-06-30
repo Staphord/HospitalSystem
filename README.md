@@ -23,6 +23,75 @@ Multi-tenant hospital patient flow system decomposed into **14 microservices** w
 
 ---
 
+## Project Status
+
+### Services Implementation
+
+| Service | Port | Status | Notes |
+|---------|------|--------|-------|
+| `api-gateway` | 8000 | ✅ Complete | JWT verify, tenant resolve, proxy, rate-limit |
+| `auth-service` | 8001 | ✅ Complete | Login, signup, refresh, MFA, impersonate, password reset |
+| `master-service` | 8002 | ✅ Complete | Tenants, subscriptions, SaaS billing, super admin |
+| `patient-service` | — | ✅ Complete | Patient CRUD, search, number generation |
+| `visit-service` | — | ✅ Complete | Visit CRUD, queues, status transitions, insurance check |
+| `admin-service` | 8018 | ✅ Complete | Hospital user CRUD, Keycloak sync, roles |
+| `triage-service` | 8011 | ✅ Complete | Triage assessments, vitals, category suggestion |
+| `consultation-service` | 8012 | ✅ Complete | Consultations, diagnoses, investigation requests, encounter view |
+| `radiology-service` | 8014 | ✅ Complete | Radiology reports CRUD, modality/status enums |
+| `pharmacy-service` | 8015 | 🟡 Partial | Inventory (real DB-backed), queue/prescriptions/dispensing (Phase 1 stubs — returns mock data) |
+| `reception-service` | 8010 | 🟡 Partial | Orchestration layer — delegates to patient-service and visit-service. No direct DB models. |
+| `laboratory-service` | 8013 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+| `billing-service` | 8016 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+| `ward-service` | 8017 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+| `notification-service` | 8019 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+| `report-service` | 8020 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+
+### Database Schema Coverage
+
+The target schema defines **32 tenant DB tables** and **8 master DB tables**. Current tenant migration coverage:
+
+| Module | Tables in Schema | Migration Created | Endpoint Logic |
+|--------|:-:|:-:|:-:|
+| Reception — `patients` | ✅ | ✅ | ✅ |
+| Reception — `patient_insurance` | ✅ | ✅ | ✅ |
+| Reception — `visits` | ✅ | ✅ | ✅ |
+| Reception — `queues` | ✅ | ✅ | ✅ |
+| Reception — `appointments` | — | ✅ (extra) | ❌ |
+| Triage — `triage_assessments` | ✅ | ✅ | ✅ |
+| Consultation — `consultations` | ✅ | ✅ | ✅ |
+| Consultation — `diagnoses` | ✅ | ❌ | ✅ (in code) |
+| Consultation — `investigation_requests` | ✅ | ❌ | ✅ (in code) |
+| Consultation — `prescriptions` | ✅ | ❌ | ❌ |
+| Lab — `lab_results` | ✅ | ❌ | ❌ |
+| Lab — `specimens` | ✅ | ❌ | ❌ |
+| Radiology — `radiology_reports` | ✅ | ✅ | ✅ |
+| Pharmacy — `drug_inventory` | ✅ | ✅ | ✅ |
+| Pharmacy — `drug_inventory_transactions` | ✅ | ✅ | ✅ |
+| Pharmacy — `dispensing_records` | ✅ | ❌ | ❌ |
+| Billing — `bills` | ✅ | ❌ | ❌ |
+| Billing — `bill_items` | ✅ | ❌ | ❌ |
+| Billing — `payments` | ✅ | ❌ | ❌ |
+| Billing — `insurance_claims` | ✅ | ❌ | ❌ |
+| Ward — `beds` | ✅ | ❌ | ❌ |
+| Ward — `admissions` | ✅ | ❌ | ❌ |
+| Ward — `inpatient_orders` | ✅ | ❌ | ❌ |
+| Ward — `nursing_notes` | ✅ | ❌ | ❌ |
+| Admin — `users` | ✅ | ✅ | ✅ |
+| Admin — `departments` | ✅ | ❌ | ❌ |
+| Admin — `fee_schedules` | ✅ | ❌ | ❌ |
+| Admin — `password_reset_tokens` | ✅ | ❌ | ❌ |
+| Admin — `refresh_tokens` | ✅ | ❌ | ❌ |
+| Notifications — `notifications` | ✅ | ❌ | ❌ |
+| Admin — `audit_logs` | ✅ | ❌ | ❌ |
+
+**Key gap**: Tables like `diagnoses`, `investigation_requests`, `prescriptions`, `lab_results`, `specimens`, `bills`, `payments`, `beds`, `admissions`, `inpatient_orders`, `nursing_notes`, `departments`, `fee_schedules`, `password_reset_tokens`, `refresh_tokens`, `notifications`, and `audit_logs` exist in the service SQLAlchemy models or are referenced in code but **do not have tenant migration scripts** yet.
+
+### Radiology `request_id` Note
+
+The `radiology_reports.request_id` column is currently **nullable** (`Optional[UUID] = None`) because the `investigation_requests` table has not been created yet. Once that table is migrated, `request_id` should be made a **required FK** (`nullable=False`) referencing `investigation_requests.request_id`. See `services/radiology-service/app/models/radiology.py:13` and `services/radiology-service/app/api/v1/schemas.py:9`.
+
+---
+
 ## Architecture Overview
 
 ```
@@ -64,22 +133,22 @@ Multi-tenant hospital patient flow system decomposed into **14 microservices** w
 
 ## Service Map
 
-| Service                | Port | Responsibility                                                      |
-| ---------------------- | ---- | ------------------------------------------------------------------- |
-| `api-gateway`          | 8000 | JWT verification, tenant resolution, request routing, rate limiting |
-| `auth-service`         | 8001 | Login, token refresh, password reset, MFA (TOTP)                    |
-| `master-service`       | 8002 | Super admin portal — tenant management, subscriptions, invoicing    |
-| `reception-service`    | 8010 | Patient registration, visit creation, queue assignment              |
-| `triage-service`       | 8011 | Vital signs, triage category, queue priority                        |
-| `consultation-service` | 8012 | Clinical notes, diagnoses, investigation requests, prescriptions    |
-| `laboratory-service`   | 8013 | Specimen tracking, result entry, critical value alerts              |
-| `radiology-service`    | 8014 | Imaging scheduling, reports, DICOM references                       |
-| `pharmacy-service`     | 8015 | Dispensing, drug interaction checks, inventory management           |
-| `billing-service`      | 8016 | Bills, line items, payments, insurance claims                       |
-| `ward-service`         | 8017 | Bed management, admissions, inpatient orders, nursing notes         |
-| `admin-service`        | 8018 | Staff accounts, departments, fee schedules, audit logs              |
-| `notification-service` | 8019 | In-system notifications (critical results, low stock, queue calls)  |
-| `report-service`       | 8020 | Analytics — census, revenue, wait times, bed occupancy              |
+| Service                | Port | Status | Responsibility                                                      |
+| ---------------------- | ---- | ------ | ------------------------------------------------------------------- |
+| `api-gateway`          | 8000 | ✅     | JWT verification, tenant resolution, request routing, rate limiting |
+| `auth-service`         | 8001 | ✅     | Login, token refresh, password reset, MFA (TOTP)                    |
+| `master-service`       | 8002 | ✅     | Super admin portal — tenant management, subscriptions, invoicing    |
+| `reception-service`    | 8010 | 🟡     | Patient registration, visit creation, queue assignment              |
+| `triage-service`       | 8011 | ✅     | Vital signs, triage category, queue priority                        |
+| `consultation-service` | 8012 | ✅     | Clinical notes, diagnoses, investigation requests, prescriptions    |
+| `laboratory-service`   | 8013 | 🔴     | Specimen tracking, result entry, critical value alerts              |
+| `radiology-service`    | 8014 | ✅     | Imaging scheduling, reports, DICOM references                       |
+| `pharmacy-service`     | 8015 | 🟡     | Dispensing, drug interaction checks, inventory management           |
+| `billing-service`      | 8016 | 🔴     | Bills, line items, payments, insurance claims                       |
+| `ward-service`         | 8017 | 🔴     | Bed management, admissions, inpatient orders, nursing notes         |
+| `admin-service`        | 8018 | ✅     | Staff accounts, departments, fee schedules, audit logs              |
+| `notification-service` | 8019 | 🔴     | In-system notifications (critical results, low stock, queue calls)  |
+| `report-service`       | 8020 | 🔴     | Analytics — census, revenue, wait times, bed occupancy              |
 
 ---
 
@@ -100,6 +169,8 @@ hospital-flow/
 │   ├── billing-service/          # Port 8016
 │   ├── ward-service/             # Port 8017
 │   ├── admin-service/            # Port 8018
+│   ├── patient-service/          # Internal — patient CRUD (called by reception)
+│   ├── visit-service/            # Internal — visit & queue CRUD (called by reception/triage/consultation)
 │   ├── notification-service/     # Port 8019
 │   └── report-service/           # Port 8020
 ├── infrastructure/
