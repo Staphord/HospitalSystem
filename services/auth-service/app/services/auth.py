@@ -32,7 +32,8 @@ def _keycloak_logout_endpoint(realm: str | None = None) -> str:
     return f"{settings.keycloak_url}/realms/{realm}/protocol/openid-connect/logout"
 
 
-async def login(username: str, password: str, db: Session, realm: str | None = None, client_id: str | None = None) -> Dict[str, Any]:
+
+async def login(username: str, password: str, db: Session, realm: str | None = None,ip_address: str | None = None, user_agent: str | None = None, client_id: str | None = None) -> Dict[str, Any]:
     data = {
         "grant_type": "password",
         "client_id": client_id or settings.keycloak_client_id,
@@ -198,6 +199,7 @@ def _store_refresh_token(
 
     db.commit()
     return session_id
+
 
 
 def _hash_token(token: str) -> str:

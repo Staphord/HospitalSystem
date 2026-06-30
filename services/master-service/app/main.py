@@ -171,15 +171,7 @@ async def lifespan(app: FastAPI):
     finally:
         plan_db.close()
 
-    from app.db.master import get_master_db
-    from app.models.master import Tenant, GlobalAuditLog
-    from app.db.base import Base
 
-    master_db = get_master_db()
-    try:
-        Base.metadata.create_all(bind=master_db.connection())
-    finally:
-        master_db.close()
 
     task = asyncio.create_task(_start_suspension_loop())
     logger.info("Suspension background task started")

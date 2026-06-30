@@ -133,3 +133,17 @@ def require_role(role: str):
             )
         return payload
     return _role_dependency
+
+
+def require_any_role(allowed_roles: list[str]):
+    async def _role_dependency(payload: dict = Depends(get_current_active_user)):
+        roles = _extract_roles(payload)
+        allowed = any(r in roles for r in allowed_roles) or "super_admin" in roles
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return payload
+    return _role_dependency
+

@@ -1,0 +1,38 @@
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <h2 style="color: #0052cc; border-bottom: 2px solid #0052cc; padding-bottom: 10px;">Welcome to HospitalFlow</h2>
+  <p>Hello,</p>
+  <p>A new platform administrator account has been created for you. Please find your login credentials and security details below.</p>
+  
+  <div style="background-color: #f4f5f7; padding: 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #dfe1e6;">
+    <h3 style="margin-top: 0; color: #172b4d;">Account Credentials</h3>
+    <p style="margin: 5px 0;"><strong>Username:</strong> {username}</p>
+    <p style="margin: 5px 0;"><strong>Temporary Password:</strong> <code style="background: #e3e6e8; padding: 2px 5px; border-radius: 3px; font-family: monospace;">{password}</code></p>
+  </div>
+
+  <div style="background-color: #f4f5f7; padding: 15px; border-radius: 5px; margin-bottom: 20px; border: 1px solid #dfe1e6;">
+    <h3 style="margin-top: 0; color: #172b4d;">Multi-Factor Authentication (MFA)</h3>
+    <p>Multi-Factor Authentication is enabled for your administrator account. To complete your login, you can use any of the following methods:</p>
+    <ul style="padding-left: 20px; margin: 10px 0;">
+      <li style="margin-bottom: 5px;"><strong>Authenticator App (TOTP):</strong> Set up your app (e.g. Google Authenticator, Duo) using the secret key below.</li>
+      <li style="margin-bottom: 5px;"><strong>Email OTP:</strong> Request a one-time passcode to be sent to this email address during login.</li>
+      <li style="margin-bottom: 5px;"><strong>Backup Codes:</strong> Use one of the emergency backup codes listed below.</li>
+    </ul>
+    <p style="margin: 10px 0 0 0;"><strong>MFA Secret Key:</strong> <code style="background: #e3e6e8; padding: 2px 5px; border-radius: 3px; font-family: monospace; font-size: 1.1em;">{mfa_secret}</code></p>
+  </div>
+
+  <div style="background-color: #fff0ed; padding: 15px; border-radius: 5px; border-left: 5px solid #de350b; margin-bottom: 20px;">
+    <h3 style="margin-top: 0; color: #de350b;">Emergency Backup Codes</h3>
+    <p style="margin-bottom: 10px;">Store these backup codes in a safe place. Each code can only be used once.</p>
+    <ul style="list-style-type: none; padding-left: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 0;">
+      {backup_codes_html}
+    </ul>
+  </div>
+
+  <p style="margin-top: 25px;">To log in and secure your account, please click the link below:</p>
+  <p><a href="{frontend_url}/master/login" style="background-color: #0052cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">Log In to Dashboard</a></p>
+  
+  <hr style="border: 0; border-top: 1px solid #dee2e6; margin-top: 30px;" />
+  <p style="font-size: 12px; color: #7a869a;">This is an automated security email. Please do not reply directly to this message.</p>
+</body>
+</html>

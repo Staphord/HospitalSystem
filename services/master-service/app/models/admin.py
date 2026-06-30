@@ -10,9 +10,9 @@ class SuperAdmin(Base):
     __tablename__ = "super_admins"
 
     super_admin_id = Column(
-        String(64),
+        UUID(as_uuid=True),
         primary_key=True,
-        default=lambda: str(uuid.uuid4()),
+        default=uuid.uuid4,
     )
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(150), unique=True, nullable=False, index=True)

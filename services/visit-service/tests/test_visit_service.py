@@ -349,3 +349,99 @@ def test_get_queue_with_status_filter(db_session: Session, sample_patient_id: st
 
     completed = get_queue(db_session, "triage", status_filter="completed")
     assert len(completed) == 0
+
+
+def test_complete_triage_and_enqueue_doctor(db_session: Session, sample_patient_id: str):
+    # 1. Create a visit first
+    result = create_visit(
+        db=db_session,
+        hospital_id="hosp-001",
+        patient_id=sample_patient_id,
+        visit_type="outpatient",
+        payment_type="cash",
+        registered_by=str(uuid.uuid4()),
+    )
+    visit = result["visit"]
+
+    # 2. Verify triage queue is waiting
+    q_triage = db_session.query(Queue).filter(
+        Queue.visit_id == visit.visit_id,
+        Queue.queue_type == "triage"
+    ).first()
+    assert q_triage is not None
+    assert q_triage.status == "waiting"
+
+    # 3. Complete triage and enqueue doctor
+    from app.services.visit_service import complete_triage_and_enqueue_doctor
+    triage_result = complete_triage_and_enqueue_doctor(
+        db=db_session,
+        visit_id=visit.visit_id,
+        priority="urgent"
+    )
+
+    # 4. Assertions
+    assert triage_result["visit"].status == "triaged"
+    assert triage_result["queue_number"].startswith("D-")
+
+    # Verify triage queue is completed
+    db_session.refresh(q_triage)
+    assert q_triage.status == "completed"
+
+    # Verify doctor queue is waiting and urgent
+    q_doctor = db_session.query(Queue).filter(
+        Queue.visit_id == visit.visit_id,
+        Queue.queue_type == "doctor"
+    ).first()
+    assert q_doctor is not None
+    assert q_doctor.status == "waiting"
+    assert q_doctor.priority == "urgent"
+    assert q_doctor.queue_number == triage_result["queue_number"]
+
+
+def test_doctor_queue_priority_ordering(db_session: Session, sample_patient_id: str):
+    from app.services.visit_service import complete_triage_and_enqueue_doctor, get_ordered_doctor_queue
+
+    # Create 3 visits
+    # Visit 1: non_urgent
+    v1 = create_visit(
+        db=db_session,
+        hospital_id="hosp-001",
+        patient_id=sample_patient_id,
+        visit_type="outpatient",
+        payment_type="cash",
+        registered_by=str(uuid.uuid4()),
+    )["visit"]
+
+    # Visit 2: emergency
+    v2 = create_visit(
+        db=db_session,
+        hospital_id="hosp-001",
+        patient_id=sample_patient_id,
+        visit_type="outpatient",
+        payment_type="cash",
+        registered_by=str(uuid.uuid4()),
+    )["visit"]
+
+    # Visit 3: urgent
+    v3 = create_visit(
+        db=db_session,
+        hospital_id="hosp-001",
+        patient_id=sample_patient_id,
+        visit_type="outpatient",
+        payment_type="cash",
+        registered_by=str(uuid.uuid4()),
+    )["visit"]
+
+    # Complete triage in different orders
+    complete_triage_and_enqueue_doctor(db_session, visit_id=v1.visit_id, priority="non_urgent")
+    complete_triage_and_enqueue_doctor(db_session, visit_id=v3.visit_id, priority="urgent")
+    complete_triage_and_enqueue_doctor(db_session, visit_id=v2.visit_id, priority="emergency")
+
+    # Get ordered queue
+    ordered = get_ordered_doctor_queue(db_session)
+    assert len(ordered) == 3
+
+    # Order must be: emergency (v2) -> urgent (v3) -> non_urgent (v1)
+    assert ordered[0].visit_id == v2.visit_id
+    assert ordered[1].visit_id == v3.visit_id
+    assert ordered[2].visit_id == v1.visit_id

@@ -182,24 +182,42 @@ def get_tenant_db_session(tenant_id: str) -> Session:
         engine, SessionLocal = _tenant_engine_cache[tenant_id]
         return SessionLocal()
 
-    # Query master database for tenant DSN
-    master_db = get_master_db()
-    try:
-        result = master_db.execute(
-            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
-            {"tid": tenant_id},
-        )
-        row = result.scalar()
-        if not row:
-            raise ValueError(f"Tenant '{tenant_id}' not found or inactive")
+    import time
+    from app.services.tenant_service import decrypt_dsn
 
-        from app.services.tenant_service import decrypt_dsn
+    # Query master database for tenant DSN with robust retries to handle replication lag/race conditions
+    row = None
+    for attempt in range(5):
+        master_db = get_master_db()
+        try:
+            result = master_db.execute(
+                text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+                {"tid": tenant_id},
+            )
+            row = result.scalar()
+            if row:
+                dsn = decrypt_dsn(str(row))
+                if "placeholder" not in dsn:
+                    break
+                else:
+                    logger.warning("Attempt %d: Tenant %s has placeholder DSN, retrying...", attempt + 1, tenant_id)
+                    row = None
+        except Exception as e:
+            logger.warning("Attempt %d to query tenant %s from master DB failed: %s", attempt + 1, tenant_id, e)
+        finally:
+            master_db.close()
+        
+        if attempt < 4:
+            time.sleep(1.0)
 
-        dsn = decrypt_dsn(str(row))
-    finally:
-        master_db.close()
+    if not row:
+        from app.exceptions import TenantNotFoundError
+        raise TenantNotFoundError(f"Tenant '{tenant_id}' not found or inactive")
+
+    dsn = decrypt_dsn(str(row))
 
     engine = create_engine(dsn, pool_pre_ping=True, pool_size=5, max_overflow=10)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     _tenant_engine_cache[tenant_id] = (engine, SessionLocal)
     return SessionLocal()
+

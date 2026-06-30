@@ -11,6 +11,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0006_add_radiology_reports"
 down_revision: Union[str, None] = "0005_align_patients_table_with_model"
@@ -42,7 +43,7 @@ def upgrade() -> None:
         sa.Column("request_id", sa.UUID, nullable=True),
         sa.Column("visit_id", sa.UUID, nullable=False),
         sa.Column("patient_id", sa.UUID, nullable=False),
-        sa.Column("modality", sa.Enum("xray", "ct", "mri", "ultrasound", "fluoroscopy", "mammography", "other", name="modality_enum"), nullable=False),
+        sa.Column("modality", postgresql.ENUM("xray", "ct", "mri", "ultrasound", "fluoroscopy", "mammography", "other", name="modality_enum", create_type=False), nullable=False),
         sa.Column("body_part", sa.String(100), nullable=True),
         sa.Column("scheduled_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("performed_at", sa.DateTime(timezone=True), nullable=True),
@@ -51,7 +52,7 @@ def upgrade() -> None:
         sa.Column("image_reference", sa.String(255), nullable=True),
         sa.Column("performed_by", sa.UUID, nullable=False),
         sa.Column("reported_by", sa.UUID, nullable=True),
-        sa.Column("status", sa.Enum("scheduled", "performed", "reported", "verified", name="report_status_enum"), nullable=False, server_default="scheduled"),
+        sa.Column("status", postgresql.ENUM("scheduled", "performed", "reported", "verified", name="report_status_enum", create_type=False), nullable=False, server_default="scheduled"),
         sa.Column("reported_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),

@@ -51,7 +51,8 @@ def create_superadmin(
     if db.query(SuperAdmin).filter(SuperAdmin.email == email).first():
         raise BadRequestError("Email already exists")
 
-    secret = mfa_secret or secrets.token_hex(16)
+    import pyotp
+    secret = mfa_secret or pyotp.random_base32()
     admin = SuperAdmin(
         username=username,
         email=email,
