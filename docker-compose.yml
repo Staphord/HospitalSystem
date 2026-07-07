@@ -67,7 +67,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_INTROSPECT: "false"
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
@@ -117,7 +117,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -163,7 +163,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -209,7 +209,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -253,7 +253,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -288,7 +288,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -323,7 +323,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -361,7 +361,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -399,7 +399,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -437,7 +437,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -475,7 +475,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -513,7 +513,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -551,7 +551,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -589,7 +589,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -627,7 +627,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
@@ -665,7 +665,7 @@ services:
       KEYCLOAK_URL: http://host.docker.internal:8080
       KEYCLOAK_REALM: hospital-realm
       KEYCLOAK_CLIENT_ID: hospital-api
-      KEYCLOAK_CLIENT_SECRET: 3oohb6ppCVoqB57ckNgUR9i1BWwPuATX
+      KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
