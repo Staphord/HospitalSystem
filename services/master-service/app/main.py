@@ -83,18 +83,29 @@ def _stamp_existing_schema_if_needed(migrations_dir: str) -> None:
                 # Fresh database; alembic upgrade will create everything.
                 return
 
-            # Detect whether the schema already includes columns added by later
-            # migrations (e.g. subscription_status from 0002). If so, stamp head.
-            head_columns = conn.execute(
+            # Detect which migration revision best matches the existing schema
+            # to prevent skipping migrations (e.g. 0003 adds country/city, 0002 adds subscription_status)
+            has_country = conn.execute(
+                text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'tenants' "
+                    "AND column_name = 'country'"
+                )
+            ).scalar()
+            has_sub_status = conn.execute(
                 text(
                     "SELECT 1 FROM information_schema.columns "
                     "WHERE table_schema = 'public' AND table_name = 'tenants' "
                     "AND column_name = 'subscription_status'"
                 )
             ).scalar()
-            target_revision = (
-                "0003_add_saas_schema" if head_columns else "0001_initial_master_schema"
-            )
+
+            if has_country:
+                target_revision = "0003_add_saas_schema"
+            elif has_sub_status:
+                target_revision = "0002_add_subscription_lifecycle"
+            else:
+                target_revision = "0001_initial_master_schema"
 
             logger.info("Bootstrapping alembic revision for existing schema: %s", target_revision)
             result = subprocess.run(

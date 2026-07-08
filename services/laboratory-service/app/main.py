@@ -61,6 +61,13 @@ app = FastAPI(
     docs_url=docs_url,
     openapi_url=openapi_url,
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "Queue", "description": "Laboratory patient worklist, patient calling, and queue management"},
+        {"name": "Requests", "description": "Detailed clinical investigation requests dossiers"},
+        {"name": "Specimens", "description": "Specimen collection, receipt verification, and rejection handling"},
+        {"name": "Results", "description": "Laboratory result entry, drafting, modification, and verification sign-offs"},
+        {"name": "History", "description": "Historical diagnostic test results lookup per patient"},
+    ],
 )
 
 app.state.limiter = limiter
