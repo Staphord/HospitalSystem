@@ -18,3 +18,16 @@ scripts/recreate_users.py
 docker-compose copy.yml
 keycloak_realm copy.py
 
+# ── AI / Agent generated files ───────────────────────────────────────────────
+# These files are produced by the AI coding agent during sessions.
+# Not necessarily needed for the project to run.
+workflow.md
+explain.md
+setup.md
+microservicearchitecture.md
+Hospital_Flow_Project_Structure.md
+AGENTS.md
+
+# Auto-generated graph/analysis output (graphify tool output)
+graphify-out/
+

@@ -1,3 +1,4 @@
+from app.models.auth import RefreshToken
 from app.models.user import User
 from app.models.master import Tenant, GlobalAuditLog
 from app.models.admin import SuperAdmin
@@ -17,6 +18,7 @@ from app.models.saas import (
 from app.models.incident import Incident
 
 __all__ = [
+    "RefreshToken",
     "User",
     "Tenant",
     "GlobalAuditLog",
