@@ -4,10 +4,17 @@ Creates visit records, handles payment type selection and insurance verification
 
 ## Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/v1/visits` | Create a visit + insurance verification + queue assignment |
-| GET | `/api/v1/visits/queues/triage/today` | List today's triage queue |
+| Method | Path | Description | Tags |
+|--------|------|-------------|------|
+| `POST` | `/api/v1/visits` | Create a visit + insurance validation + queue assignment | `visits` |
+| `GET` | `/api/v1/visits/{visit_id}` | Get detailed visit record by ID | `visits` |
+| `PATCH` | `/api/v1/visits/{visit_id}/status` | Transition a visit status (e.g. registered -> triaged) | `visits` |
+| `POST` | `/api/v1/visits/patients/{patient_id}/insurance` | Register a new patient insurance policy | `insurance` |
+| `GET` | `/api/v1/visits/patients/{patient_id}/insurance` | List all insurance policies of a patient | `insurance` |
+| `PATCH` | `/api/v1/visits/insurance/{insurance_id}/verify` | Record outcome of manual insurance verification | `insurance` |
+| `GET` | `/api/v1/visits/queues/{queue_type}` | List all entries for a specific queue | `queues` |
+| `GET` | `/api/v1/visits/queues/{queue_type}/next` | Call next waiting patient in a queue | `queues` |
+| `PATCH` | `/api/v1/visits/queues/{queue_id}/status` | Update status of a queue entry | `queues` |
 
 ## Build & Run
 
@@ -18,9 +25,9 @@ docker compose up -d visit-service
 
 ## Run Tests
 
+Ensure you run tests separately from other microservices to prevent virtual environment path collisions:
 ```bash
-cd services/visit-service
-python -m pytest tests/ -v
+venv/bin/pytest services/visit-service/tests -v
 ```
 
 ## Visit Creation Flow

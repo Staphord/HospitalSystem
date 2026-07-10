@@ -52,7 +52,7 @@ def create(
     body: VisitCreateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     try:
         registered_by = payload.get("sub", "")
@@ -86,7 +86,7 @@ def get_visit(
     visit_id: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     return get_visit_by_id(db, visit_id)
 
@@ -97,7 +97,7 @@ def update_visit_status(
     body: VisitStatusUpdateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse", "receptionist"])),
 ):
     return transition_visit_status(db, visit_id, body.status)
 
@@ -109,7 +109,7 @@ def list_queue(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     valid_types = {"triage", "doctor", "lab", "radiology", "pharmacy", "billing"}
     if queue_type not in valid_types:
@@ -125,7 +125,7 @@ def call_next(
     queue_type: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     valid_types = {"triage", "doctor", "lab", "radiology", "pharmacy", "billing"}
     if queue_type not in valid_types:
@@ -148,7 +148,7 @@ def update_queue_entry_status(
     body: QueueStatusUpdateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     return update_queue_status(db, queue_id, body.status)
 
@@ -158,7 +158,7 @@ def add_patient_to_queue(
     body: QueueAddRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     return add_to_queue(
         db,
@@ -173,7 +173,7 @@ def add_patient_to_queue(
 def triage_queue_today(
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     try:
         today = date.today()
@@ -201,7 +201,7 @@ def complete_triage(
     body: TriageCompleteRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "nurse"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "nurse", "receptionist"])),
 ):
     try:
         result = complete_triage_and_enqueue_doctor(
@@ -225,7 +225,7 @@ def complete_triage(
 def doctor_queue_today(
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse", "receptionist"])),
 ):
     queues = get_ordered_doctor_queue(db)
     return queues
@@ -246,7 +246,7 @@ def add_patient_insurance(
     body: InsurancePolicyCreateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     """Add an insurance policy to a patient (status starts as 'pending')."""
     policy = create_insurance_policy(
@@ -269,7 +269,7 @@ def list_patient_insurance(
     patient_id: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     """List all insurance policies held by a patient, newest first."""
     return get_patient_policies(db=db, patient_id=patient_id)
@@ -285,7 +285,7 @@ def verify_insurance_policy(
     body: InsuranceVerifyRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     """Record the outcome of manual insurance verification."""
     policy = update_verification_status(
