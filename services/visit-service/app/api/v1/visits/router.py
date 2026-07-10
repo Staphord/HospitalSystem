@@ -5,10 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.visits.schemas import (
+    InsurancePolicyCreateRequest,
+    InsurancePolicyResponse,
+    InsuranceVerifyRequest,
     QueueAddRequest,
     QueueCallResponse,
     QueueListResponse,
     QueueStatusUpdateRequest,
+    QueueSummary,
     QueueTodayResponse,
     VisitCreateRequest,
     VisitCreateResponse,
@@ -19,6 +23,11 @@ from app.api.v1.visits.schemas import (
 from app.core.security import require_role, require_any_role
 from app.dependencies import get_tenant_db, get_tenant_id_from_token
 from app.models.visit import Queue, Visit
+from app.services.insurance_service import (
+    create_insurance_policy,
+    get_patient_policies,
+    update_verification_status,
+)
 from app.services.queue_service import (
     add_to_queue,
     call_next_in_queue,
@@ -54,16 +63,16 @@ def create(
             visit_type=body.visit_type,
             payment_type=body.payment_type,
             registered_by=registered_by,
-            insurer_name=body.insurer_name,
-            policy_number=body.policy_number,
+            insurance_id=str(body.insurance_id) if body.insurance_id else None,
         )
         return VisitCreateResponse(
             visit=result["visit"],
+            queue=QueueSummary.model_validate(result["queue"]),
             queue_number=result["queue_number"],
             verification_flag=result["verification_flag"],
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except Exception as e:
         logger.exception("Visit creation failed for patient %s", body.patient_id)
         raise HTTPException(
@@ -221,3 +230,72 @@ def doctor_queue_today(
     queues = get_ordered_doctor_queue(db)
     return queues
 
+
+# ---------------------------------------------------------------------------
+# Insurance endpoints (internal — called via reception-service orchestrator)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/patients/{patient_id}/insurance",
+    response_model=InsurancePolicyResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["insurance"],
+)
+def add_patient_insurance(
+    patient_id: str,
+    body: InsurancePolicyCreateRequest,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_role("hospital_admin")),
+):
+    """Add an insurance policy to a patient (status starts as 'pending')."""
+    policy = create_insurance_policy(
+        db=db,
+        patient_id=patient_id,
+        insurer_name=body.insurer_name,
+        policy_number=body.policy_number,
+        coverage_limit=body.coverage_limit,
+        expiry_date=body.expiry_date,
+    )
+    return policy
+
+
+@router.get(
+    "/patients/{patient_id}/insurance",
+    response_model=list[InsurancePolicyResponse],
+    tags=["insurance"],
+)
+def list_patient_insurance(
+    patient_id: str,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_role("hospital_admin")),
+):
+    """List all insurance policies held by a patient, newest first."""
+    return get_patient_policies(db=db, patient_id=patient_id)
+
+
+@router.patch(
+    "/insurance/{insurance_id}/verify",
+    response_model=InsurancePolicyResponse,
+    tags=["insurance"],
+)
+def verify_insurance_policy(
+    insurance_id: str,
+    body: InsuranceVerifyRequest,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_role("hospital_admin")),
+):
+    """Record the outcome of manual insurance verification."""
+    policy = update_verification_status(
+        db=db,
+        insurance_id=insurance_id,
+        verification_status=body.verification_status,
+    )
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"insurance_id '{insurance_id}' not found",
+        )
+    return policy

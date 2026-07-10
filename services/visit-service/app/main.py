@@ -17,11 +17,27 @@ async def lifespan(app: FastAPI):
     yield
 
 
+tags_metadata = [
+    {
+        "name": "visits",
+        "description": "Patient visits registration and general management.",
+    },
+    {
+        "name": "insurance",
+        "description": "Tenant insurance records management, verification, and lookups.",
+    },
+    {
+        "name": "queues",
+        "description": "Triage, doctor, laboratory, pharmacy, and billing service queue workflows.",
+    },
+]
+
 app = FastAPI(
     title="Visit Service",
     version="1.0.0",
     docs_url="/docs",
     lifespan=lifespan,
+    openapi_tags=tags_metadata,
 )
 
 app.add_middleware(

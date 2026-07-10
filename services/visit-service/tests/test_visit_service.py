@@ -50,13 +50,13 @@ def test_create_visit_verified_insurance(
         visit_type="emergency",
         payment_type="insurance",
         registered_by=str(uuid.uuid4()),
-        insurer_name="TestInsurer",
-        policy_number="POL-001",
+        insurance_id=str(verified_insurance.insurance_id),
     )
 
     assert result["visit"].insurance_id == verified_insurance.insurance_id
     assert result["verification_flag"] is None
     assert result["visit"].status == "registered"
+    assert result["queue"] is not None  # queue object now returned
 
     q = db_session.query(Queue).filter(Queue.visit_id == result["visit"].visit_id).first()
     assert q is not None
@@ -74,8 +74,7 @@ def test_create_visit_pending_insurance(
         visit_type="inpatient",
         payment_type="insurance",
         registered_by=str(uuid.uuid4()),
-        insurer_name="PendingInsurer",
-        policy_number="POL-002",
+        insurance_id=str(pending_insurance.insurance_id),
     )
 
     assert result["visit"].insurance_id == pending_insurance.insurance_id
@@ -94,8 +93,7 @@ def test_create_visit_expired_insurance(
         visit_type="outpatient",
         payment_type="insurance",
         registered_by=str(uuid.uuid4()),
-        insurer_name="ExpiredInsurer",
-        policy_number="POL-003",
+        insurance_id=str(expired_insurance.insurance_id),
     )
 
     assert result["visit"].insurance_id == expired_insurance.insurance_id
@@ -106,7 +104,8 @@ def test_create_visit_insurance_no_policy(
     db_session: Session,
     sample_patient_id: str,
 ):
-    with pytest.raises(ValueError, match="No active insurance policy found"):
+    non_existent_id = str(uuid.uuid4())  # random UUID — no record in DB
+    with pytest.raises(ValueError, match="not found, does not belong to patient"):
         create_visit(
             db=db_session,
             hospital_id="hosp-001",
@@ -114,8 +113,7 @@ def test_create_visit_insurance_no_policy(
             visit_type="outpatient",
             payment_type="insurance",
             registered_by=str(uuid.uuid4()),
-            insurer_name="UnknownInsurer",
-            policy_number="POL-999",
+            insurance_id=non_existent_id,
         )
 
 
@@ -123,7 +121,7 @@ def test_create_visit_insurance_missing_fields(
     db_session: Session,
     sample_patient_id: str,
 ):
-    with pytest.raises(ValueError, match="insurer_name and policy_number are required"):
+    with pytest.raises(ValueError, match="insurance_id is required"):
         create_visit(
             db=db_session,
             hospital_id="hosp-001",
@@ -131,8 +129,7 @@ def test_create_visit_insurance_missing_fields(
             visit_type="outpatient",
             payment_type="insurance",
             registered_by=str(uuid.uuid4()),
-            insurer_name=None,
-            policy_number=None,
+            # No insurance_id provided — should raise
         )
 
 
