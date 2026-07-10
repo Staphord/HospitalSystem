@@ -17,7 +17,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d hospital_master"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d hospital_master" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,7 +30,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,7 +50,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -103,7 +103,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -150,7 +150,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -214,7 +214,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -258,7 +258,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8010/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8010/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -285,6 +285,7 @@ services:
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -293,7 +294,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8005/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8005/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -328,7 +329,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8006/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8006/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -366,7 +367,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8011/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8011/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -404,7 +405,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8012/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8012/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -442,7 +443,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8013/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8013/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -480,7 +481,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8014/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8014/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -518,7 +519,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8015/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8015/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -556,7 +557,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8016/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8016/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -594,7 +595,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8017/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8017/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -634,7 +635,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8018/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8018/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -672,7 +673,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8019/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8019/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -710,7 +711,7 @@ services:
     networks:
       - hospital-network
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8020/health')\""]
+      test: [ "CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8020/health')\"" ]
       interval: 15s
       timeout: 5s
       retries: 5

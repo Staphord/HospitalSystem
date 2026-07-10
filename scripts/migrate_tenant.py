@@ -9,27 +9,35 @@ from sqlalchemy import create_engine, text
 
 
 def get_tenant_dsn(tenant_id: str) -> str:
+    from cryptography.fernet import Fernet
     master_db_url = os.getenv("MASTER_DB_URL", "postgresql://postgres:postgres@localhost:5432/hospital_master")
+    encryption_key = os.getenv("TENANT_DB_ENCRYPTION_KEY", "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=")
+    cipher = Fernet(encryption_key.encode())
+
     engine = create_engine(master_db_url)
     with engine.connect() as conn:
         result = conn.execute(
-            text("SELECT db_dsn_encrypted FROM tenants WHERE tenant_id = :tenant_id"),
+            text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tenant_id"),
             {"tenant_id": tenant_id},
         ).fetchone()
     if not result:
         raise ValueError(f"Tenant {tenant_id} not found")
-    # In production, decrypt the DSN here. For dev, assume plaintext or use env override.
-    dsn = result[0]
-    if not dsn:
+    
+    enc_dsn = result[0]
+    if not enc_dsn:
         raise ValueError(f"Tenant {tenant_id} has no DB DSN configured")
-    return dsn
+    
+    dsn = cipher.decrypt(enc_dsn.encode()).decode()
+    import re
+    return re.sub(r'@([^:]+):5432', '@localhost:5432', dsn)
 
 
 def run_migrations(tenant_id: str, dsn: str) -> None:
+    import sys
     env = os.environ.copy()
     env["TENANT_DB_URL"] = dsn
     subprocess.run(
-        ["alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd="migrations/tenant",
         env=env,
         check=True,
