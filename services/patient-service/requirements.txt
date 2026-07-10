@@ -9,3 +9,5 @@ cachetools==5.5.0
 slowapi==0.1.9
 email-validator==2.2.0
 cryptography==44.0.0
+aio-pika==9.4.3
+

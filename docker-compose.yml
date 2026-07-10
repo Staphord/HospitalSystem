@@ -260,6 +260,7 @@ services:
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       postgres-master:
         condition: service_healthy

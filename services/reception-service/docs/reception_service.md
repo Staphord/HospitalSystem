@@ -119,3 +119,16 @@ pytest tests -v
 Once containers are running, developer Swagger interfaces are available locally:
 * **reception-service:** `http://localhost:8010/docs`
 * **visit-service:** `http://localhost:8006/docs`
+
+---
+
+## Distributed Consistency & Rollback (Saga Pattern)
+
+### Patient Registry & Visit Setup Saga
+When registering a new patient AND setting up their first visit in a single transactional-like workflow:
+1. The client invokes `POST /api/v1/reception/register-and-visit` via the frontend form.
+2. The `reception-service` orchestrator calls `patient-service` to create the patient profile.
+3. If successful, it proceeds to register the insurance policy and visit in `visit-service`.
+4. If visit or insurance setup fails downstream, the orchestrator catches the exception and publishes a **`visit.registration_failed`** event to the RabbitMQ exchange `hospital_events` containing the `patient_id` and `tenant_id`.
+5. The `patient-service` consumes this event asynchronously and issues a compensating database `DELETE` to clean up the orphaned patient record, preserving database consistency and preventing duplicate registration lockups.
+

@@ -21,7 +21,7 @@ class PatientInsurance(Base):
     __tablename__ = "patient_insurance"
 
     insurance_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    patient_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    patient_id = Column(String(36), nullable=False, index=True)
     insurer_name = Column(String(150), nullable=False)
     policy_number = Column(String(100), nullable=False)
     coverage_limit = Column(Numeric(12, 2))
@@ -39,7 +39,7 @@ class Visit(Base):
     __tablename__ = "visits"
 
     visit_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    patient_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    patient_id = Column(String(36), nullable=False, index=True)
     visit_number = Column(String(20), unique=True, nullable=False, index=True)
     visit_date = Column(Date, nullable=False, default=date.today)
     visit_type = Column(
@@ -71,7 +71,7 @@ class Queue(Base):
 
     queue_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=False)
-    patient_id = Column(UUID(as_uuid=True), nullable=False)
+    patient_id = Column(String(36), nullable=False)
     queue_type = Column(
         Enum(
             "triage", "doctor", "lab", "radiology", "pharmacy", "billing",
@@ -112,6 +112,10 @@ class VisitNumberSequence(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     date_key = Column(String(8), nullable=False)
     counter = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint("date_key", name="uq_visit_date_key"),
+    )ounter = Column(Integer, nullable=False, default=0)
 
     __table_args__ = (
         UniqueConstraint("date_key", name="uq_visit_date_key"),

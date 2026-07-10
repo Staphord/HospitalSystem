@@ -8,6 +8,7 @@ import httpx
 from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
+from app.messaging.publisher import publish_event
 
 logger = logging.getLogger("orchestrator")
 _client: httpx.AsyncClient | None = None
@@ -418,41 +419,62 @@ async def register_and_create_visit(body: Any, request: Request) -> dict:
 
     patient_id = created_patient.get("id")
 
-    # Step 2: Register insurance policy if payment_type is insurance and details are provided
-    if visit_data.get("payment_type") == "insurance" and insurance_data:
-        ins_sc, created_policy = await _forward_raw(
+    # Step 2: Register insurance policy and Step 3: Create visit inside a try-except to trigger saga rollback on failure
+    try:
+        # Step 2: Register insurance policy if payment_type is insurance and details are provided
+        if visit_data.get("payment_type") == "insurance" and insurance_data:
+            ins_sc, created_policy = await _forward_raw(
+                "POST",
+                settings.visit_service_url,
+                f"/api/v1/visits/patients/{patient_id}/insurance",
+                headers,
+                body=insurance_data,
+            )
+            if ins_sc >= 400:
+                raise HTTPException(
+                    status_code=ins_sc,
+                    detail=created_policy.get("detail", "Insurance policy registration failed after patient registry"),
+                )
+            
+            # Attach the generated insurance_id to the visit creation payload
+            visit_data["insurance_id"] = created_policy.get("insurance_id")
+
+        # Step 3: Create visit with the new patient_id and linked insurance_id
+        visit_data["patient_id"] = patient_id
+        vis_sc, created_visit = await _forward_raw(
             "POST",
             settings.visit_service_url,
-            f"/api/v1/visits/patients/{patient_id}/insurance",
+            "/api/v1/visits",
             headers,
-            body=insurance_data,
+            body=visit_data,
         )
-        if ins_sc >= 400:
-            # We don't roll back the patient registration, but surface the failure
+        if vis_sc >= 400:
             raise HTTPException(
-                status_code=ins_sc,
-                detail=created_policy.get("detail", "Insurance policy registration failed after patient registry"),
+                status_code=vis_sc,
+                detail=created_visit.get("detail", "Visit creation failed after patient registration"),
             )
-        
-        # Attach the generated insurance_id to the visit creation payload
-        visit_data["insurance_id"] = created_policy.get("insurance_id")
 
-    # Step 3: Create visit with the new patient_id and linked insurance_id
-    visit_data["patient_id"] = patient_id
-    vis_sc, created_visit = await _forward_raw(
-        "POST",
-        settings.visit_service_url,
-        "/api/v1/visits",
-        headers,
-        body=visit_data,
-    )
-    if vis_sc >= 400:
-        raise HTTPException(
-            status_code=vis_sc,
-            detail=created_visit.get("detail", "Visit creation failed after patient registration"),
+        return {
+            "patient": created_patient,
+            "visit": created_visit,
+        }
+    except Exception as exc:
+        # Resolve tenant ID from request state context
+        tenant_id = None
+        tenant_ctx = getattr(request.state, "tenant", None)
+        if tenant_ctx:
+            tenant_id = getattr(tenant_ctx, "tenant_id", None)
+
+        logger.warning(
+            "Registration failed downstream. Dispatching visit.registration_failed rollback event for patient %s (tenant: %s)",
+            patient_id,
+            tenant_id,
         )
-
-    return {
-        "patient": created_patient,
-        "visit": created_visit,
-    }
+        await publish_event(
+            "visit.registration_failed",
+            {
+                "patient_id": patient_id,
+                "tenant_id": tenant_id,
+            },
+        )
+        raise exc
