@@ -293,6 +293,7 @@ class CombinedVisitData(BaseModel):
 class CombinedRegisterAndVisitRequest(BaseModel):
     patient: PatientRegisterRequest
     visit: CombinedVisitData
+    insurance: Optional[InsurancePolicyCreateRequest] = None
 
 
 class CombinedRegisterAndVisitResponse(BaseModel):

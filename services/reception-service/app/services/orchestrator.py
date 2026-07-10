@@ -384,10 +384,12 @@ async def triage_queue_today(request: Request) -> dict:
 
 
 async def register_and_create_visit(body: Any, request: Request) -> dict:
-    """Combined: register patient then create a visit in one call."""
+    """Combined: register patient, optionally create insurance policy, then create visit."""
     payload = body.model_dump(mode="json") if hasattr(body, "model_dump") else body
     patient_data = payload.get("patient")
     visit_data = payload.get("visit")
+    insurance_data = payload.get("insurance")
+
     if not patient_data or not visit_data:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -416,7 +418,26 @@ async def register_and_create_visit(body: Any, request: Request) -> dict:
 
     patient_id = created_patient.get("id")
 
-    # Step 2: Create visit with the new patient_id
+    # Step 2: Register insurance policy if payment_type is insurance and details are provided
+    if visit_data.get("payment_type") == "insurance" and insurance_data:
+        ins_sc, created_policy = await _forward_raw(
+            "POST",
+            settings.visit_service_url,
+            f"/api/v1/visits/patients/{patient_id}/insurance",
+            headers,
+            body=insurance_data,
+        )
+        if ins_sc >= 400:
+            # We don't roll back the patient registration, but surface the failure
+            raise HTTPException(
+                status_code=ins_sc,
+                detail=created_policy.get("detail", "Insurance policy registration failed after patient registry"),
+            )
+        
+        # Attach the generated insurance_id to the visit creation payload
+        visit_data["insurance_id"] = created_policy.get("insurance_id")
+
+    # Step 3: Create visit with the new patient_id and linked insurance_id
     visit_data["patient_id"] = patient_id
     vis_sc, created_visit = await _forward_raw(
         "POST",
