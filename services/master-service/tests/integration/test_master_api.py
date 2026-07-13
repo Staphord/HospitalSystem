@@ -34,6 +34,8 @@ from app.models import (
     Announcement,
     SubscriptionAuditLog,
 )
+from app.models.auth import RefreshToken
+
 
 # Override lifespan to bypass external dependencies during testing
 @asynccontextmanager
@@ -230,23 +232,50 @@ def test_generate_invoice(client, db_session):
     from datetime import date
     tenant = Tenant(tenant_id="t1", hospital_name="Hosp 1", is_active=True, status="active", subscription_plan="standard", db_connection_string="dummy", created_by=uuid.uuid4())
     db_session.add(tenant)
+    
+    plan = SubscriptionPlan(
+        plan_id=uuid.uuid4(),
+        plan_name="standard",
+        monthly_price=1500,
+        annual_price=15000,
+    )
+    db_session.add(plan)
+
+    sub = Subscription(
+        subscription_id=uuid.uuid4(),
+        tenant_id="t1",
+        plan_id=plan.plan_id,
+        billing_cycle="monthly",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        status="active"
+    )
+    db_session.add(sub)
     db_session.commit()
 
     payload = {
         "amount": 1500,
         "due_date": "2026-12-31",
-        "description": "Standard monthly sub"
+        "billing_period_start": "2026-01-01",
+        "billing_period_end": "2026-01-31",
+        "plan_name": "standard"
     }
     response = client.post("/api/v1/superadmin/tenants/t1/invoices", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
-    assert data["amount"] == 1500
+    assert float(data["amount"]) == 1500
     assert data["status"] == "unpaid"
 
     # Verify invoice in DB
-    invoice = db_session.query(Invoice).filter(Invoice.id == data["id"]).first()
+    invoice = db_session.query(Invoice).filter(Invoice.invoice_id == uuid.UUID(data["invoice_id"])).first()
     assert invoice is not None
     assert invoice.tenant_id == "t1"
+    
+    # Assert generated invoice number format (e.g. ASUPE-T1-yymmdd-RAND)
+    assert invoice.invoice_number is not None
+    assert invoice.invoice_number.startswith("ASUPE-T1-")
+    assert len(invoice.invoice_number) <= 64
+    assert len(invoice.invoice_number) >= 15
 
 
 # Test recording a payment

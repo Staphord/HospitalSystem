@@ -34,7 +34,7 @@ def create_access_token(super_admin_id: str, username: str, role: str) -> str:
     }
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM, headers={"kid": "superadmin-key"})
 
 
 def create_superadmin(
