@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "services", "auth-service"))
 
 os.environ["ENVIRONMENT"] = "dev"
-os.environ["DATABASE_URL"] = "postgresql://postgres:nasr@localhost:5432/hospital-db"
+os.environ["DATABASE_URL"] = "postgresql://postgres:12345678@localhost:5432/hospital-db"
 os.environ["SECRET_KEY"] = "6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["KEYCLOAK_URL"] = "http://127.0.0.1:8080"
@@ -21,7 +21,7 @@ from sqlalchemy import create_engine, text
 
 # Test 1: Verify database connection
 print("Test 1: Verify hospital-db connection")
-engine = create_engine("postgresql://postgres:nasr@localhost:5432/hospital-db")
+engine = create_engine("postgresql://postgres:12345678@localhost:5432/hospital-db")
 try:
     with engine.connect() as conn:
         result = conn.execute(text("SELECT 1"))

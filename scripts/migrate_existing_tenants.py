@@ -16,14 +16,14 @@ from sqlalchemy import create_engine, text
 def _master_db_url() -> str:
     return os.environ.get(
         "DATABASE_URL",
-        "postgresql://postgres:nasr@postgres-master:5432/hospital_master",
+        "postgresql://postgres:12345678@postgres-master:5432/hospital_master",
     )
 
 
 def _tenant_db_url(tenant_id: str) -> str:
     template = os.environ.get(
         "TENANT_DB_TEMPLATE",
-        "postgresql://postgres:nasr@postgres-master:5432/tenant_{tenant_id}",
+        "postgresql://postgres:12345678@postgres-master:5432/tenant_{tenant_id}",
     )
     return template.format(tenant_id=tenant_id)
 

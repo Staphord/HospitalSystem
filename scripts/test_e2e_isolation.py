@@ -4,9 +4,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-os.environ["DATABASE_URL"] = "postgresql://postgres:nasr@localhost:5432/hospital_master"
-os.environ["DB_ADMIN_URL"] = "postgresql://postgres:nasr@localhost:5432/postgres"
-os.environ["TENANT_DB_TEMPLATE"] = "postgresql://postgres:nasr@localhost:5432/tenant_{tenant_id}"
+os.environ["DATABASE_URL"] = "postgresql://postgres:12345678@localhost:5432/hospital_master"
+os.environ["DB_ADMIN_URL"] = "postgresql://postgres:12345678@localhost:5432/postgres"
+os.environ["TENANT_DB_TEMPLATE"] = "postgresql://postgres:12345678@localhost:5432/tenant_{tenant_id}"
 os.environ["TENANT_DB_ENCRYPTION_KEY"] = "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0="
 
 from sqlalchemy import create_engine, text
@@ -15,7 +15,7 @@ print("=== End-to-End Tenant Isolation Test ===")
 print()
 
 # Step 1: Check current state
-master_engine = create_engine("postgresql://postgres:nasr@localhost:5432/hospital_master")
+master_engine = create_engine("postgresql://postgres:12345678@localhost:5432/hospital_master")
 with master_engine.connect() as conn:
     result = conn.execute(text("SELECT COUNT(*) FROM users WHERE hospital_id LIKE 'hosp-%'"))
     master_count = result.scalar()
@@ -29,14 +29,14 @@ with master_engine.connect() as conn:
 print()
 
 # Step 2: Check tenant databases
-admin_engine = create_engine("postgresql://postgres:nasr@localhost:5432/postgres")
+admin_engine = create_engine("postgresql://postgres:12345678@localhost:5432/postgres")
 with admin_engine.connect() as conn:
     result = conn.execute(text("SELECT datname FROM pg_database WHERE datname LIKE 'tenant_%'"))
     tenant_dbs = [r[0] for r in result]
     
     print(f"3. Tenant databases found: {len(tenant_dbs)}")
     for db in tenant_dbs:
-        tenant_engine = create_engine(f"postgresql://postgres:nasr@localhost:5432/{db}")
+        tenant_engine = create_engine(f"postgresql://postgres:12345678@localhost:5432/{db}")
         try:
             with tenant_engine.connect() as conn:
                 result = conn.execute(text("SELECT COUNT(*) FROM users"))
