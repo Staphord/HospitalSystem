@@ -93,6 +93,7 @@ class TenantOut(BaseModel):
     trial_ends_at: datetime | None = None
     has_used_trial: bool
     auto_renew: bool
+    grace_period_days: int
     grace_period_end: datetime | None = None
     pending_plan: str | None = None
     pending_billing_cycle: str | None = None
@@ -115,7 +116,7 @@ class TenantOut(BaseModel):
 class TenantCreate(BaseModel):
     hospital_name: str
     admin_username: str
-    admin_password: str
+    admin_password: str | None = None
     admin_email: EmailStr
     admin_full_name: str = ""
 
@@ -132,6 +133,7 @@ class TenantCreate(BaseModel):
     date_format: str | None = Field(default=None, max_length=20)
     logo_url: str | None = Field(default=None, max_length=255)
     data_region: str | None = Field(default=None, max_length=50)
+    grace_period_days: int | None = Field(default=7, ge=0)
 
 
 class TenantUpdate(BaseModel):
@@ -153,6 +155,7 @@ class TenantUpdate(BaseModel):
     date_format: str | None = Field(default=None, max_length=20)
     logo_url: str | None = Field(default=None, max_length=255)
     data_region: str | None = Field(default=None, max_length=50)
+    grace_period_days: int | None = Field(default=None, ge=0)
 
 
 class RoleCreate(BaseModel):
@@ -427,6 +430,7 @@ class InvoiceOut(BaseModel):
     currency: str
     due_date: date
     status: str
+    hospital_name: str | None = None
     issued_at: datetime
     paid_at: datetime | None
     amount_paid: Decimal | None = None
@@ -541,7 +545,7 @@ class SuperAdminAuditLogOut(BaseModel):
 
 
 class InvoiceCreate(BaseModel):
-    invoice_number: str = Field(..., max_length=30)
+    invoice_number: str | None = Field(default=None, max_length=64)
     billing_period_start: date
     billing_period_end: date
     plan_name: str = Field(..., max_length=50)
@@ -607,5 +611,23 @@ class IncidentOut(BaseModel):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SuperAdminSessionOut(BaseModel):
+    id: str
+    user_sub: str
+    username: str
+    email: str
+    full_name: str
+    role: str
+    login_time: datetime
+    expires_at: datetime
+    is_impersonation: bool
+    impersonation_tenant_id: str | None = None
+    impersonation_tenant_name: str | None = None
+    ip_address: str
+    device: str
 
     model_config = ConfigDict(from_attributes=True)

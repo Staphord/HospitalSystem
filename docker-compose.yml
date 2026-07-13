@@ -131,6 +131,11 @@ services:
       SUSPENDED_BLOCKLIST_TTL: 3600
       PASSWORD_RESET_TOKEN_TTL: 3600
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -177,6 +182,11 @@ services:
       SUSPENDED_BLOCKLIST_TTL: 3600
       PASSWORD_RESET_TOKEN_TTL: 3600
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
     depends_on:
       postgres-master:
         condition: service_healthy
