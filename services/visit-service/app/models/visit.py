@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text,
@@ -50,9 +50,9 @@ class PatientInsurance(Base):
         Enum("pending", "verified", "rejected", name="verification_status_enum"),
         nullable=False, default="pending",
     )
-    verified_at = Column(DateTime, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class Visit(Base):
@@ -82,8 +82,8 @@ class Visit(Base):
         nullable=False, default="registered",
     )
     registered_by = Column(UUID(as_uuid=True), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class Queue(Base):
@@ -108,9 +108,9 @@ class Queue(Base):
         Enum("waiting", "in_progress", "completed", "skipped", name="queue_status_enum"),
         nullable=False, default="waiting",
     )
-    called_at = Column(DateTime, nullable=True)
-    completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    called_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class QueueNumberSequence(Base):
