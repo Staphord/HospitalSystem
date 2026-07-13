@@ -61,6 +61,7 @@ async def create_tenant_realm(realm: str) -> None:
         "loginTheme": "keycloak",
         "displayName": realm,
         "displayNameHtml": f"<div class='kc-logo-text'><span>{realm}</span></div>",
+        "sslRequired": "none",
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:

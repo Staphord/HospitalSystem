@@ -331,3 +331,34 @@ def test_compute_proration_zero_when_expired(db):
         subscription_end=end,
     )
     assert amount == 0
+
+
+def test_upgrade_deferred_sets_pending_plan(db):
+    """Deferred upgrade sets pending_plan instead of changing immediately."""
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.BASIC.value)
+    result = upgrade_subscription(
+        db,
+        tenant_id=tenant.tenant_id,
+        new_plan=SubscriptionPlan.STANDARD,
+        effective_at_end=True,
+    )
+    # Plan should NOT have changed yet.
+    assert tenant.subscription_plan == SubscriptionPlan.BASIC.value
+    # Pending plan should be set.
+    assert tenant.pending_plan == SubscriptionPlan.STANDARD.value
+    assert result.action == "upgrade_deferred"
+
+
+def test_downgrade_seat_limit_blocked(db):
+    """Downgrading is blocked if active user count exceeds new plan seat limit."""
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.STANDARD.value)
+    from unittest.mock import patch
+    with patch("app.services.subscription_service._get_tenant_active_users_count", return_value=25):
+        with pytest.raises(SubscriptionError) as exc:
+            downgrade_subscription(
+                db,
+                tenant_id=tenant.tenant_id,
+                new_plan=SubscriptionPlan.BASIC,  # Basic limit: 20
+                effective_at_end=False,
+            )
+        assert exc.value.detail["code"] == "LIMIT_EXCEEDED"

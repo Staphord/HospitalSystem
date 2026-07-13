@@ -147,7 +147,7 @@ class Invoice(Base):
         index=True,
     )
 
-    invoice_number = Column(String(30), nullable=False, unique=True, index=True)
+    invoice_number = Column(String(64), nullable=False, unique=True, index=True)
     billing_period_start = Column(Date, nullable=False)
     billing_period_end = Column(Date, nullable=False)
     plan_name = Column(String(50), nullable=False)
