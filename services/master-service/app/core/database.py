@@ -66,6 +66,17 @@ def _migrate_super_admins_table() -> None:
             conn.commit()
 
 
+def _migrate_tenants_table() -> None:
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(_engine)
+    columns = [c["name"] for c in inspector.get_columns("tenants")]
+    with _engine.connect() as conn:
+        if "grace_period_days" not in columns:
+            conn.execute(text("ALTER TABLE tenants ADD COLUMN grace_period_days INTEGER DEFAULT 7"))
+            conn.commit()
+
+
 def init_db() -> None:
     from app.db.base import Base
     import app.models
@@ -74,6 +85,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=_engine)
     _migrate_user_table()
     _migrate_super_admins_table()
+    _migrate_tenants_table()
 
 
 class DatabaseRouter(ABC):

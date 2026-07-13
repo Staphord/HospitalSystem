@@ -82,6 +82,7 @@ class Tenant(Base):
     trial_start = Column(DateTime(timezone=True), nullable=True)
     trial_end = Column(DateTime(timezone=True), nullable=True)
     has_used_trial = Column(Boolean, default=False, nullable=False)
+    grace_period_days = Column(Integer, default=7, nullable=False)
     grace_period_end = Column(DateTime(timezone=True), nullable=True)
     auto_renew = Column(Boolean, default=True, nullable=False)
     suspended_at = Column(DateTime(timezone=True), nullable=True)
