@@ -46,7 +46,7 @@ class Tenant(Base):
     date_format = Column(String(20), nullable=False, default="%Y-%m-%d")
 
     # Branding / infra
-    logo_url = Column(String(255), nullable=True)
+    logo_url = Column(Text, nullable=True)
     data_region = Column(String(50), nullable=True)
     db_connection_string = Column(Text, nullable=False)  # encrypted connection string
 

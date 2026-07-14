@@ -62,6 +62,9 @@ class SubscriptionStatus(str):
     suspended = "suspended"
     cancelled = "cancelled"
     terminated = "terminated"
+    superseded = "superseded"
+    expired = "expired"
+    pending = "pending"
 
 
 class Subscription(Base):
@@ -155,6 +158,7 @@ class Invoice(Base):
     currency = Column(String(5), nullable=False, default="USD")
     due_date = Column(Date, nullable=False)
     status = Column(String(32), nullable=False, default="unpaid")
+    reminder_sent_at = Column(DateTime(timezone=True), nullable=True)
 
     issued_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
     paid_at = Column(DateTime(timezone=True), nullable=True)
@@ -202,6 +206,7 @@ class SaaSPayment(Base):
         nullable=False,
     )
     receipt_sent_at = Column(DateTime(timezone=True), nullable=True)
+    receipt_delivery_status = Column(String(32), nullable=False, default="pending")
     paid_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
 
     @hybrid_property

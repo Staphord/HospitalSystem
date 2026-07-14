@@ -52,6 +52,9 @@ class SubscriptionStatus(str, Enum):
     SUSPENDED = "suspended"
     CANCELLED = "cancelled"
     TERMINATED = "terminated"
+    SUPERSEDED = "superseded"
+    EXPIRED = "expired"
+    PENDING = "pending"
 
 
 @dataclass(frozen=True)
@@ -245,46 +248,32 @@ def sync_plans_to_db(db) -> None:
         return
 
     from datetime import datetime, timezone
-    from sqlalchemy import text
+    from app.models.saas import SubscriptionPlan as DBPlan
 
     now = datetime.now(timezone.utc)
     for plan in SubscriptionPlan:
         details = PLAN_CATALOG[plan]
-        db.execute(
-            text(
-                """
-                INSERT INTO subscription_plans (
-                    plan_id, plan_name, description, max_users, max_patients,
-                    storage_gb, modules_included, monthly_price, annual_price,
-                    annual_discount_pct, uptime_sla_pct, backup_frequency_hours, is_active,
-                    created_at
-                ) VALUES (
-                    :plan_id, :plan_name, :description, :max_users, :max_patients,
-                    :storage_gb, to_jsonb(:modules), :monthly_price, :annual_price,
-                    :annual_discount_pct, :uptime_sla_pct, :backup_frequency_hours, :is_active,
-                    :created_at
-                )
-                ON CONFLICT (plan_id) DO NOTHING
-                """
-            ),
-            {
-                "plan_id": str(plan_uuid(plan)),
-                "plan_name": plan.value,
-                "description": details.display_name,
-                "max_users": details.max_users,
-                "max_patients": None,
-                "storage_gb": details.storage_gb,
-                "modules": list(details.features),
-                "monthly_price": details.monthly_price,
-                "annual_price": details.annual_price,
-                "annual_discount_pct": 0.0 if details.monthly_price == 0 else round(
+        pid = plan_uuid(plan)
+        exists = db.query(DBPlan).filter(DBPlan.plan_id == pid).first()
+        if not exists:
+            db_plan = DBPlan(
+                plan_id=pid,
+                plan_name=plan.value,
+                description=details.display_name,
+                max_users=details.max_users,
+                max_patients=None,
+                storage_gb=details.storage_gb,
+                modules_included=list(details.features),
+                monthly_price=details.monthly_price,
+                annual_price=details.annual_price,
+                annual_discount_pct=0.0 if details.monthly_price == 0 else round(
                     (1 - details.annual_price / (details.monthly_price * 12)) * 100, 1
                 ),
-                "uptime_sla_pct": 99.9,
-                "backup_frequency_hours": 24,
-                "is_active": True,
-                "created_at": now,
-            },
-        )
+                uptime_sla_pct=99.9,
+                backup_frequency_hours=24,
+                is_active=True,
+                created_at=now,
+            )
+            db.add(db_plan)
     db.commit()
     _db_synced = True
