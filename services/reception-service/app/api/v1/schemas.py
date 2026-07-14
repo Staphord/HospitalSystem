@@ -260,6 +260,8 @@ class QueueEntryWithContext(BaseModel):
     priority: str
     status: str
     created_at: datetime
+    called_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     patient: PatientSummary
     visit: VisitSummary
 

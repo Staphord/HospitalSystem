@@ -355,6 +355,8 @@ async def get_reception_queue(
             "priority": entry.get("priority"),
             "status": entry.get("status"),
             "created_at": entry.get("created_at"),
+            "called_at": entry.get("called_at"),
+            "completed_at": entry.get("completed_at"),
             "patient": {
                 "patient_id": patient_raw.get("id") if patient_raw else patient_id,
                 "patient_number": patient_raw.get("patient_number", "") if patient_raw else "",
