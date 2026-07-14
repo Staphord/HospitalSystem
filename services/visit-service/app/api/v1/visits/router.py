@@ -148,7 +148,7 @@ def update_queue_entry_status(
     body: QueueStatusUpdateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist", "nurse", "triage_nurse", "doctor"])),
 ):
     return update_queue_status(db, queue_id, body.status)
 
