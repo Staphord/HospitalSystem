@@ -299,3 +299,55 @@ def verify_insurance_policy(
             detail=f"insurance_id '{insurance_id}' not found",
         )
     return policy
+
+
+@router.get("/active-patient/{patient_id}")
+def get_active_patient_visit(
+    patient_id: str,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+):
+    """Find if a patient has an active (non-completed, non-cancelled) visit."""
+    import uuid as uuid_mod
+    try:
+        pid = uuid_mod.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid patient_id UUID",
+        )
+
+    # Search for an active visit (latest first to avoid matching stale older active visits)
+    visit = (
+        db.query(Visit)
+        .filter(
+            Visit.patient_id == pid,
+            Visit.status != "completed",
+            Visit.status != "cancelled",
+        )
+        .order_by(Visit.created_at.desc())
+        .first()
+    )
+    if not visit:
+        return {"active": False}
+
+    # Fetch latest queue entry for this visit to get position & queue type
+    queue_entry = (
+        db.query(Queue)
+        .filter(Queue.visit_id == visit.visit_id)
+        .order_by(Queue.created_at.desc())
+        .first()
+    )
+
+    if not queue_entry or queue_entry.status in ["completed", "skipped"]:
+        return {"active": False}
+
+    return {
+        "active": True,
+        "visit_id": str(visit.visit_id),
+        "visit_status": visit.status,
+        "queue_status": queue_entry.status,
+        "queue_number": queue_entry.queue_number,
+        "queue_type": queue_entry.queue_type,
+    }
