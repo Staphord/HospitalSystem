@@ -131,7 +131,7 @@ class TenantCreate(BaseModel):
     timezone: str | None = Field(default=None, max_length=50)
     currency: str | None = Field(default=None, max_length=5)
     date_format: str | None = Field(default=None, max_length=20)
-    logo_url: str | None = Field(default=None, max_length=255)
+    logo_url: str | None = Field(default=None)
     data_region: str | None = Field(default=None, max_length=50)
     grace_period_days: int | None = Field(default=7, ge=0)
 
@@ -153,7 +153,7 @@ class TenantUpdate(BaseModel):
     timezone: str | None = Field(default=None, max_length=50)
     currency: str | None = Field(default=None, max_length=5)
     date_format: str | None = Field(default=None, max_length=20)
-    logo_url: str | None = Field(default=None, max_length=255)
+    logo_url: str | None = Field(default=None)
     data_region: str | None = Field(default=None, max_length=50)
     grace_period_days: int | None = Field(default=None, ge=0)
 
@@ -279,7 +279,7 @@ class SubscriptionSubscribeRequest(BaseModel):
 class SubscriptionPlanChangeRequest(BaseModel):
     plan: str
     billing_cycle: str | None = None
-    effective_at_end: bool = False
+    effective_at_end: bool | None = None
 
     @field_validator("billing_cycle")
     @classmethod
@@ -370,7 +370,7 @@ class PlanCatalogOut(BaseModel):
     monthly_price: int
     annual_price: int
     trial_days: int
-    max_users: int
+    max_users: int | None = None
     features: list[str]
     rank: int
 
@@ -534,6 +534,7 @@ class PlanUpdate(BaseModel):
 class SuperAdminAuditLogOut(BaseModel):
     log_id: UUID
     super_admin_id: UUID
+    actor_name: str | None = None
     action: str
     tenant_id: str | None
     action_detail: dict | None

@@ -102,6 +102,39 @@ def _request_meta(request: Request, user: TokenPayload) -> tuple[str | None, str
     return user_sub, ip_address
 
 
+def _handle_base64_logo(tenant_id: str, logo_url: str | None) -> str | None:
+    if not logo_url or not logo_url.startswith("data:image/"):
+        return logo_url
+
+    try:
+        import base64
+        import os
+        import re
+
+        match = re.match(r"^data:image/(\w+);base64,(.+)$", logo_url)
+        if not match:
+            return logo_url
+
+        ext = match.group(1)
+        data_str = match.group(2)
+        image_data = base64.b64decode(data_str)
+
+        static_logos_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "logos"))
+        os.makedirs(static_logos_dir, exist_ok=True)
+
+        filename = f"{tenant_id}.{ext}"
+        filepath = os.path.join(static_logos_dir, filename)
+
+        with open(filepath, "wb") as f:
+            f.write(image_data)
+
+        return f"/api/v1/superadmin/static/logos/{filename}"
+    except Exception as exc:
+        logger.error(f"Failed to decode and save base64 logo: {exc}")
+        return logo_url
+
+
+
 async def send_new_admin_email(
     email: str,
     username: str,
@@ -202,6 +235,34 @@ Backup Codes: {backup_codes_text}
 
 
 
+def _log_action(
+    db: Session,
+    token: TokenPayload,
+    request: Request,
+    action: str,
+    tenant_id: str | None,
+    detail: dict,
+) -> None:
+    """Log super admin actions to global_audit_logs."""
+    try:
+        from app.models.master import GlobalAuditLog
+        import json
+        
+        user_sub = token.sub if token else None
+        ip_address = request.client.host if (request and request.client) else None
+
+        log = GlobalAuditLog(
+            tenant_id=tenant_id,
+            user_sub=user_sub,
+            action=action,
+            detail=json.dumps(detail, default=str),
+            ip_address=ip_address,
+        )
+        db.add(log)
+    except Exception as exc:
+        logger.exception("Failed to write global audit log for %s: %s", action, exc)
+
+
 # ---------------------------------------------------------------------------
 # Super-admin user management
 # ---------------------------------------------------------------------------
@@ -212,7 +273,7 @@ async def create_user(
     request: Request,
     body: SuperAdminCreate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> SuperAdminOut:
     if body.role not in ("super_admin", "billing_manager", "support"):
         raise HTTPException(
@@ -278,6 +339,15 @@ async def create_user(
         backup_codes=backup_codes_list,
     )
 
+    _log_action(
+        db,
+        token,
+        request,
+        "super_admin.create",
+        None,
+        {"username": body.username, "email": body.email, "role": body.role},
+    )
+
     return SuperAdminOut.model_validate(admin)
 
 
@@ -288,7 +358,7 @@ async def update_user(
     super_admin_id: str,
     body: SuperAdminUpdate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> SuperAdminOut:
     admin = db.query(SuperAdmin).filter(SuperAdmin.super_admin_id == super_admin_id).first()
     if not admin:
@@ -336,6 +406,15 @@ async def update_user(
         if body.role is not None:
             user_record.role = body.role
 
+    _log_action(
+        db,
+        token,
+        request,
+        "super_admin.update",
+        None,
+        {"super_admin_id": str(super_admin_id), "role": body.role},
+    )
+
     db.commit()
     db.refresh(admin)
     return SuperAdminOut.model_validate(admin)
@@ -347,7 +426,7 @@ async def delete_user(
     request: Request,
     body: SuperAdminDelete,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> None:
     admin = db.query(SuperAdmin).filter(SuperAdmin.username == body.username).first()
     if admin:
@@ -362,6 +441,14 @@ async def delete_user(
             delete_local_user(db, kc_sub)
         # Delete the super admin record
         db.delete(admin)
+        _log_action(
+            db,
+            token,
+            request,
+            "super_admin.delete",
+            None,
+            {"username": body.username},
+        )
         db.commit()
         return
     # If admin not found, simply return None
@@ -413,7 +500,13 @@ async def create_tenant(
 
     # Ensure the active user is in super_admins table for SQLite tests and constraint safety
     from app.models.admin import SuperAdmin
-    sub_uuid = uuid.UUID(token.sub) if isinstance(token.sub, str) else token.sub
+    # Resolve active user UUID
+    try:
+        sub_uuid = uuid.UUID(token.sub) if isinstance(token.sub, str) else token.sub
+    except (ValueError, TypeError):
+        import hashlib
+        hasher = hashlib.md5((token.sub or "superadmin").encode('utf-8'))
+        sub_uuid = uuid.UUID(bytes=hasher.digest())
     if sub_uuid:
         admin_exists = db.query(SuperAdmin).filter(SuperAdmin.super_admin_id == sub_uuid).first()
         if not admin_exists:
@@ -459,7 +552,7 @@ async def create_tenant(
         timezone=body.timezone or "UTC",
         currency=body.currency or "USD",
         date_format=body.date_format or "%Y-%m-%d",
-        logo_url=body.logo_url,
+        logo_url=_handle_base64_logo(tenant_id, body.logo_url),
         data_region=body.data_region,
         grace_period_days=body.grace_period_days if body.grace_period_days is not None else 7,
         created_by=sub_uuid,
@@ -583,6 +676,16 @@ async def create_tenant(
             login_url=base_url,
         )
 
+    _log_action(
+        db,
+        token,
+        request,
+        "tenant.onboard",
+        tenant_id,
+        {"hospital_name": body.hospital_name, "country": body.country, "city": body.city},
+    )
+    db.commit()
+
     return TenantOut.model_validate(tenant)
 
 
@@ -680,11 +783,20 @@ async def update_tenant(
     if body.date_format is not None:
         tenant.date_format = body.date_format
     if body.logo_url is not None:
-        tenant.logo_url = body.logo_url
+        tenant.logo_url = _handle_base64_logo(tenant_id, body.logo_url)
     if body.data_region is not None:
         tenant.data_region = body.data_region
     if body.grace_period_days is not None:
         tenant.grace_period_days = body.grace_period_days
+
+    _log_action(
+        db,
+        user,
+        request,
+        "tenant.update",
+        tenant_id,
+        {"updates": body.model_dump(exclude_unset=True, exclude={"logo_url"})},
+    )
 
     # Commit database transaction
     db.commit()
@@ -716,10 +828,32 @@ def _serialize_state(tenant: Tenant) -> dict:
 @limiter.limit("100/minute")
 async def list_plans(
     request: Request,
+    db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
 ) -> list[PlanCatalogOut]:
     """Return the canonical subscription plan catalog."""
-    return [PlanCatalogOut.model_validate(plan_to_json(p)) for p in SubscriptionPlan]
+    from app.models.saas import SubscriptionPlan as SubscriptionPlanModel
+    from app.services.subscription_plans import plan_rank
+    
+    db_plans = db.query(SubscriptionPlanModel).order_by(SubscriptionPlanModel.monthly_price).all()
+    
+    out_plans = []
+    for p in db_plans:
+        rank = plan_rank(p.plan_name)
+        out_plans.append(
+            PlanCatalogOut(
+                plan=p.plan_name,
+                plan_id=p.plan_id,
+                display_name=p.description or p.plan_name.replace("_", " ").title(),
+                monthly_price=int(p.monthly_price),
+                annual_price=int(p.annual_price),
+                trial_days=30 if p.plan_name == "free_trial" else 0,
+                max_users=p.max_users,
+                features=p.modules_included or [],
+                rank=rank,
+            )
+        )
+    return out_plans
 
 
 # ---------------------------------------------------------------------------
@@ -732,7 +866,7 @@ async def create_plan(
     request: Request,
     body: PlanCreate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> SubscriptionPlanOut:
     from app.models.saas import SubscriptionPlan as SubscriptionPlanModel
     plan = SubscriptionPlanModel(
@@ -750,6 +884,14 @@ async def create_plan(
         is_active=body.is_active,
     )
     db.add(plan)
+    _log_action(
+        db,
+        token,
+        request,
+        "plan.create",
+        None,
+        {"plan_name": body.plan_name, "monthly_price": str(body.monthly_price)},
+    )
     db.commit()
     db.refresh(plan)
     return SubscriptionPlanOut.model_validate(plan)
@@ -762,7 +904,7 @@ async def update_plan(
     plan_id: UUID,
     body: PlanUpdate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> SubscriptionPlanOut:
     from app.models.saas import SubscriptionPlan as SubscriptionPlanModel
     plan = db.query(SubscriptionPlanModel).filter(SubscriptionPlanModel.plan_id == plan_id).first()
@@ -770,6 +912,14 @@ async def update_plan(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plan not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(plan, field, value)
+    _log_action(
+        db,
+        token,
+        request,
+        "plan.update",
+        None,
+        {"plan_id": str(plan_id), "updates": body.model_dump(exclude_unset=True)},
+    )
     db.commit()
     db.refresh(plan)
 
@@ -785,13 +935,21 @@ async def delete_plan(
     request: Request,
     plan_id: UUID,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> None:
     from app.models.saas import SubscriptionPlan as SubscriptionPlanModel
     plan = db.query(SubscriptionPlanModel).filter(SubscriptionPlanModel.plan_id == plan_id).first()
     if not plan:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plan not found")
     db.delete(plan)
+    _log_action(
+        db,
+        token,
+        request,
+        "plan.delete",
+        None,
+        {"plan_id": str(plan_id), "plan_name": plan.plan_name},
+    )
     db.commit()
 
 
@@ -858,6 +1016,7 @@ async def upgrade_tenant_endpoint(
     request: Request,
     tenant_id: str,
     body: SubscriptionPlanChangeRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: TokenPayload = Depends(get_current_active_user),
 ) -> SubscriptionActionOut:
@@ -874,11 +1033,20 @@ async def upgrade_tenant_endpoint(
         tenant_id=tenant_id,
         new_plan=new_plan,
         billing_cycle=billing_cycle,
-        effective_at_end=body.effective_at_end,
+        effective_at_end=body.effective_at_end if body.effective_at_end is not None else False,
         user_sub=user_sub,
         ip_address=ip_address,
     )
     db.commit()
+
+    # Check if a new unpaid invoice was created during the upgrade transition
+    from app.models.saas import Invoice as InvoiceModel
+    new_invoice = db.query(InvoiceModel).filter(
+        InvoiceModel.tenant_id == tenant_id,
+        InvoiceModel.status == "unpaid",
+    ).order_by(InvoiceModel.issued_at.desc()).first()
+    if new_invoice:
+        _trigger_invoice_email_dispatch(db, tenant_id, new_invoice, background_tasks)
 
     state = _serialize_state(result.tenant)
     return SubscriptionActionOut.model_validate(
@@ -898,6 +1066,7 @@ async def downgrade_tenant_endpoint(
     request: Request,
     tenant_id: str,
     body: SubscriptionPlanChangeRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: TokenPayload = Depends(get_current_active_user),
 ) -> SubscriptionActionOut:
@@ -914,11 +1083,20 @@ async def downgrade_tenant_endpoint(
         tenant_id=tenant_id,
         new_plan=new_plan,
         billing_cycle=billing_cycle,
-        effective_at_end=body.effective_at_end,
+        effective_at_end=body.effective_at_end if body.effective_at_end is not None else True,
         user_sub=user_sub,
         ip_address=ip_address,
     )
     db.commit()
+
+    # Check if a new unpaid invoice was created during the downgrade transition
+    from app.models.saas import Invoice as InvoiceModel
+    new_invoice = db.query(InvoiceModel).filter(
+        InvoiceModel.tenant_id == tenant_id,
+        InvoiceModel.status == "unpaid",
+    ).order_by(InvoiceModel.issued_at.desc()).first()
+    if new_invoice:
+        _trigger_invoice_email_dispatch(db, tenant_id, new_invoice, background_tasks)
 
     state = _serialize_state(result.tenant)
     return SubscriptionActionOut.model_validate(
@@ -938,6 +1116,7 @@ async def renew_tenant_endpoint(
     request: Request,
     tenant_id: str,
     body: SubscriptionRenewRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: TokenPayload = Depends(get_current_active_user),
 ) -> SubscriptionActionOut:
@@ -952,6 +1131,15 @@ async def renew_tenant_endpoint(
         ip_address=ip_address,
     )
     db.commit()
+
+    # Check if a new unpaid invoice was created during the renewal
+    from app.models.saas import Invoice as InvoiceModel
+    new_invoice = db.query(InvoiceModel).filter(
+        InvoiceModel.tenant_id == tenant_id,
+        InvoiceModel.status == "unpaid",
+    ).order_by(InvoiceModel.issued_at.desc()).first()
+    if new_invoice:
+        _trigger_invoice_email_dispatch(db, tenant_id, new_invoice, background_tasks)
 
     # Renewal may lift a suspension blocklist entry.
     await remove_tenant_suspension_cache(tenant_id)
@@ -1296,6 +1484,14 @@ async def create_announcement(
         created_by=created_by,
     )
     db.add(announcement)
+    _log_action(
+        db,
+        user,
+        request,
+        "announcement.create",
+        None,
+        {"title": body.title, "audience": body.audience, "target_tenant_ids": body.target_tenant_ids},
+    )
     db.commit()
     db.refresh(announcement)
     return AnnouncementOut.model_validate(announcement)
@@ -1308,7 +1504,7 @@ async def update_announcement(
     announcement_id: UUID,
     body: AnnouncementUpdate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> AnnouncementOut:
     from app.models.saas import Announcement as AnnouncementModel
     announcement = db.query(AnnouncementModel).filter(AnnouncementModel.announcement_id == announcement_id).first()
@@ -1316,6 +1512,14 @@ async def update_announcement(
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Announcement not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(announcement, field, value)
+    _log_action(
+        db,
+        token,
+        request,
+        "announcement.update",
+        None,
+        {"announcement_id": str(announcement_id), "updates": body.model_dump(exclude_unset=True)},
+    )
     db.commit()
     db.refresh(announcement)
     return AnnouncementOut.model_validate(announcement)
@@ -1327,13 +1531,21 @@ async def delete_announcement(
     request: Request,
     announcement_id: UUID,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> None:
     from app.models.saas import Announcement as AnnouncementModel
     announcement = db.query(AnnouncementModel).filter(AnnouncementModel.announcement_id == announcement_id).first()
     if not announcement:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Announcement not found")
     db.delete(announcement)
+    _log_action(
+        db,
+        token,
+        request,
+        "announcement.delete",
+        None,
+        {"announcement_id": str(announcement_id)},
+    )
     db.commit()
 
 
@@ -1459,6 +1671,14 @@ async def create_system_role(
                 raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Tenant '{tid}' not found")
             db.add(TenantSystemRoleAssignment(system_role_id=system_role.system_role_id, tenant_id=tid))
 
+    _log_action(
+        db,
+        token,
+        request,
+        "system_role.create",
+        None,
+        {"role_name": body.name, "is_global": body.is_global, "target_tenant_ids": body.target_tenant_ids},
+    )
     db.commit()
     db.refresh(system_role)
     return _build_system_role_out(db, system_role)
@@ -1508,7 +1728,7 @@ async def update_system_role(
     role_id: UUID,
     body: SystemRoleUpdate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> SystemRoleOut:
     role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
     if not role:
@@ -1536,6 +1756,14 @@ async def update_system_role(
                 raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"Tenant '{tid}' not found")
             db.add(TenantSystemRoleAssignment(system_role_id=role.system_role_id, tenant_id=tid))
 
+    _log_action(
+        db,
+        token,
+        request,
+        "system_role.update",
+        None,
+        {"role_id": str(role_id), "updates": body.model_dump(exclude_unset=True)},
+    )
     db.commit()
     db.refresh(role)
     return _build_system_role_out(db, role)
@@ -1547,12 +1775,20 @@ async def delete_system_role(
     request: Request,
     role_id: UUID,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> None:
     role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
     if not role:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="System role not found")
     db.delete(role)
+    _log_action(
+        db,
+        token,
+        request,
+        "system_role.delete",
+        None,
+        {"role_id": str(role_id), "role_name": role.name},
+    )
     db.commit()
 
 
@@ -1563,7 +1799,7 @@ async def assign_system_role_to_tenants(
     role_id: UUID,
     body: list[str],  # list of tenant_ids
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> SystemRoleOut:
     role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
     if not role:
@@ -1582,6 +1818,15 @@ async def assign_system_role_to_tenants(
         if not existing:
             db.add(TenantSystemRoleAssignment(system_role_id=role_id, tenant_id=tid))
 
+    for tid in body:
+        _log_action(
+            db,
+            token,
+            request,
+            "system_role.assign_tenant",
+            tid,
+            {"role_id": str(role_id), "role_name": role.name},
+        )
     db.commit()
     db.refresh(role)
     return _build_system_role_out(db, role)
@@ -1594,9 +1839,10 @@ async def remove_system_role_from_tenant(
     role_id: UUID,
     tenant_id: str,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> None:
-    if not db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first():
+    role = db.query(SystemRole).filter(SystemRole.system_role_id == role_id).first()
+    if not role:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="System role not found")
     assignment = db.query(TenantSystemRoleAssignment).filter(
         TenantSystemRoleAssignment.system_role_id == role_id,
@@ -1605,6 +1851,14 @@ async def remove_system_role_from_tenant(
     if not assignment:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Assignment not found")
     db.delete(assignment)
+    _log_action(
+        db,
+        token,
+        request,
+        "system_role.remove_tenant",
+        tenant_id,
+        {"role_id": str(role_id), "role_name": role.name},
+    )
     db.commit()
 
 
@@ -1652,6 +1906,14 @@ async def create_global_role(
         created_by=token.sub,
     )
     db.add(role)
+    _log_action(
+        db,
+        token,
+        request,
+        "global_role.create",
+        None,
+        {"role_name": body.name, "scope": body.scope},
+    )
     db.commit()
     db.refresh(role)
     return GlobalRoleOut.model_validate(role)
@@ -1691,7 +1953,7 @@ async def update_global_role(
     role_id: UUID,
     body: GlobalRoleUpdate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> GlobalRoleOut:
     """Update a global role's name, description, or scope."""
     role = db.query(GlobalRole).filter(GlobalRole.global_role_id == role_id).first()
@@ -1711,6 +1973,14 @@ async def update_global_role(
     if body.scope is not None:
         role.scope = body.scope
 
+    _log_action(
+        db,
+        token,
+        request,
+        "global_role.update",
+        None,
+        {"role_id": str(role_id), "updates": body.model_dump(exclude_unset=True)},
+    )
     db.commit()
     db.refresh(role)
     return GlobalRoleOut.model_validate(role)
@@ -1722,13 +1992,21 @@ async def delete_global_role(
     request: Request,
     role_id: UUID,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> None:
     """Delete a global role."""
     role = db.query(GlobalRole).filter(GlobalRole.global_role_id == role_id).first()
     if not role:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Global role not found")
     db.delete(role)
+    _log_action(
+        db,
+        token,
+        request,
+        "global_role.delete",
+        None,
+        {"role_id": str(role_id), "role_name": role.name},
+    )
     db.commit()
 
 
@@ -1812,6 +2090,7 @@ async def ensure_tenant_realm(
         exists = await verify_tenant_realm_exists(realm_name)
         if exists:
             tenant.keycloak_realm = realm_name
+            _log_action(db, user, request, "tenant.ensure_realm", tenant_id, {"realm": realm_name, "status": "success"})
             db.commit()
             # Re-ensure the basic roles exist in this realm
             await ensure_roles(["hospital_user", "hospital_admin"], realm=realm_name)
@@ -1823,6 +2102,7 @@ async def ensure_tenant_realm(
             # Fallback to default realm
             fallback = settings.keycloak_realm
             tenant.keycloak_realm = fallback
+            _log_action(db, user, request, "tenant.ensure_realm", tenant_id, {"realm": fallback, "status": "fallback"})
             db.commit()
             return {
                 "detail": f"Could not create realm '{realm_name}', fell back to default '{fallback}'",
@@ -1831,6 +2111,7 @@ async def ensure_tenant_realm(
     except Exception as e:
         logger.warning("Failed to ensure realm for tenant %s: %s", tenant_id, e)
         tenant.keycloak_realm = settings.keycloak_realm
+        _log_action(db, user, request, "tenant.ensure_realm", tenant_id, {"realm": settings.keycloak_realm, "status": "failed", "error": str(e)})
         db.commit()
         return {
             "detail": f"Failed to create realm, fell back to default '{settings.keycloak_realm}': {e}",
@@ -1933,6 +2214,7 @@ async def create_tenant_invoice(
     request: Request,
     tenant_id: str,
     body: InvoiceCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: TokenPayload = Depends(get_current_active_user),
 ) -> InvoiceOut:
@@ -1983,9 +2265,18 @@ async def create_tenant_invoice(
             status=body.status,
         )
         db.add(invoice)
+        _log_action(
+            db,
+            user,
+            request,
+            "invoice.create",
+            tenant_id,
+            {"invoice_number": invoice_number, "amount": str(body.amount), "currency": body.currency},
+        )
         db.commit()
         db.refresh(invoice)
         _enrich_invoice(db, invoice)
+        _trigger_invoice_email_dispatch(db, tenant_id, invoice, background_tasks)
         return InvoiceOut.model_validate(invoice)
     except IntegrityError as e:
         db.rollback()
@@ -2055,6 +2346,14 @@ async def update_invoice(
             )
             db.add(payment)
 
+    _log_action(
+        db,
+        user,
+        request,
+        "invoice.update",
+        invoice.tenant_id,
+        {"invoice_id": str(invoice_id), "updates": body.model_dump(exclude_unset=True)},
+    )
     db.commit()
     db.refresh(invoice)
     _enrich_invoice(db, invoice)
@@ -2084,7 +2383,168 @@ async def list_tenant_payments(
     return [SaaSPaymentOut.model_validate(p) for p in payments]
 
 
+async def _send_invoice_created_email(
+    invoice_id: Any,
+    email: str,
+    hospital_name: str,
+    invoice_number: str,
+    amount: Any,
+    currency: str,
+    due_date: Any,
+    plan_name: str,
+    billing_period_start: Any,
+    billing_period_end: Any,
+) -> None:
+    import aiosmtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from app.config import settings
+
+    subject = f"New Invoice Generated - {invoice_number}"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 32px 16px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05); overflow: hidden; border: 1px solid #e2e8f0;">
+              <!-- Header -->
+              <tr>
+                <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px; text-align: center;">
+                  <h1 style="color: #ffffff; font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.025em; font-family: inherit;">Hospital Management System</h1>
+                  <p style="color: #94a3b8; font-size: 14px; margin: 4px 0 0 0; font-weight: 500;">Automated Billing Notification</p>
+                </td>
+              </tr>
+              <!-- Content Body -->
+              <tr>
+                <td style="padding: 40px 32px;">
+                  <h2 style="color: #0f172a; font-size: 20px; font-weight: 600; margin-top: 0; margin-bottom: 8px;">New Invoice Generated</h2>
+                  <p style="color: #475569; font-size: 15px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+                    Dear Administrator,
+                  </p>
+                  <p style="color: #475569; font-size: 15px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+                    An itemized invoice has been generated for <strong>{hospital_name}</strong> under the <strong>{plan_name.title()}</strong> plan. Please review the details below and arrange for payment.
+                  </p>
+                  
+                  <!-- Invoice Detail Card -->
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f1f5f9; border-radius: 12px; padding: 24px; margin-bottom: 32px; border: 1px solid #e2e8f0;">
+                    <tr>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500; width: 40%;">Invoice Number</td>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #0f172a; font-weight: 600; text-align: right; font-family: monospace;">{invoice_number}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500;">Billing Period</td>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #0f172a; font-weight: 600; text-align: right;">{billing_period_start} to {billing_period_end}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500;">Due Date</td>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #ef4444; font-weight: 600; text-align: right;">{due_date}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #cbd5e1;">
+                      <td style="padding-top: 12px; font-size: 16px; color: #0f172a; font-weight: 700;">Amount Due</td>
+                      <td style="padding-top: 12px; font-size: 20px; color: #0f172a; font-weight: 800; text-align: right;">{amount} {currency}</td>
+                    </tr>
+                  </table>
+
+                  <!-- Call to Action -->
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td align="center">
+                        <a href="{settings.frontend_url}/admin/subscription" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-family: inherit; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+                          Access Billing Portal
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 32px; text-align: center;">
+                  <p style="font-size: 12px; color: #94a3b8; margin: 0; line-height: 1.5;">
+                    This is an automated message. Please do not reply directly to this email.<br/>
+                    © 2026 Hospital Management System. All rights reserved.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+    text_body = f"""New Invoice Generated
+Dear Administrator,
+
+An itemized invoice has been generated for {hospital_name} for the plan {plan_name}.
+
+Invoice Number: {invoice_number}
+Billing Period: {billing_period_start} to {billing_period_end}
+Amount Due: {amount} {currency}
+Due Date: {due_date}
+
+Please settle this invoice through your billing portal.
+"""
+
+    if not settings.smtp_user or not settings.smtp_password:
+        logger.info(f"\n[MOCK INVOICE EMAIL DISPATCH TO {email}]")
+        logger.info(f"Hospital: {hospital_name} | Plan: {plan_name}")
+        logger.info(f"Invoice Number: {invoice_number} | Amount: {amount} {currency}")
+        logger.info(f"Due Date: {due_date}\n")
+        return
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = settings.smtp_from
+        msg["To"] = email
+
+        part1 = MIMEText(text_body, "plain")
+        part2 = MIMEText(html_body, "html")
+        msg.attach(part1)
+        msg.attach(part2)
+
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.smtp_host,
+            port=settings.smtp_port,
+            username=settings.smtp_user,
+            password=settings.smtp_password,
+            start_tls=True if settings.smtp_port == 587 else False,
+            use_tls=True if settings.smtp_port == 465 else False,
+        )
+        logger.info(f"Invoice email successfully sent via aiosmtplib to {email} for invoice {invoice_number}")
+    except Exception as e:
+        logger.error(f"Failed to send invoice email to {email}: {str(e)}")
+
+
+def _trigger_invoice_email_dispatch(db: Session, tenant_id: str, invoice: Any, background_tasks: BackgroundTasks) -> None:
+    from app.models.master import Tenant
+    if not invoice or invoice.amount <= 0:
+        return
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    billing_email = tenant.billing_email if (tenant and tenant.billing_email) else (tenant.primary_contact_email if tenant else None)
+    if billing_email:
+        background_tasks.add_task(
+            _send_invoice_created_email,
+            invoice_id=invoice.invoice_id,
+            email=billing_email,
+            hospital_name=tenant.hospital_name if tenant else tenant_id,
+            invoice_number=invoice.invoice_number,
+            amount=invoice.amount,
+            currency=invoice.currency,
+            due_date=invoice.due_date,
+            plan_name=invoice.plan_name,
+            billing_period_start=invoice.billing_period_start,
+            billing_period_end=invoice.billing_period_end,
+        )
+
+
 async def _send_payment_receipt_email(
+    payment_id: Any,
     email: str,
     hospital_name: str,
     invoice_number: str,
@@ -2096,6 +2556,9 @@ async def _send_payment_receipt_email(
     import aiosmtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
+    from app.db.master import MasterSessionLocal
+    from app.models.saas import SaaSPayment as SaaSPaymentModel
+    from datetime import datetime, timezone
 
     if not settings.smtp_user or not settings.smtp_password:
         logger.info(f"\n[MOCK EMAIL RECEIPT DISPATCH TO {email}]")
@@ -2103,8 +2566,19 @@ async def _send_payment_receipt_email(
         logger.info(f"Invoice Number: {invoice_number}")
         logger.info(f"Amount Paid: {amount} {currency}")
         logger.info(f"Method: {payment_method} | Ref: {reference_number}\n")
+        
+        db = MasterSessionLocal()
+        try:
+            payment = db.query(SaaSPaymentModel).filter(SaaSPaymentModel.payment_id == payment_id).first()
+            if payment:
+                payment.receipt_delivery_status = "sent"
+                payment.receipt_sent_at = datetime.now(timezone.utc)
+                db.commit()
+        finally:
+            db.close()
         return
 
+    db = MasterSessionLocal()
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"Payment Receipt Confirmation - Invoice {invoice_number}"
@@ -2113,19 +2587,76 @@ async def _send_payment_receipt_email(
 
         html_body = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-          <h2>Thank You for Your Payment!</h2>
-          <p>This is a confirmation of receipt of payment from <strong>{hospital_name}</strong>.</p>
-          <hr/>
-          <ul>
-            <li><strong>Invoice Number:</strong> {invoice_number}</li>
-            <li><strong>Amount Paid:</strong> {amount} {currency}</li>
-            <li><strong>Payment Method:</strong> {payment_method}</li>
-            <li><strong>Reference Number:</strong> {reference_number or 'N/A'}</li>
-            <li><strong>Status:</strong> Completed</li>
-          </ul>
-          <hr/>
-          <p>Please contact our billing department if you have any questions.</p>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 32px 16px;">
+            <tr>
+              <td align="center">
+                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05); overflow: hidden; border: 1px solid #e2e8f0;">
+                  <!-- Header -->
+                  <tr>
+                    <td style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 32px; text-align: center;">
+                      <h1 style="color: #ffffff; font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.025em; font-family: inherit;">Hospital Management System</h1>
+                      <p style="color: #a7f3d0; font-size: 14px; margin: 4px 0 0 0; font-weight: 500;">Payment Confirmation</p>
+                    </td>
+                  </tr>
+                  <!-- Content Body -->
+                  <tr>
+                    <td style="padding: 40px 32px;">
+                      <div style="text-align: center; margin-bottom: 24px;">
+                        <span style="display: inline-block; background-color: #d1fae5; color: #065f46; font-size: 12px; font-weight: 700; text-transform: uppercase; padding: 6px 16px; border-radius: 9999px; letter-spacing: 0.05em;">
+                          Successfully Paid
+                        </span>
+                      </div>
+                      <h2 style="color: #0f172a; font-size: 20px; font-weight: 600; text-align: center; margin-top: 0; margin-bottom: 8px;">Thank You for Your Payment!</h2>
+                      <p style="color: #475569; font-size: 15px; line-height: 1.6; text-align: center; margin-top: 0; margin-bottom: 28px;">
+                        Dear Administrator, this is a confirmation of receipt of payment from <strong>{hospital_name}</strong>.
+                      </p>
+                      
+                      <!-- Payment Detail Card -->
+                      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f1f5f9; border-radius: 12px; padding: 24px; margin-bottom: 32px; border: 1px solid #e2e8f0;">
+                        <tr>
+                          <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500; width: 40%;">Invoice Number</td>
+                          <td style="padding-bottom: 12px; font-size: 14px; color: #0f172a; font-weight: 600; text-align: right; font-family: monospace;">{invoice_number}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500;">Payment Method</td>
+                          <td style="padding-bottom: 12px; font-size: 14px; color: #0f172a; font-weight: 600; text-align: right;">{payment_method}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500;">Reference Number</td>
+                          <td style="padding-bottom: 12px; font-size: 14px; color: #0f172a; font-weight: 600; text-align: right; font-family: monospace;">{reference_number or 'N/A'}</td>
+                        </tr>
+                        <tr style="border-top: 1px solid #cbd5e1;">
+                          <td style="padding-top: 12px; font-size: 16px; color: #0f172a; font-weight: 700;">Amount Paid</td>
+                          <td style="padding-top: 12px; font-size: 20px; color: #059669; font-weight: 800; text-align: right;">{amount} {currency}</td>
+                        </tr>
+                      </table>
+
+                      <!-- Call to Action -->
+                      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                        <tr>
+                          <td align="center">
+                            <a href="{settings.frontend_url}/admin/subscription" style="display: inline-block; background-color: #059669; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-family: inherit; box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2);">
+                              View Billing History
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <!-- Footer -->
+                  <tr>
+                    <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 32px; text-align: center;">
+                      <p style="font-size: 12px; color: #94a3b8; margin: 0; line-height: 1.5;">
+                        This is an automated transaction receipt. Please do not reply directly to this email.<br/>
+                        © 2026 Hospital Management System. All rights reserved.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
         </body>
         </html>
         """
@@ -2155,8 +2686,20 @@ Status: Completed
             use_tls=True if settings.smtp_port == 465 else False,
         )
         logger.info(f"Receipt email successfully sent via aiosmtplib to {email}")
+        
+        payment = db.query(SaaSPaymentModel).filter(SaaSPaymentModel.payment_id == payment_id).first()
+        if payment:
+            payment.receipt_delivery_status = "sent"
+            payment.receipt_sent_at = datetime.now(timezone.utc)
+            db.commit()
     except Exception as e:
         logger.error(f"Failed to send receipt email to {email}: {str(e)}")
+        payment = db.query(SaaSPaymentModel).filter(SaaSPaymentModel.payment_id == payment_id).first()
+        if payment:
+            payment.receipt_delivery_status = "failed"
+            db.commit()
+    finally:
+        db.close()
 
 
 @router.post("/tenants/{tenant_id}/payments", response_model=SaaSPaymentOut, status_code=201, tags=["Payments"])
@@ -2212,6 +2755,14 @@ async def create_tenant_payment(
             recorded_by=recorded_by,
         )
         db.add(payment)
+        _log_action(
+            db,
+            user,
+            request,
+            "payment.record",
+            tenant_id,
+            {"invoice_id": str(body.invoice_id), "amount": str(body.amount), "currency": body.currency, "payment_method": body.payment_method},
+        )
         db.commit()
         db.refresh(payment)
 
@@ -2237,9 +2788,12 @@ async def create_tenant_payment(
         # Send payment receipt email asynchronously to the tenant's billing address
         tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
         billing_email = tenant.billing_email if (tenant and tenant.billing_email) else (tenant.primary_contact_email if tenant else None)
+        payment.receipt_delivery_status = "pending"
+        db.commit()
         if billing_email:
             background_tasks.add_task(
                 _send_payment_receipt_email,
+                payment_id=payment.payment_id,
                 email=billing_email,
                 hospital_name=tenant.hospital_name if tenant else tenant_id,
                 invoice_number=invoice.invoice_number if invoice else str(body.invoice_id),
@@ -2248,9 +2802,6 @@ async def create_tenant_payment(
                 payment_method=body.payment_method,
                 reference_number=body.reference_number,
             )
-            payment.receipt_sent_at = datetime.now(timezone.utc)
-            db.commit()
-            db.refresh(payment)
 
         return SaaSPaymentOut.model_validate(payment)
     except IntegrityError as e:
@@ -2273,13 +2824,241 @@ async def list_super_admin_audit_log(
     db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
 ) -> list[SuperAdminAuditLogOut]:
-    from app.models.saas import SuperAdminAuditLog as SuperAdminAuditLogModel
+    from app.models.master import GlobalAuditLog
+    from app.models.admin import SuperAdmin
+    import json
+    import uuid
+    import hashlib
+    from uuid import UUID
+
+    # Build actor name mapping
+    admins = db.query(SuperAdmin).all()
+    admin_name_map = {str(a.super_admin_id): a.full_name or a.username for a in admins}
+
+    # Query audit log entries from global logs table
     logs = (
-        db.query(SuperAdminAuditLogModel)
-        .order_by(SuperAdminAuditLogModel.created_at.desc())
+        db.query(GlobalAuditLog)
+        .order_by(GlobalAuditLog.created_at.desc())
         .all()
     )
-    return [SuperAdminAuditLogOut.model_validate(l) for l in logs]
+
+    def format_log_details(action: str, detail_dict: dict) -> str:
+        if "message" in detail_dict:
+            return detail_dict["message"]
+            
+        action_lower = action.lower()
+        
+        # 1. Tenant & Subscription Lifecycle
+        if action_lower in ("subscription.subscribe", "subscription.create"):
+            plan = detail_dict.get("plan") or detail_dict.get("to_plan") or "free_trial"
+            cycle = detail_dict.get("billing_cycle") or "monthly"
+            return f"Subscribed tenant to plan '{plan}' ({cycle} billing cycle)"
+            
+        elif action_lower == "subscription.upgrade":
+            from_plan = detail_dict.get("from_plan") or "basic"
+            to_plan = detail_dict.get("to_plan") or "premium"
+            return f"Upgraded subscription from '{from_plan}' to '{to_plan}'"
+            
+        elif action_lower == "subscription.downgrade":
+            from_plan = detail_dict.get("from_plan") or "premium"
+            to_plan = detail_dict.get("to_plan") or "standard"
+            return f"Downgraded subscription from '{from_plan}' to '{to_plan}'"
+            
+        elif action_lower == "subscription.renew":
+            return "Renewed tenant subscription plan"
+            
+        elif action_lower == "tenant.activate":
+            return "Activated tenant account access"
+            
+        elif action_lower == "tenant.suspend":
+            reason = detail_dict.get("reason") or "No reason provided"
+            return f"Suspended tenant account: {reason}"
+            
+        elif action_lower == "tenant.reactivate":
+            return "Reactivated suspended tenant account"
+            
+        elif action_lower == "tenant.terminate":
+            reason = detail_dict.get("reason") or "No reason provided"
+            return f"Permanently terminated tenant account: {reason}"
+            
+        # 2. Super Admin actions
+        elif action_lower == "super_admin.create":
+            username = detail_dict.get("username") or "N/A"
+            role = detail_dict.get("role") or "N/A"
+            return f"Created super admin user '{username}' with role '{role}'"
+            
+        elif action_lower == "super_admin.update":
+            sa_id = detail_dict.get("super_admin_id") or "N/A"
+            return f"Updated super admin user details for ID {sa_id}"
+            
+        elif action_lower == "super_admin.delete":
+            username = detail_dict.get("username") or "N/A"
+            return f"Deleted super admin user '{username}'"
+            
+        # 3. Plan actions
+        elif action_lower == "plan.create":
+            name = detail_dict.get("plan_name") or "N/A"
+            price = detail_dict.get("monthly_price") or "0"
+            return f"Created subscription plan '{name}' (Monthly: ${price})"
+            
+        elif action_lower == "plan.update":
+            plan_id = detail_dict.get("plan_id") or "N/A"
+            return f"Updated subscription plan ID {plan_id}"
+            
+        elif action_lower == "plan.delete":
+            name = detail_dict.get("plan_name") or "N/A"
+            return f"Deleted subscription plan '{name}'"
+            
+        # 4. Announcements
+        elif action_lower == "announcement.create":
+            title = detail_dict.get("title") or "N/A"
+            aud = detail_dict.get("audience") or "all"
+            return f"Created system announcement '{title}' for '{aud}' audience"
+            
+        elif action_lower == "announcement.update":
+            ann_id = detail_dict.get("announcement_id") or "N/A"
+            return f"Updated announcement details for ID {ann_id}"
+            
+        elif action_lower == "announcement.delete":
+            ann_id = detail_dict.get("announcement_id") or "N/A"
+            return f"Deleted announcement ID {ann_id}"
+            
+        # 5. System Roles
+        elif action_lower == "system_role.create":
+            name = detail_dict.get("role_name") or "N/A"
+            return f"Created system role '{name}'"
+            
+        elif action_lower == "system_role.update":
+            role_id = detail_dict.get("role_id") or "N/A"
+            return f"Updated system role details for ID {role_id}"
+            
+        elif action_lower == "system_role.delete":
+            name = detail_dict.get("role_name") or "N/A"
+            return f"Deleted system role '{name}'"
+            
+        elif action_lower == "system_role.assign_tenant":
+            name = detail_dict.get("role_name") or "N/A"
+            return f"Assigned system role '{name}' to tenant"
+            
+        elif action_lower == "system_role.remove_tenant":
+            name = detail_dict.get("role_name") or "N/A"
+            return f"Removed system role '{name}' from tenant"
+            
+        # 6. Global Roles
+        elif action_lower == "global_role.create":
+            name = detail_dict.get("role_name") or "N/A"
+            return f"Created global role '{name}'"
+            
+        elif action_lower == "global_role.update":
+            role_id = detail_dict.get("role_id") or "N/A"
+            return f"Updated global role details for ID {role_id}"
+            
+        elif action_lower == "global_role.delete":
+            name = detail_dict.get("role_name") or "N/A"
+            return f"Deleted global role '{name}'"
+            
+        # 7. Tenants
+        elif action_lower == "tenant.onboard":
+            hosp = detail_dict.get("hospital_name") or "N/A"
+            country = detail_dict.get("country") or ""
+            city = detail_dict.get("city") or ""
+            loc = f" in {city}, {country}" if city and country else ""
+            return f"Onboarded new hospital tenant '{hosp}'{loc}"
+            
+        elif action_lower == "tenant.update":
+            return "Updated hospital tenant profile/settings"
+            
+        elif action_lower == "tenant.ensure_realm":
+            realm = detail_dict.get("realm") or "N/A"
+            status = detail_dict.get("status") or "success"
+            return f"Ensured Keycloak realm '{realm}' (status: {status})"
+            
+        # 8. Invoices & Payments
+        elif action_lower == "invoice.create":
+            num = detail_dict.get("invoice_number") or "N/A"
+            amt = detail_dict.get("amount") or "0"
+            cur = detail_dict.get("currency") or "USD"
+            return f"Generated invoice {num} for {amt} {cur}"
+            
+        elif action_lower == "invoice.update":
+            inv_id = detail_dict.get("invoice_id") or "N/A"
+            return f"Updated status of invoice ID {inv_id}"
+            
+        elif action_lower == "payment.record":
+            amt = detail_dict.get("amount") or "0"
+            cur = detail_dict.get("currency") or "USD"
+            method = detail_dict.get("payment_method") or "Transfer"
+            return f"Recorded payment of {amt} {cur} via {method}"
+            
+        # 9. Incidents
+        elif action_lower == "incident.create":
+            title = detail_dict.get("title") or "N/A"
+            sev = detail_dict.get("severity") or "warning"
+            return f"Registered incident '{title}' (severity: {sev})"
+            
+        elif action_lower == "incident.update":
+            inc_id = detail_dict.get("incident_id") or "N/A"
+            return f"Updated incident ID {inc_id}"
+            
+        # 10. Sessions
+        elif action_lower == "session.revoke":
+            sess_id = detail_dict.get("session_id") or "N/A"
+            return f"Revoked super admin session {sess_id}"
+            
+        elif action_lower == "session.revoke_all":
+            return "Revoked all active super admin sessions"
+
+        return str(detail_dict)
+
+    # Process and serialize audit entries
+    out_logs = []
+    for l in logs:
+        log_id = uuid.UUID(int=l.id)
+        try:
+            super_admin_id = UUID(l.user_sub)
+        except (ValueError, TypeError, AttributeError):
+            if l.user_sub:
+                hasher = hashlib.md5(l.user_sub.encode('utf-8'))
+                super_admin_id = UUID(bytes=hasher.digest())
+            else:
+                super_admin_id = uuid.UUID(int=999)
+
+        detail_dict = {}
+        if l.detail:
+            try:
+                detail_dict = json.loads(l.detail)
+                if not isinstance(detail_dict, dict):
+                    detail_dict = {"message": str(l.detail)}
+            except Exception:
+                detail_dict = {"message": l.detail}
+
+        # Resolve actor name
+        actor_name = admin_name_map.get(str(super_admin_id))
+        if not actor_name and l.user_sub:
+            actor_name = l.user_sub
+        if not actor_name:
+            actor_name = "System"
+
+        # Format details dynamically if message key is not present
+        if "message" not in detail_dict:
+            detail_dict["message"] = format_log_details(l.action, detail_dict)
+
+        is_impersonation = "impersonate" in l.action.lower()
+
+        out_logs.append(
+            SuperAdminAuditLogOut(
+                log_id=log_id,
+                super_admin_id=super_admin_id,
+                actor_name=actor_name,
+                action=l.action,
+                tenant_id=l.tenant_id,
+                action_detail=detail_dict,
+                is_impersonation=is_impersonation,
+                ip_address=l.ip_address,
+                created_at=l.created_at,
+            )
+        )
+    return out_logs
 
 
 # ---------------------------------------------------------------------------
@@ -3083,6 +3862,14 @@ async def update_subscription_endpoint(
         else:
             sub.status = status_val
 
+    _log_action(
+        db,
+        user,
+        request,
+        "subscription.update",
+        sub.tenant_id,
+        {"subscription_id": str(subscription_id), "body": body},
+    )
     db.commit()
     db.refresh(sub)
     return SubscriptionOut.model_validate(sub)
@@ -3196,6 +3983,14 @@ async def create_incident(
         created_by=admin.super_admin_id,
     )
     db.add(incident)
+    _log_action(
+        db,
+        user,
+        request,
+        "incident.create",
+        body.tenant_id,
+        {"title": body.title, "severity": body.severity},
+    )
     db.commit()
     db.refresh(incident)
     return IncidentOut.model_validate(incident)
@@ -3257,7 +4052,7 @@ async def update_incident(
     incident_id: str,
     body: IncidentUpdate,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    token: TokenPayload = Depends(get_current_active_user),
 ) -> IncidentOut:
     """Update an existing incident (status, severity, resolution, etc.)."""
     from datetime import datetime, timezone
@@ -3290,6 +4085,14 @@ async def update_incident(
     if body.resolution_notes is not None:
         incident.resolution_notes = body.resolution_notes
 
+    _log_action(
+        db,
+        token,
+        request,
+        "incident.update",
+        incident.tenant_id,
+        {"incident_id": str(incident_id), "updates": body.model_dump(exclude_unset=True)},
+    )
     db.commit()
     db.refresh(incident)
     return IncidentOut.model_validate(incident)
@@ -3386,14 +4189,22 @@ async def revoke_super_admin_session(
     request: Request,
     session_id: str,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    current_user: TokenPayload = Depends(get_current_active_user),
 ):
     from app.models.auth import RefreshToken
-    token = db.query(RefreshToken).filter(RefreshToken.session_id == session_id).first()
-    if not token:
+    token_record = db.query(RefreshToken).filter(RefreshToken.session_id == session_id).first()
+    if not token_record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         
-    token.is_revoked = True
+    token_record.is_revoked = True
+    _log_action(
+        db,
+        current_user,
+        request,
+        "session.revoke",
+        None,
+        {"session_id": session_id, "target_user_sub": token_record.keycloak_sub},
+    )
     db.commit()
     return None
 
@@ -3403,7 +4214,7 @@ async def revoke_super_admin_session(
 async def revoke_all_super_admin_sessions(
     request: Request,
     db: Session = Depends(get_db),
-    _: TokenPayload = Depends(get_current_active_user),
+    current_user: TokenPayload = Depends(get_current_active_user),
 ):
     from app.models.auth import RefreshToken
     
@@ -3417,6 +4228,14 @@ async def revoke_all_super_admin_sessions(
             RefreshToken.keycloak_sub.in_(admin_subs),
             RefreshToken.is_revoked == False
         ).update({"is_revoked": True}, synchronize_session=False)
+        _log_action(
+            db,
+            current_user,
+            request,
+            "session.revoke_all",
+            None,
+            {"target_count": len(admin_subs)},
+        )
         db.commit()
         
     return None
