@@ -4,9 +4,21 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+# Register JSONB and UUID type compilers for SQLite compatibility
+@compiles(JSONB, "sqlite")
+def compile_jsonb_sqlite(type_, compiler, **kw):
+    return "TEXT"
+
+@compiles(UUID, "sqlite")
+def compile_uuid_sqlite(type_, compiler, **kw):
+    return "CHAR(32)"
 
 from app.db.base import Base
 from app.models.master import Tenant, GlobalAuditLog
+from app.models.saas import Subscription as SubscriptionRecord, SubscriptionPlan as SubscriptionPlanModel
 from app.services.subscription_plans import BillingCycle, SubscriptionPlan, SubscriptionStatus
 from app.services.subscription_service import (
     SubscriptionError,
@@ -27,8 +39,23 @@ from app.services.subscription_service import (
 @pytest.fixture
 def db():
     engine = create_engine("sqlite:///:memory:")
+    
+    # Register to_jsonb on SQLite connection for compatibility
+    from sqlalchemy import event
+    @event.listens_for(engine, "connect")
+    def register_sqlite_functions(dbapi_connection, connection_record):
+        dbapi_connection.create_function("to_jsonb", 1, lambda x: x)
+
     # Only create the tables this test suite actually touches.
-    Base.metadata.create_all(bind=engine, tables=[Tenant.__table__, GlobalAuditLog.__table__])
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[
+            Tenant.__table__,
+            GlobalAuditLog.__table__,
+            SubscriptionPlanModel.__table__,
+            SubscriptionRecord.__table__,
+        ],
+    )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = SessionLocal()
     try:
@@ -107,10 +134,21 @@ def test_upgrade_and_downgrade(db):
     )
     assert tenant.subscription_plan == SubscriptionPlan.STANDARD.value
 
+    # Default downgrade is deferred
     downgrade_subscription(
         db,
         tenant_id=tenant.tenant_id,
         new_plan=SubscriptionPlan.BASIC,
+    )
+    assert tenant.subscription_plan == SubscriptionPlan.STANDARD.value
+    assert tenant.pending_plan == SubscriptionPlan.BASIC.value
+
+    # Immediate downgrade takes effect right away
+    downgrade_subscription(
+        db,
+        tenant_id=tenant.tenant_id,
+        new_plan=SubscriptionPlan.BASIC,
+        effective_at_end=False,
     )
     assert tenant.subscription_plan == SubscriptionPlan.BASIC.value
 
@@ -362,3 +400,104 @@ def test_downgrade_seat_limit_blocked(db):
                 effective_at_end=False,
             )
         assert exc.value.detail["code"] == "LIMIT_EXCEEDED"
+
+
+def test_upgrade_supersedes_previous_subscription(db):
+    from app.services.subscription_plans import sync_plans_to_db
+    from app.models.saas import Subscription as SubscriptionRecord
+    sync_plans_to_db(db)
+
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.BASIC.value)
+    # 1. Start initial subscription
+    subscribe_tenant(db, tenant_id=tenant.tenant_id, plan=SubscriptionPlan.BASIC, billing_cycle=BillingCycle.MONTHLY)
+    
+    # Verify we have one active subscription
+    subs = db.query(SubscriptionRecord).filter(SubscriptionRecord.tenant_id == tenant.tenant_id).all()
+    assert len(subs) == 1
+    assert subs[0].status == "active"
+
+    # 2. Upgrade immediately
+    upgrade_subscription(db, tenant_id=tenant.tenant_id, new_plan=SubscriptionPlan.STANDARD)
+
+    # Verify status transitions
+    subs = db.query(SubscriptionRecord).filter(SubscriptionRecord.tenant_id == tenant.tenant_id).order_by(SubscriptionRecord.created_at.asc()).all()
+    assert len(subs) == 2
+    assert subs[0].status == "superseded"
+    assert subs[0].cancelled_at is not None
+    assert subs[1].status == "active"
+
+
+def test_deferred_downgrade_creates_pending_subscription(db):
+    from app.services.subscription_plans import sync_plans_to_db
+    from app.models.saas import Subscription as SubscriptionRecord
+    sync_plans_to_db(db)
+
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.STANDARD.value)
+    # Start initial subscription
+    subscribe_tenant(db, tenant_id=tenant.tenant_id, plan=SubscriptionPlan.STANDARD, billing_cycle=BillingCycle.MONTHLY)
+
+    # Downgrade with effective_at_end=True
+    downgrade_subscription(db, tenant_id=tenant.tenant_id, new_plan=SubscriptionPlan.BASIC, effective_at_end=True)
+
+    # Verify a pending subscription is created in database
+    subs = db.query(SubscriptionRecord).filter(SubscriptionRecord.tenant_id == tenant.tenant_id).order_by(SubscriptionRecord.created_at.asc()).all()
+    assert len(subs) == 2
+    assert subs[0].status == "active"
+    assert subs[1].status == "pending"
+    assert subs[1].start_date == subs[0].end_date
+
+
+def test_renewal_promotes_pending_subscription_to_active(db):
+    from app.services.subscription_plans import sync_plans_to_db
+    from app.models.saas import Subscription as SubscriptionRecord
+    sync_plans_to_db(db)
+
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.STANDARD.value)
+    # Start initial subscription
+    subscribe_tenant(db, tenant_id=tenant.tenant_id, plan=SubscriptionPlan.STANDARD, billing_cycle=BillingCycle.MONTHLY)
+
+    # Downgrade with effective_at_end=True (creates pending BASIC subscription)
+    downgrade_subscription(db, tenant_id=tenant.tenant_id, new_plan=SubscriptionPlan.BASIC, effective_at_end=True)
+
+    # Renew subscription (should promote pending BASIC to active, and expire STANDARD)
+    renew_subscription(db, tenant_id=tenant.tenant_id)
+
+    # Verify status transitions in DB
+    subs = db.query(SubscriptionRecord).filter(SubscriptionRecord.tenant_id == tenant.tenant_id).order_by(SubscriptionRecord.created_at.asc()).all()
+    assert len(subs) == 2
+    assert subs[0].status == "expired"
+    assert subs[1].status == "active"
+    assert tenant.subscription_plan == SubscriptionPlan.BASIC.value
+
+
+def test_same_plan_billing_cycle_upgrade(db):
+    from app.services.subscription_plans import sync_plans_to_db
+    from app.models.saas import Subscription as SubscriptionRecord
+    sync_plans_to_db(db)
+
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.STANDARD.value)
+    subscribe_tenant(db, tenant_id=tenant.tenant_id, plan=SubscriptionPlan.STANDARD, billing_cycle=BillingCycle.MONTHLY)
+    
+    initial_end = tenant.subscription_end
+    
+    # Upgrade to annual Standard subscription immediately
+    upgrade_subscription(db, tenant_id=tenant.tenant_id, new_plan=SubscriptionPlan.STANDARD, billing_cycle=BillingCycle.ANNUAL, effective_at_end=False)
+    
+    assert tenant.subscription_billing_cycle == "annual"
+    assert (tenant.subscription_end - initial_end).days > 300
+
+
+def test_cross_cycle_downgrade_immediate(db):
+    from app.services.subscription_plans import sync_plans_to_db
+    sync_plans_to_db(db)
+
+    tenant = _make_tenant(db, subscription_plan=SubscriptionPlan.STANDARD.value)
+    subscribe_tenant(db, tenant_id=tenant.tenant_id, plan=SubscriptionPlan.STANDARD, billing_cycle=BillingCycle.ANNUAL)
+    
+    initial_end = tenant.subscription_end
+    
+    # Downgrade to monthly Standard subscription immediately
+    downgrade_subscription(db, tenant_id=tenant.tenant_id, new_plan=SubscriptionPlan.STANDARD, billing_cycle=BillingCycle.MONTHLY, effective_at_end=False)
+    
+    assert tenant.subscription_billing_cycle == "monthly"
+    assert (initial_end - tenant.subscription_end).days > 300

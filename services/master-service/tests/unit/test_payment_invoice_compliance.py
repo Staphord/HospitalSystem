@@ -142,3 +142,44 @@ def test_invoice_enrichment_hospital_name_fields(db):
     # Serialize with Pydantic InvoiceOut schema to verify compile alignment
     serialized = InvoiceOut.model_validate(invoice)
     assert serialized.hospital_name == "Mount Meru Hospital"
+
+
+def test_invoice_creation_email_trigger(db):
+    from unittest.mock import MagicMock
+    tenant = _make_tenant(db, billing_email="billing@test.com", hospital_name="Mount Meru Hospital")
+    
+    invoice = Invoice(
+        invoice_id=uuid.uuid4(),
+        tenant_id=tenant.tenant_id,
+        subscription_id=uuid.uuid4(),
+        invoice_number="INV-2026-0001",
+        billing_period_start=(datetime.now(timezone.utc) - timedelta(days=30)).date(),
+        billing_period_end=datetime.now(timezone.utc).date(),
+        plan_name="standard",
+        amount=Decimal("150.00"),
+        currency="USD",
+        due_date=(datetime.now(timezone.utc) + timedelta(days=7)).date(),
+        status="unpaid",
+        issued_at=datetime.now(timezone.utc)
+    )
+    db.add(invoice)
+    db.commit()
+    db.refresh(invoice)
+
+    mock_add_task = MagicMock()
+    class MockBackgroundTasks:
+        def add_task(self, func, *args, **kwargs):
+            mock_add_task(func, *args, **kwargs)
+
+    bg_tasks = MockBackgroundTasks()
+
+    from app.api.v1.superadmin.router import _trigger_invoice_email_dispatch, _send_invoice_created_email
+    _trigger_invoice_email_dispatch(db, tenant.tenant_id, invoice, bg_tasks)
+
+    assert mock_add_task.call_count == 1
+    kwargs = mock_add_task.call_args[1]
+    assert kwargs["email"] == "billing@test.com"
+    assert kwargs["hospital_name"] == "Mount Meru Hospital"
+    assert kwargs["invoice_number"] == "INV-2026-0001"
+    assert kwargs["amount"] == Decimal("150.00")
+

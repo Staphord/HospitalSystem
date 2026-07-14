@@ -60,6 +60,7 @@ def fixture_db_session():
         yield session
     finally:
         session.close()
+        Base.metadata.drop_all(bind=engine)
         connection.close()
 
 
@@ -124,7 +125,7 @@ def test_create_tenant(client, db_session):
         "currency": "KES"
     }
     response = client.post("/api/v1/superadmin/tenants", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
     assert data["hospital_name"] == "Test General Hospital"
     assert data["status"] == "trial"
@@ -291,7 +292,6 @@ def test_record_payment(client, db_session):
         full_name="Super Admin",
         role="super_admin",
         mfa_secret="dummy",
-        mfa_enabled=False,
         created_at=datetime.utcnow(),
     )
     db_session.add(admin)
@@ -342,18 +342,18 @@ def test_record_payment(client, db_session):
     db_session.commit()
 
     payload = {
-        "invoice_id": invoice.id,
+        "invoice_id": str(invoice.id),
         "amount": 1500,
         "payment_method": "card",
         "reference_number": "REF123"
     }
     response = client.post("/api/v1/superadmin/tenants/t1/payments", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == 201
     data = response.json()
-    assert data["amount"] == 1500
+    assert float(data["amount"]) == 1500
 
     # Verify payment and invoice state
-    payment = db_session.query(SaaSPayment).filter(SaaSPayment.id == data["id"]).first()
+    payment = db_session.query(SaaSPayment).filter(SaaSPayment.payment_id == uuid.UUID(data["payment_id"])).first()
     assert payment is not None
     db_session.refresh(invoice)
     assert invoice.status == "paid"
@@ -370,7 +370,7 @@ def test_system_health(client):
         response = client.get("/api/v1/superadmin/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy" or data["status"] == "unhealthy"
+        assert data["overall"] in ["healthy", "degraded", "unhealthy"]
 
 
 # Test announcements endpoints
@@ -378,10 +378,9 @@ def test_announcements(client, db_session):
     # Create announcement
     payload = {
         "title": "System Update",
-        "message": "Scheduled maintenance",
-        "type": "maintenance",
-        "scope": "all",
-        "display_format": "banner"
+        "body": "Scheduled maintenance",
+        "audience": "all",
+        "publish_at": "2026-07-13T12:00:00Z"
     }
     response = client.post("/api/v1/superadmin/announcements", json=payload)
     assert response.status_code == 201
@@ -405,8 +404,8 @@ def test_global_audit_logs(client, db_session):
     response = client.get("/api/v1/superadmin/audit-log")
     assert response.status_code == 200
     logs = response.json()
-    assert len(logs) == 1
-    assert logs[0]["action"] == "tenant.suspend"
+    assert len(logs) >= 1
+    assert any(l["action"] == "tenant.suspend" for l in logs)
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
@@ -485,7 +484,6 @@ def test_list_super_admin_sessions(client, db_session):
         full_name="Super Admin",
         role="super_admin",
         mfa_secret="dummy",
-        mfa_enabled=False,
         created_at=now
     )
     db.add(admin)
@@ -627,3 +625,250 @@ def test_create_superadmin_user(client, db_session):
         sent_msg = mock_send_email.call_args[0][0]
         assert sent_msg["To"] == "new_test_admin@example.com"
         assert "Welcome to HospitalFlow - Platform Administrator Credentials" in sent_msg["Subject"]
+
+
+def test_list_plans_endpoint(client, db_session):
+    import uuid
+    # Clear and insert fresh subscription plans into DB
+    db_session.query(SubscriptionPlan).delete()
+    
+    plan1 = SubscriptionPlan(
+        plan_id=uuid.uuid4(),
+        plan_name="basic",
+        description="Basic Plan",
+        monthly_price=99,
+        annual_price=990,
+        max_users=20,
+        storage_gb=10,
+        modules_included=["reception", "billing"]
+    )
+    plan2 = SubscriptionPlan(
+        plan_id=uuid.uuid4(),
+        plan_name="premium",
+        description="Premium Plan",
+        monthly_price=599,
+        annual_price=5990,
+        max_users=None,
+        storage_gb=200,
+        modules_included=["reception", "billing", "analytics"]
+    )
+    db_session.add_all([plan1, plan2])
+    db_session.commit()
+
+    response = client.get("/api/v1/superadmin/plans")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    
+    basic_data = next(p for p in data if p["plan"] == "basic")
+    assert basic_data["monthly_price"] == 99
+    assert basic_data["max_users"] == 20
+    assert "reception" in basic_data["features"]
+
+    premium_data = next(p for p in data if p["plan"] == "premium")
+    assert premium_data["monthly_price"] == 599
+    assert premium_data["max_users"] is None
+
+
+# Test receipt delivery status tracking in record payment flow
+def test_record_payment_with_receipt_delivery_status(client, db_session):
+    import uuid
+    from datetime import date, datetime
+
+    admin = SuperAdmin(
+        super_admin_id=uuid.UUID("de305d54-75b4-431b-adb2-eb6b9e546014"),
+        username="superadmin",
+        email="superadmin@example.com",
+        password_hash="dummy",
+        full_name="Super Admin",
+        role="super_admin",
+        mfa_secret="dummy",
+        created_at=datetime.utcnow(),
+    )
+    db_session.add(admin)
+
+    tenant = Tenant(
+        tenant_id="t1",
+        hospital_name="Hosp 1",
+        is_active=True,
+        status="active",
+        subscription_plan="standard",
+        db_connection_string="dummy",
+        created_by=uuid.UUID("de305d54-75b4-431b-adb2-eb6b9e546014"),
+        billing_email="billing@test.com"
+    )
+    db_session.add(tenant)
+
+    plan = SubscriptionPlan(
+        plan_id=uuid.uuid4(),
+        plan_name="standard",
+        monthly_price=1500,
+        annual_price=15000,
+    )
+    db_session.add(plan)
+
+    sub = Subscription(
+        subscription_id=uuid.uuid4(),
+        tenant_id="t1",
+        plan_id=plan.plan_id,
+        billing_cycle="monthly",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        status="active"
+    )
+    db_session.add(sub)
+
+    invoice = Invoice(
+        invoice_id=uuid.uuid4(),
+        tenant_id="t1",
+        subscription_id=sub.subscription_id,
+        invoice_number="INV-2026-999",
+        billing_period_start=date(2026, 1, 1),
+        billing_period_end=date(2026, 1, 31),
+        plan_name="standard",
+        amount=1500,
+        due_date=date(2026, 12, 31),
+        status="unpaid"
+    )
+    db_session.add(invoice)
+    db_session.commit()
+
+    payload = {
+        "invoice_id": str(invoice.id),
+        "amount": 1500,
+        "payment_method": "card",
+        "reference_number": "REF123"
+    }
+
+    # Patch MasterSessionLocal globally and bypass close() to prevent test db teardown
+    with patch("app.db.master.MasterSessionLocal", lambda: db_session), \
+         patch.object(db_session, "close", lambda: None):
+        response = client.post("/api/v1/superadmin/tenants/t1/payments", json=payload)
+        assert response.status_code == 201
+        data = response.json()
+        assert float(data["amount"]) == 1500
+
+        # Verify that payment record has receipt_delivery_status set to 'sent'
+        payment = db_session.query(SaaSPayment).filter(SaaSPayment.payment_id == uuid.UUID(data["payment_id"])).first()
+        assert payment is not None
+        assert payment.receipt_delivery_status == "sent"
+
+
+# Test overdue payment reminders task
+@pytest.mark.asyncio
+async def test_overdue_payment_reminders_task(db_session):
+    import uuid
+    from datetime import date, datetime, timedelta, timezone
+    from app.services.suspension_job import run_overdue_payment_reminders
+
+    tenant = Tenant(
+        tenant_id="t1",
+        hospital_name="Hosp 1",
+        is_active=True,
+        status="active",
+        subscription_plan="standard",
+        db_connection_string="dummy",
+        created_by=uuid.uuid4(),
+        primary_contact_email="billing@test.com"
+    )
+    db_session.add(tenant)
+
+    sub = Subscription(
+        subscription_id=uuid.uuid4(),
+        tenant_id="t1",
+        plan_id=uuid.uuid4(),
+        billing_cycle="monthly",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        status="active"
+    )
+    db_session.add(sub)
+
+    # Invoice due 8 days ago
+    invoice = Invoice(
+        invoice_id=uuid.uuid4(),
+        tenant_id="t1",
+        subscription_id=sub.subscription_id,
+        invoice_number="INV-OVERDUE-7",
+        billing_period_start=date(2026, 1, 1),
+        billing_period_end=date(2026, 1, 31),
+        plan_name="standard",
+        amount=1500,
+        due_date=(datetime.now(timezone.utc) - timedelta(days=8)).date(),
+        status="unpaid",
+        reminder_sent_at=None
+    )
+    db_session.add(invoice)
+    db_session.commit()
+
+    # Patch get_master_db globally and bypass close() to prevent test db teardown
+    with patch("app.db.master.get_master_db", lambda: db_session), \
+         patch.object(db_session, "close", lambda: None):
+        sent = await run_overdue_payment_reminders()
+        assert sent == 1
+        invoice_db = db_session.query(Invoice).filter(Invoice.invoice_id == invoice.invoice_id).first()
+        assert invoice_db.reminder_sent_at is not None
+
+
+# Test overdue invoice account suspensions task
+@pytest.mark.asyncio
+async def test_invoice_overdue_suspensions_task(db_session):
+    import uuid
+    from datetime import date, datetime, timedelta, timezone
+    from app.services.suspension_job import run_invoice_overdue_suspensions
+
+    tenant = Tenant(
+        tenant_id="t1",
+        hospital_name="Hosp 1",
+        is_active=True,
+        status="active",
+        subscription_plan="standard",
+        db_connection_string="dummy",
+        created_by=uuid.uuid4(),
+        grace_period_days=30
+    )
+    db_session.add(tenant)
+
+    sub = Subscription(
+        subscription_id=uuid.uuid4(),
+        tenant_id="t1",
+        plan_id=uuid.uuid4(),
+        billing_cycle="monthly",
+        start_date=date(2026, 1, 1),
+        end_date=date(2026, 12, 31),
+        status="active"
+    )
+    db_session.add(sub)
+
+    # Invoice due 31 days ago (exceeding 30 days grace period)
+    invoice = Invoice(
+        invoice_id=uuid.uuid4(),
+        tenant_id="t1",
+        subscription_id=sub.subscription_id,
+        invoice_number="INV-OVERDUE-30",
+        billing_period_start=date(2026, 1, 1),
+        billing_period_end=date(2026, 1, 31),
+        plan_name="standard",
+        amount=1500,
+        due_date=(datetime.now(timezone.utc) - timedelta(days=31)).date(),
+        status="unpaid",
+    )
+    db_session.add(invoice)
+    db_session.commit()
+
+    # Patch get_master_db globally and bypass close() to prevent test db teardown
+    with patch("app.db.master.get_master_db", lambda: db_session), \
+         patch.object(db_session, "close", lambda: None), \
+         patch("app.services.tenant_service.cache_tenant_suspension", new_callable=AsyncMock) as mock_cache, \
+         patch("app.services.tenant_service._revoke_keycloak_sessions", new_callable=AsyncMock) as mock_revoke:
+        
+        suspended = await run_invoice_overdue_suspensions()
+        assert suspended == 1
+        
+        tenant_db = db_session.query(Tenant).filter(Tenant.tenant_id == "t1").first()
+        assert tenant_db.status == "suspended"
+        assert tenant_db.subscription_status == "suspended"
+        assert tenant_db.suspended_reason is not None
+        assert "overdue by more than 30 days" in tenant_db.suspended_reason
+        assert mock_cache.call_count == 1
+        assert mock_revoke.call_count == 1
