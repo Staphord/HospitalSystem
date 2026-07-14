@@ -124,6 +124,7 @@ async def upgrade_my_subscription(
         tenant_id=tenant_id,
         new_plan=new_plan,
         billing_cycle=billing_cycle,
+        effective_at_end=body.effective_at_end if body.effective_at_end is not None else False,
         user_sub=user.sub,
         ip_address=request.client.host if request.client else None,
     )
@@ -166,7 +167,7 @@ async def downgrade_my_subscription(
         tenant_id=tenant_id,
         new_plan=new_plan,
         billing_cycle=billing_cycle,
-        effective_at_end=body.effective_at_end,
+        effective_at_end=body.effective_at_end if body.effective_at_end is not None else True,
         user_sub=user.sub,
         ip_address=request.client.host if request.client else None,
     )

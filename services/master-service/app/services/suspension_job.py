@@ -104,6 +104,143 @@ async def run_trial_expiry_check() -> int:
     return expired
 
 
+async def _send_invoice_email_direct(
+    email: str,
+    hospital_name: str,
+    invoice_number: str,
+    amount: Any,
+    currency: str,
+    due_date: Any,
+    plan_name: str,
+    billing_period_start: Any,
+    billing_period_end: Any,
+) -> None:
+    import aiosmtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    from app.config import settings
+
+    subject = f"New Invoice Generated - {invoice_number}"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+      <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 32px 16px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05); overflow: hidden; border: 1px solid #e2e8f0;">
+              <!-- Header -->
+              <tr>
+                <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px; text-align: center;">
+                  <h1 style="color: #ffffff; font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.025em; font-family: inherit;">Hospital Management System</h1>
+                  <p style="color: #94a3b8; font-size: 14px; margin: 4px 0 0 0; font-weight: 500;">Automated Billing Notification</p>
+                </td>
+              </tr>
+              <!-- Content Body -->
+              <tr>
+                <td style="padding: 40px 32px;">
+                  <h2 style="color: #0f172a; font-size: 20px; font-weight: 600; margin-top: 0; margin-bottom: 8px;">New Invoice Generated</h2>
+                  <p style="color: #475569; font-size: 15px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+                    Dear Administrator,
+                  </p>
+                  <p style="color: #475569; font-size: 15px; line-height: 1.6; margin-top: 0; margin-bottom: 24px;">
+                    An itemized invoice has been generated for <strong>{hospital_name}</strong> under the <strong>{plan_name.title()}</strong> plan. Please review the details below and arrange for payment.
+                  </p>
+                  
+                  <!-- Invoice Detail Card -->
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f1f5f9; border-radius: 12px; padding: 24px; margin-bottom: 32px; border: 1px solid #e2e8f0;">
+                    <tr>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500; width: 40%;">Invoice Number</td>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #0f172a; font-weight: 600; text-align: right; font-family: monospace;">{invoice_number}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500;">Billing Period</td>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #0f172a; font-weight: 600; text-align: right;">{billing_period_start} to {billing_period_end}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #64748b; font-weight: 500;">Due Date</td>
+                      <td style="padding-bottom: 12px; font-size: 14px; color: #ef4444; font-weight: 600; text-align: right;">{due_date}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #cbd5e1;">
+                      <td style="padding-top: 12px; font-size: 16px; color: #0f172a; font-weight: 700;">Amount Due</td>
+                      <td style="padding-top: 12px; font-size: 20px; color: #0f172a; font-weight: 800; text-align: right;">{amount} {currency}</td>
+                    </tr>
+                  </table>
+
+                  <!-- Call to Action -->
+                  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td align="center">
+                        <a href="{settings.frontend_url}/admin/subscription" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-family: inherit; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+                          Access Billing Portal
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 32px; text-align: center;">
+                  <p style="font-size: 12px; color: #94a3b8; margin: 0; line-height: 1.5;">
+                    This is an automated message. Please do not reply directly to this email.<br/>
+                    © 2026 Hospital Management System. All rights reserved.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+    text_body = f"""New Invoice Generated
+Dear Administrator,
+
+An itemized invoice has been generated for {hospital_name} for the plan {plan_name}.
+
+Invoice Number: {invoice_number}
+Billing Period: {billing_period_start} to {billing_period_end}
+Amount Due: {amount} {currency}
+Due Date: {due_date}
+
+Please settle this invoice through your billing portal.
+"""
+
+    if not settings.smtp_user or not settings.smtp_password:
+        logger.info(f"\n[MOCK AUTOMATIC RENEWAL INVOICE EMAIL TO {email}]")
+        logger.info(f"Hospital: {hospital_name} | Plan: {plan_name}")
+        logger.info(f"Invoice Number: {invoice_number} | Amount: {amount} {currency}")
+        logger.info(f"Due Date: {due_date}\n")
+        return
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = settings.smtp_from
+        msg["To"] = email
+
+        part1 = MIMEText(text_body, "plain")
+        part2 = MIMEText(html_body, "html")
+        msg.attach(part1)
+        msg.attach(part2)
+
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.smtp_host,
+            port=settings.smtp_port,
+            username=settings.smtp_user,
+            password=settings.smtp_password,
+            start_tls=True if settings.smtp_port == 587 else False,
+            use_tls=True if settings.smtp_port == 465 else False,
+        )
+        logger.info(f"Renewal invoice email successfully sent to {email} for invoice {invoice_number}")
+    except Exception as e:
+        logger.error(f"Failed to send renewal invoice email to {email}: {str(e)}")
+
+
 async def run_renewal_invoices_generation() -> int:
     """Automatically generate renewal invoices 14 days prior to subscription expiry."""
     from datetime import datetime, timezone, timedelta
@@ -167,6 +304,26 @@ async def run_renewal_invoices_generation() -> int:
                 )
                 generated += 1
                 logger.info("Generated automatic renewal invoice for tenant %s", tenant.tenant_id)
+
+                # Query the newly generated invoice and dispatch email if amount is positive
+                new_invoice = db.query(InvoiceRecord).filter(
+                    InvoiceRecord.tenant_id == tenant.tenant_id,
+                    InvoiceRecord.billing_period_start == next_period_start
+                ).first()
+                if new_invoice and new_invoice.amount > 0:
+                    email = tenant.billing_email if tenant.billing_email else tenant.primary_contact_email
+                    if email:
+                        await _send_invoice_email_direct(
+                            email=email,
+                            hospital_name=tenant.hospital_name or tenant.tenant_id,
+                            invoice_number=new_invoice.invoice_number,
+                            amount=new_invoice.amount,
+                            currency=new_invoice.currency,
+                            due_date=new_invoice.due_date,
+                            plan_name=new_invoice.plan_name,
+                            billing_period_start=new_invoice.billing_period_start,
+                            billing_period_end=new_invoice.billing_period_end,
+                        )
         db.commit()
     except Exception as e:
         logger.error("Failed running automatic renewal invoice generation: %s", e)
@@ -192,10 +349,11 @@ async def run_overdue_payment_reminders() -> int:
         now = datetime.now(timezone.utc)
         target_due_date = (now - timedelta(days=7)).date()
 
-        # Find unpaid invoices due exactly 7 days ago
+        # Find unpaid invoices due 7 or more days ago where reminder has not been sent
         invoices = db.query(InvoiceRecord).filter(
             InvoiceRecord.status == "unpaid",
-            InvoiceRecord.due_date == target_due_date
+            InvoiceRecord.due_date <= target_due_date,
+            InvoiceRecord.reminder_sent_at == None
         ).all()
 
         for invoice in invoices:
@@ -226,6 +384,8 @@ Please settle this invoice immediately to avoid service interruption.
 """
             if not settings.smtp_user or not settings.smtp_password:
                 logger.info(f"[MOCK OVERDUE EMAIL] To: {email} | Invoice: {invoice.invoice_number}")
+                invoice.reminder_sent_at = datetime.now(timezone.utc)
+                db.commit()
                 sent_count += 1
                 continue
 
@@ -250,6 +410,8 @@ Please settle this invoice immediately to avoid service interruption.
                     use_tls=True if settings.smtp_port == 465 else False,
                 )
                 logger.info("Sent overdue invoice reminder email to %s for invoice %s", email, invoice.invoice_number)
+                invoice.reminder_sent_at = datetime.now(timezone.utc)
+                db.commit()
                 sent_count += 1
             except Exception as mail_err:
                 logger.error("Failed sending overdue reminder email to %s: %s", email, mail_err)
@@ -261,6 +423,57 @@ Please settle this invoice immediately to avoid service interruption.
     return sent_count
 
 
+async def run_invoice_overdue_suspensions() -> int:
+    """Automatically suspend tenants with invoices unpaid beyond their grace period (FR-80)."""
+    from datetime import datetime, timezone, timedelta
+    from app.db.master import get_master_db
+    from app.models.saas import Invoice as InvoiceRecord
+    from app.models.master import Tenant
+    from app.services.tenant_service import cache_tenant_suspension, _revoke_keycloak_sessions
+
+    suspended_count = 0
+    db = get_master_db()
+    try:
+        now = datetime.now(timezone.utc)
+        
+        # Find all active tenants
+        tenants = db.query(Tenant).filter(
+            Tenant.is_active == True,
+            Tenant.status == "active"
+        ).all()
+        
+        for tenant in tenants:
+            # Overdue threshold defaults to 30 days, or tenant custom grace days override.
+            grace_days = tenant.grace_period_days if (hasattr(tenant, "grace_period_days") and tenant.grace_period_days is not None) else 30
+            threshold_date = (now - timedelta(days=grace_days)).date()
+            
+            # Check if the tenant has any unpaid invoices past the threshold date
+            overdue_invoice = db.query(InvoiceRecord).filter(
+                InvoiceRecord.tenant_id == tenant.tenant_id,
+                InvoiceRecord.status == "unpaid",
+                InvoiceRecord.due_date < threshold_date
+            ).first()
+            
+            if overdue_invoice:
+                tenant.status = "suspended"
+                tenant.is_active = False
+                tenant.subscription_status = "suspended"
+                tenant.suspended_at = now
+                tenant.suspended_reason = f"Unpaid invoice {overdue_invoice.invoice_number} overdue by more than {grace_days} days"
+                db.commit()
+                
+                await cache_tenant_suspension(tenant.tenant_id)
+                await _revoke_keycloak_sessions(tenant.tenant_id)
+                suspended_count += 1
+                logger.warning("Suspended tenant %s due to overdue invoice %s", tenant.tenant_id, overdue_invoice.invoice_number)
+    except Exception as e:
+        logger.error("Failed running overdue invoice suspension check: %s", e)
+    finally:
+        db.close()
+        
+    return suspended_count
+
+
 async def suspension_loop() -> None:
     while True:
         try:
@@ -268,6 +481,7 @@ async def suspension_loop() -> None:
             await run_trial_expiry_check()
             await run_renewal_invoices_generation()
             await run_overdue_payment_reminders()
+            await run_invoice_overdue_suspensions()
         except Exception as e:
             logger.error("Suspension check failed: %s", e)
         await asyncio.sleep(settings.suspension_check_interval)

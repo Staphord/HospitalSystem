@@ -141,6 +141,7 @@ class JWTVerificationMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/mfa/verify-login",
             "/api/v1/auth/mfa/email/send-login-code",
             "/api/v1/auth/first-login/change-password",
+            "/api/v1/superadmin/static",
         )
         if path.startswith(PUBLIC_PREFIXES):
             return await call_next(request)

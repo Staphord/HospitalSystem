@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_BODY_SIZE = 1024 * 1024  # 1 MB
+DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 class BodySizeLimitMiddleware(BaseHTTPMiddleware):
