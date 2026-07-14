@@ -2,6 +2,7 @@ from datetime import date, datetime
 from typing import Optional
 import uuid
 from uuid import UUID
+from decimal import Decimal
 
 from pydantic import BaseModel, field_validator
 
@@ -18,13 +19,67 @@ class TriageCompleteRequest(BaseModel):
         return v.lower()
 
 
+# ---------------------------------------------------------------------------
+# Insurance schemas
+# ---------------------------------------------------------------------------
+
+class InsurancePolicyCreateRequest(BaseModel):
+    insurer_name: str
+    policy_number: str
+    coverage_limit: Optional[Decimal] = None
+    expiry_date: Optional[date] = None
+
+    @field_validator("insurer_name")
+    @classmethod
+    def insurer_name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("insurer_name cannot be empty")
+        return v.strip()
+
+    @field_validator("policy_number")
+    @classmethod
+    def policy_number_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("policy_number cannot be empty")
+        return v.strip()
+
+
+class InsurancePolicyResponse(BaseModel):
+    insurance_id: UUID
+    patient_id: UUID
+    insurer_name: str
+    policy_number: str
+    coverage_limit: Optional[Decimal] = None
+    expiry_date: Optional[date] = None
+    verification_status: str
+    verified_at: Optional[datetime] = None
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class InsuranceVerifyRequest(BaseModel):
+    verification_status: str
+
+    @field_validator("verification_status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        allowed = {"verified", "rejected"}
+        if v.lower() not in allowed:
+            raise ValueError(f"verification_status must be one of {allowed}")
+        return v.lower()
+
+
+# ---------------------------------------------------------------------------
+# Visit schemas
+# ---------------------------------------------------------------------------
 
 class VisitCreateRequest(BaseModel):
     patient_id: str
     visit_type: str
     payment_type: str
-    insurer_name: Optional[str] = None
-    policy_number: Optional[str] = None
+    insurance_id: Optional[UUID] = None   # Required if payment_type = "insurance"
 
     @field_validator("visit_type")
     @classmethod
@@ -84,9 +139,23 @@ class VisitResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class QueueSummary(BaseModel):
+    queue_id: UUID
+    visit_id: UUID
+    patient_id: UUID
+    queue_type: str
+    queue_number: str
+    priority: str
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class VisitCreateResponse(BaseModel):
     visit: VisitResponse
-    queue_number: str
+    queue: QueueSummary
+    queue_number: str            # kept for backwards compatibility
     verification_flag: Optional[str] = None
 
 

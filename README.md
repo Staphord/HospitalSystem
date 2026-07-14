@@ -39,8 +39,8 @@ Multi-tenant hospital patient flow system decomposed into **14 microservices** w
 | `consultation-service` | 8012 | ✅ Complete | Consultations, diagnoses, investigation requests, encounter view |
 | `radiology-service` | 8014 | ✅ Complete | Radiology reports CRUD, modality/status enums |
 | `pharmacy-service` | 8015 | 🟡 Partial | Inventory (real DB-backed), queue/prescriptions/dispensing (Phase 1 stubs — returns mock data) |
-| `reception-service` | 8010 | 🟡 Partial | Orchestration layer — delegates to patient-service and visit-service. No direct DB models. |
-| `laboratory-service` | 8013 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+| `reception-service` | 8010 | ✅ Complete | Orchestration layer — patient registration, visit orchestration, queue lookup, and insurance verification |
+| `laboratory-service` | 8013 | ✅ Complete | Specimen collection, result validation, worklists, and test history |
 | `billing-service` | 8016 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
 | `ward-service` | 8017 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
 | `notification-service` | 8019 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
@@ -138,10 +138,10 @@ The `radiology_reports.request_id` column is currently **nullable** (`Optional[U
 | `api-gateway`          | 8000 | ✅     | JWT verification, tenant resolution, request routing, rate limiting |
 | `auth-service`         | 8001 | ✅     | Login, token refresh, password reset, MFA (TOTP)                    |
 | `master-service`       | 8002 | ✅     | Super admin portal — tenant management, subscriptions, invoicing    |
-| `reception-service`    | 8010 | 🟡     | Patient registration, visit creation, queue assignment              |
+| `reception-service`    | 8010 | ✅     | Patient registration, visit creation, queue assignment              |
 | `triage-service`       | 8011 | ✅     | Vital signs, triage category, queue priority                        |
 | `consultation-service` | 8012 | ✅     | Clinical notes, diagnoses, investigation requests, prescriptions    |
-| `laboratory-service`   | 8013 | 🔴     | Specimen tracking, result entry, critical value alerts              |
+| `laboratory-service`   | 8013 | ✅     | Specimen tracking, result entry, critical value alerts              |
 | `radiology-service`    | 8014 | ✅     | Imaging scheduling, reports, DICOM references                       |
 | `pharmacy-service`     | 8015 | 🟡     | Dispensing, drug interaction checks, inventory management           |
 | `billing-service`      | 8016 | 🔴     | Bills, line items, payments, insurance claims                       |

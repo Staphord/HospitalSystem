@@ -9,20 +9,40 @@ from sqlalchemy import create_engine, text
 
 
 def get_active_tenants() -> list[tuple[str, str]]:
+    from cryptography.fernet import Fernet
     master_db_url = os.getenv("MASTER_DB_URL", "postgresql://postgres:postgres@localhost:5432/hospital_master")
+    encryption_key = os.getenv("TENANT_DB_ENCRYPTION_KEY", "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=")
+    cipher = Fernet(encryption_key.encode())
+
     engine = create_engine(master_db_url)
     with engine.connect() as conn:
         rows = conn.execute(
-            text("SELECT tenant_id, db_dsn_encrypted FROM tenants WHERE is_active = true")
+            text("SELECT tenant_id, db_connection_string FROM tenants WHERE is_active = true")
         ).fetchall()
-    return [(row[0], row[1]) for row in rows]
+
+    tenants = []
+    import re
+    for row in rows:
+        tenant_id, enc_dsn = row[0], row[1]
+        if enc_dsn:
+            try:
+                dsn = cipher.decrypt(enc_dsn.encode()).decode()
+                # Replace any database host with localhost for host execution
+                dsn = re.sub(r'@([^:]+):5432', '@localhost:5432', dsn)
+                tenants.append((tenant_id, dsn))
+            except Exception as e:
+                print(f"Failed to decrypt DSN for tenant {tenant_id}: {e}")
+        else:
+            tenants.append((tenant_id, None))
+    return tenants
 
 
 def run_migrations(tenant_id: str, dsn: str) -> None:
+    import sys
     env = os.environ.copy()
     env["TENANT_DB_URL"] = dsn
     subprocess.run(
-        ["alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd="migrations/tenant",
         env=env,
         check=True,

@@ -9,19 +9,45 @@ from app.db.base import Base
 from app.core.database import get_session_local
 
 
+import asyncio
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     SessionLocal = get_session_local()
     engine = SessionLocal.kw["bind"]
     Base.metadata.create_all(bind=engine)
+
+    consumer_task = None
+    try:
+        from app.events import subscriber as _sub
+        if hasattr(_sub, "start_subscriber"):
+            consumer_task = asyncio.create_task(_sub.start_subscriber())
+    except Exception:
+        pass
+
     yield
 
+    if consumer_task:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+
+
+tags_metadata = [
+    {
+        "name": "patients",
+        "description": "Patient demographic records, registrations, updates, and searches",
+    }
+]
 
 app = FastAPI(
     title="Patient Service",
     version="1.0.0",
     docs_url="/docs",
     lifespan=lifespan,
+    openapi_tags=tags_metadata,
 )
 
 app.add_middleware(

@@ -5,10 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.v1.visits.schemas import (
+    InsurancePolicyCreateRequest,
+    InsurancePolicyResponse,
+    InsuranceVerifyRequest,
     QueueAddRequest,
     QueueCallResponse,
     QueueListResponse,
     QueueStatusUpdateRequest,
+    QueueSummary,
     QueueTodayResponse,
     VisitCreateRequest,
     VisitCreateResponse,
@@ -19,6 +23,11 @@ from app.api.v1.visits.schemas import (
 from app.core.security import require_role, require_any_role
 from app.dependencies import get_tenant_db, get_tenant_id_from_token
 from app.models.visit import Queue, Visit
+from app.services.insurance_service import (
+    create_insurance_policy,
+    get_patient_policies,
+    update_verification_status,
+)
 from app.services.queue_service import (
     add_to_queue,
     call_next_in_queue,
@@ -43,7 +52,7 @@ def create(
     body: VisitCreateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     try:
         registered_by = payload.get("sub", "")
@@ -54,16 +63,16 @@ def create(
             visit_type=body.visit_type,
             payment_type=body.payment_type,
             registered_by=registered_by,
-            insurer_name=body.insurer_name,
-            policy_number=body.policy_number,
+            insurance_id=str(body.insurance_id) if body.insurance_id else None,
         )
         return VisitCreateResponse(
             visit=result["visit"],
+            queue=QueueSummary.model_validate(result["queue"]),
             queue_number=result["queue_number"],
             verification_flag=result["verification_flag"],
         )
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except Exception as e:
         logger.exception("Visit creation failed for patient %s", body.patient_id)
         raise HTTPException(
@@ -77,7 +86,7 @@ def get_visit(
     visit_id: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     return get_visit_by_id(db, visit_id)
 
@@ -88,7 +97,7 @@ def update_visit_status(
     body: VisitStatusUpdateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse", "receptionist"])),
 ):
     return transition_visit_status(db, visit_id, body.status)
 
@@ -100,7 +109,7 @@ def list_queue(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     valid_types = {"triage", "doctor", "lab", "radiology", "pharmacy", "billing"}
     if queue_type not in valid_types:
@@ -116,7 +125,7 @@ def call_next(
     queue_type: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     valid_types = {"triage", "doctor", "lab", "radiology", "pharmacy", "billing"}
     if queue_type not in valid_types:
@@ -139,7 +148,7 @@ def update_queue_entry_status(
     body: QueueStatusUpdateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     return update_queue_status(db, queue_id, body.status)
 
@@ -149,7 +158,7 @@ def add_patient_to_queue(
     body: QueueAddRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     return add_to_queue(
         db,
@@ -164,7 +173,7 @@ def add_patient_to_queue(
 def triage_queue_today(
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     try:
         today = date.today()
@@ -192,7 +201,7 @@ def complete_triage(
     body: TriageCompleteRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "nurse"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "nurse", "receptionist"])),
 ):
     try:
         result = complete_triage_and_enqueue_doctor(
@@ -216,8 +225,129 @@ def complete_triage(
 def doctor_queue_today(
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "doctor", "nurse", "receptionist"])),
 ):
     queues = get_ordered_doctor_queue(db)
     return queues
 
+
+# ---------------------------------------------------------------------------
+# Insurance endpoints (internal — called via reception-service orchestrator)
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/patients/{patient_id}/insurance",
+    response_model=InsurancePolicyResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["insurance"],
+)
+def add_patient_insurance(
+    patient_id: str,
+    body: InsurancePolicyCreateRequest,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+):
+    """Add an insurance policy to a patient (status starts as 'pending')."""
+    policy = create_insurance_policy(
+        db=db,
+        patient_id=patient_id,
+        insurer_name=body.insurer_name,
+        policy_number=body.policy_number,
+        coverage_limit=body.coverage_limit,
+        expiry_date=body.expiry_date,
+    )
+    return policy
+
+
+@router.get(
+    "/patients/{patient_id}/insurance",
+    response_model=list[InsurancePolicyResponse],
+    tags=["insurance"],
+)
+def list_patient_insurance(
+    patient_id: str,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+):
+    """List all insurance policies held by a patient, newest first."""
+    return get_patient_policies(db=db, patient_id=patient_id)
+
+
+@router.patch(
+    "/insurance/{insurance_id}/verify",
+    response_model=InsurancePolicyResponse,
+    tags=["insurance"],
+)
+def verify_insurance_policy(
+    insurance_id: str,
+    body: InsuranceVerifyRequest,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+):
+    """Record the outcome of manual insurance verification."""
+    policy = update_verification_status(
+        db=db,
+        insurance_id=insurance_id,
+        verification_status=body.verification_status,
+    )
+    if policy is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"insurance_id '{insurance_id}' not found",
+        )
+    return policy
+
+
+@router.get("/active-patient/{patient_id}")
+def get_active_patient_visit(
+    patient_id: str,
+    db: Session = Depends(get_tenant_db),
+    tenant_id: str = Depends(get_tenant_id_from_token),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+):
+    """Find if a patient has an active (non-completed, non-cancelled) visit."""
+    import uuid as uuid_mod
+    try:
+        pid = uuid_mod.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid patient_id UUID",
+        )
+
+    # Search for an active visit (latest first to avoid matching stale older active visits)
+    visit = (
+        db.query(Visit)
+        .filter(
+            Visit.patient_id == pid,
+            Visit.status != "completed",
+            Visit.status != "cancelled",
+        )
+        .order_by(Visit.created_at.desc())
+        .first()
+    )
+    if not visit:
+        return {"active": False}
+
+    # Fetch latest queue entry for this visit to get position & queue type
+    queue_entry = (
+        db.query(Queue)
+        .filter(Queue.visit_id == visit.visit_id)
+        .order_by(Queue.created_at.desc())
+        .first()
+    )
+
+    if not queue_entry or queue_entry.status in ["completed", "skipped"]:
+        return {"active": False}
+
+    return {
+        "active": True,
+        "visit_id": str(visit.visit_id),
+        "visit_status": visit.status,
+        "queue_status": queue_entry.status,
+        "queue_number": queue_entry.queue_number,
+        "queue_type": queue_entry.queue_type,
+    }

@@ -7,7 +7,7 @@ import uuid
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "services", "master-service"))
 
 os.environ["ENVIRONMENT"] = "dev"
-os.environ["DATABASE_URL"] = "postgresql://postgres:nasr@localhost:5432/hospital-db"
+os.environ["DATABASE_URL"] = "postgresql://postgres:12345678@localhost:5432/hospital-db"
 os.environ["SECRET_KEY"] = "6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6"
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 os.environ["KEYCLOAK_URL"] = "http://127.0.0.1:8080"
@@ -17,15 +17,15 @@ os.environ["KEYCLOAK_CLIENT_SECRET"] = "HuqlMwVdGchYya4l3qRJwOhgwWQ1z5mL"
 os.environ["KEYCLOAK_ADMIN_USERNAME"] = "admin"
 os.environ["KEYCLOAK_ADMIN_PASSWORD"] = "admin"
 os.environ["TENANT_DB_ENCRYPTION_KEY"] = "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0="
-os.environ["DB_ADMIN_URL"] = "postgresql://postgres:nasr@localhost:5432/postgres"
-os.environ["TENANT_DB_TEMPLATE"] = "postgresql://postgres:nasr@localhost:5432/tenant_{tenant_id}"
+os.environ["DB_ADMIN_URL"] = "postgresql://postgres:12345678@localhost:5432/postgres"
+os.environ["TENANT_DB_TEMPLATE"] = "postgresql://postgres:12345678@localhost:5432/tenant_{tenant_id}"
 
 from sqlalchemy import create_engine, text
 
 async def main():
     # Test 1: Check if PostgreSQL is reachable and we can create databases
     print("Test 1: Check PostgreSQL connection and CREATEDB privilege")
-    engine = create_engine("postgresql://postgres:nasr@localhost:5432/postgres")
+    engine = create_engine("postgresql://postgres:12345678@localhost:5432/postgres")
     try:
         with engine.connect() as conn:
             result = conn.execute(text("SELECT 1"))

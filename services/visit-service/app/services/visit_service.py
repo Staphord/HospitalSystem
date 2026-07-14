@@ -4,8 +4,8 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.visit import Visit, Queue
-from app.services.insurance_service import find_insurance_policy, verify_insurance
+from app.models.visit import Visit, Queue, PatientInsurance
+from app.services.insurance_service import verify_insurance
 from app.services.number_generator import generate_queue_number, generate_visit_number
 
 
@@ -16,36 +16,48 @@ def create_visit(
     visit_type: str,
     payment_type: str,
     registered_by: str,
-    insurer_name: Optional[str] = None,
-    policy_number: Optional[str] = None,
+    insurance_id: Optional[str] = None,
 ) -> dict:
+    """Create a visit and auto-assign a triage queue entry.
+
+    For insurance payments, validates that the given insurance_id:
+      - exists in the DB
+      - belongs to the given patient_id
+      - has is_active = True
+    Does NOT block on verification_status (pending/rejected are accepted).
+    """
     visit_number = generate_visit_number(db)
 
     patient_uuid = uuid.UUID(patient_id) if isinstance(patient_id, str) else patient_id
     registered_by_uuid = uuid.UUID(registered_by) if isinstance(registered_by, str) else registered_by
 
-    insurance_id = None
+    resolved_insurance_id = None
     verification_flag = None
 
     if payment_type == "insurance":
-        if not insurer_name or not policy_number:
-            raise ValueError("insurer_name and policy_number are required when payment_type is insurance")
+        if not insurance_id:
+            raise ValueError("insurance_id is required when payment_type is 'insurance'")
 
-        policy = find_insurance_policy(db, str(patient_uuid), insurer_name, policy_number)
+        ins_uuid = uuid.UUID(str(insurance_id))
+        policy = (
+            db.query(PatientInsurance)
+            .filter(
+                PatientInsurance.insurance_id == ins_uuid,
+                PatientInsurance.patient_id == patient_uuid,
+                PatientInsurance.is_active == True,
+            )
+            .first()
+        )
 
         if policy is None:
             raise ValueError(
-                f"No active insurance policy found for patient {patient_id} "
-                f"with insurer '{insurer_name}' and policy '{policy_number}'"
+                f"insurance_id '{insurance_id}' not found, does not belong to patient "
+                f"'{patient_id}', or is not active"
             )
 
-        insurance_id = policy.insurance_id
-        is_verified, reason = verify_insurance(policy)
-
-        if is_verified:
-            verification_flag = None
-        else:
-            verification_flag = reason
+        resolved_insurance_id = policy.insurance_id
+        _, reason = verify_insurance(policy)
+        verification_flag = reason  # None if verified, otherwise a flag string
 
     visit = Visit(
         patient_id=patient_uuid,
@@ -53,7 +65,7 @@ def create_visit(
         visit_date=date.today(),
         visit_type=visit_type,
         payment_type=payment_type,
-        insurance_id=insurance_id,
+        insurance_id=resolved_insurance_id,
         verification_flag=verification_flag,
         status="registered",
         registered_by=registered_by_uuid,
@@ -75,9 +87,11 @@ def create_visit(
     visit.queue_number = queue_number
     db.commit()
     db.refresh(visit)
+    db.refresh(queue)
 
     return {
         "visit": visit,
+        "queue": queue,
         "queue_number": queue_number,
         "verification_flag": verification_flag,
     }

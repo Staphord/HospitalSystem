@@ -62,7 +62,7 @@ def update_queue_status(
     entry.status = new_status
     if new_status == "in_progress" and not entry.called_at:
         entry.called_at = datetime.now(timezone.utc)
-    if new_status == "completed" and not entry.completed_at:
+    if new_status in ["completed", "skipped"] and not entry.completed_at:
         entry.completed_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(entry)
