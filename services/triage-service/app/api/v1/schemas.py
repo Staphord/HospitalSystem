@@ -136,10 +136,10 @@ class TriageQueueResponse(BaseModel):
 class QueueCallResponse(BaseModel):
     queue_id: UUID
     status: str
-    called_at: datetime
+    called_at: Optional[datetime] = None
 
 
 class QueueSkipResponse(BaseModel):
     queue_id: UUID
     status: str
-    completed_at: datetime
+    completed_at: Optional[datetime] = None

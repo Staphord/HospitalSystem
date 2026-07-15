@@ -116,7 +116,7 @@ def complete_triage_and_enqueue_doctor(
     triage_queue = db.query(Queue).filter(
         Queue.visit_id == visit_id,
         Queue.queue_type == "triage",
-        Queue.status == "waiting"
+        Queue.status.in_(["waiting", "in_progress"])
     ).first()
     if triage_queue:
         triage_queue.status = "completed"

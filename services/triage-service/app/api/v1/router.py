@@ -208,6 +208,7 @@ async def call_patient(
     db_stmt = select(Queue).where(Queue.queue_id == queue_id)
     db_res = await db.execute(db_stmt)
     updated_q = db_res.scalars().first()
+    await db.refresh(updated_q)
     
     return QueueCallResponse(
         queue_id=updated_q.queue_id,
@@ -257,6 +258,7 @@ async def skip_patient(
     db_stmt = select(Queue).where(Queue.queue_id == queue_id)
     db_res = await db.execute(db_stmt)
     updated_q = db_res.scalars().first()
+    await db.refresh(updated_q)
     
     return QueueSkipResponse(
         queue_id=updated_q.queue_id,

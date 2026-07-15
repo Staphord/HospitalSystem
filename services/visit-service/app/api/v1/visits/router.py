@@ -201,7 +201,7 @@ def complete_triage(
     body: TriageCompleteRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "nurse", "receptionist"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "nurse", "triage_nurse", "receptionist"])),
 ):
     try:
         result = complete_triage_and_enqueue_doctor(
