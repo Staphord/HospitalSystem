@@ -146,6 +146,7 @@ async def get_triage_queue(
                 created_at=q.created_at,
                 patient=PatientQueueInfo(
                     patient_id=p.id,
+                    patient_number=p.patient_number,
                     full_name=p.full_name,
                     date_of_birth=p.date_of_birth,
                     gender=p.gender

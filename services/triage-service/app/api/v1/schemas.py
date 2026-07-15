@@ -104,6 +104,7 @@ class TriageCategorySuggestionResponse(BaseModel):
 
 class PatientQueueInfo(BaseModel):
     patient_id: UUID
+    patient_number: str
     full_name: str
     date_of_birth: date
     gender: str
