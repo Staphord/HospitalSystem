@@ -83,6 +83,7 @@ class TriageSummaryResponse(BaseModel):
     triage_notes: Optional[str] = None
     assessed_at: Optional[datetime] = None
     visit_date: Optional[date] = None
+    visit_status: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -454,7 +454,8 @@ async def get_patient_assessments(
                 "triage_notes": ass.triage_notes if ass else None,
                 "assessed_at": ass.assessed_at if ass else None,
                 "vitals": vitals_data,
-                "visit_date": v.visit_date
+                "visit_date": v.visit_date,
+                "visit_status": v.status
             }
         )
 
