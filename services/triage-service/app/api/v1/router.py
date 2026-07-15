@@ -7,6 +7,7 @@ from typing import Optional
 from uuid import UUID
 
 from app.core.tenant_auth import get_current_tenant
+from app.core.config import settings
 from app.dependencies import get_tenant_db
 from app.core.security import TokenPayload, require_role, require_any_role
 from app.exceptions import NotFoundError, BadRequestError, ConflictError

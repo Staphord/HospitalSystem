@@ -357,6 +357,7 @@ services:
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      VISIT_SERVICE_URL: http://visit-service:8006
     depends_on:
       postgres-master:
         condition: service_healthy
