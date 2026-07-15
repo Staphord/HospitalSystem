@@ -22,7 +22,9 @@ from app.api.v1.schemas import (
     TriageQueueItem,
     PatientQueueInfo,
     VisitQueueInfo,
-    TriageSummaryResponse
+    TriageSummaryResponse,
+    TriageHistorySearchResponse,
+    TriageHistoryPatientItem
 )
 from app.services.triage import (
     suggest_category_from_vitals,
@@ -110,7 +112,7 @@ async def get_triage_queue(
     """
     Returns the list of patients currently in the triage queue, ordered by clinical priority and arrival.
     """
-    from app.models.triage import Queue, Visit, Patient
+    from app.models.triage import Queue, Visit, Patient, TriageAssessment
     from sqlalchemy import case
 
     status_list = [s.strip() for s in status.split(",") if s.strip()] if status else ["waiting", "in_progress"]
@@ -124,9 +126,10 @@ async def get_triage_queue(
     )
     
     stmt = (
-        select(Queue, Visit, Patient)
+        select(Queue, Visit, Patient, TriageAssessment.triage_category)
         .join(Visit, Queue.visit_id == Visit.visit_id)
         .join(Patient, Patient.id == cast(Queue.patient_id, pgUUID))
+        .outerjoin(TriageAssessment, TriageAssessment.visit_id == Queue.visit_id)
         .where(Queue.queue_type == "triage")
         .where(Queue.status.in_(status_list))
         .order_by(priority_case, Queue.created_at.asc())
@@ -136,12 +139,17 @@ async def get_triage_queue(
     rows = result.all()
     
     queue_items = []
-    for q, v, p in rows:
+    for row in rows:
+        q = row[0]
+        v = row[1]
+        p = row[2]
+        cat = row[3]
+        
         queue_items.append(
             TriageQueueItem(
                 queue_id=q.queue_id,
                 queue_number=q.queue_number,
-                priority=q.priority,
+                priority=cat if cat else q.priority,
                 status=q.status,
                 called_at=q.called_at,
                 completed_at=q.completed_at,
@@ -266,3 +274,188 @@ async def skip_patient(
         status=updated_q.status,
         completed_at=updated_q.completed_at
     )
+
+
+@router.get("/history/search", response_model=TriageHistorySearchResponse)
+async def search_triage_history(
+    query: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_tenant_db),
+    tenant_ctx = Depends(get_current_tenant)
+):
+    """
+    Search patients in unified hospital DB and return their triage stats summary.
+    If no query is provided, returns the most recently triaged patients.
+    """
+    from app.models.triage import Patient, TriageAssessment, Visit
+    from sqlalchemy import func
+    from datetime import date
+
+    # Subquery 1: Row numbers for latest assessment of each patient to select its fields
+    latest_sub = (
+        select(
+            TriageAssessment.patient_id,
+            TriageAssessment.triage_category,
+            TriageAssessment.assessed_at,
+            func.row_number().over(
+                partition_by=TriageAssessment.patient_id,
+                order_by=TriageAssessment.assessed_at.desc()
+            ).label("rn")
+        )
+    ).subquery()
+
+    # Subquery 2: Count of visits per patient (cast patient_id to PG UUID to match Patient.id)
+    count_sub = (
+        select(
+            cast(Visit.patient_id, pgUUID).label("patient_id"),
+            func.count(Visit.visit_id).label("total_count")
+        )
+        .group_by(cast(Visit.patient_id, pgUUID))
+    ).subquery()
+
+    # Base select query
+    stmt = (
+        select(
+            Patient,
+            latest_sub.c.triage_category,
+            latest_sub.c.assessed_at,
+            func.coalesce(count_sub.c.total_count, 0)
+        )
+        .outerjoin(latest_sub, (latest_sub.c.patient_id == Patient.id) & (latest_sub.c.rn == 1))
+        .outerjoin(count_sub, count_sub.c.patient_id == Patient.id)
+        .where(Patient.hospital_id == tenant_ctx.tenant_id)
+    )
+
+    if query:
+        search_term = f"%{query.strip()}%"
+        stmt = stmt.where(
+            (Patient.full_name.ilike(search_term)) |
+            (Patient.patient_number.ilike(search_term))
+        )
+    else:
+        # If no search term is entered, return patients ordered by their latest visit created_at descending
+        latest_visit_sub = (
+            select(
+                cast(Visit.patient_id, pgUUID).label("patient_id"),
+                func.max(Visit.created_at).label("latest_created")
+            )
+            .group_by(cast(Visit.patient_id, pgUUID))
+        ).subquery()
+        stmt = stmt.join(latest_visit_sub, latest_visit_sub.c.patient_id == Patient.id).order_by(latest_visit_sub.c.latest_created.desc())
+
+    # Count total matching results
+    count_stmt = select(func.count()).select_from(stmt.alias())
+    count_res = await db.execute(count_stmt)
+    total_count = count_res.scalar() or 0
+
+    # Paginate and fetch results
+    stmt = stmt.limit(limit).offset(offset)
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    today = date.today()
+    patients_list = []
+    for row in rows:
+        p = row[0]
+        triage_cat = row[1]
+        assessed_at = row[2]
+        total_visits = row[3]
+
+        # Calculate age
+        age = today.year - p.date_of_birth.year - ((today.month, today.day) < (p.date_of_birth.month, p.date_of_birth.day))
+
+        # Format category label
+        cat_label = None
+        if triage_cat:
+            cat_label = triage_cat.replace('_', '-').title()
+
+        patients_list.append(
+            TriageHistoryPatientItem(
+                id=p.id,
+                name=p.full_name,
+                patientNumber=p.patient_number,
+                gender=p.gender.title(),
+                dob=p.date_of_birth.strftime("%d %b %Y"),
+                age=age,
+                phone="", # Default empty or query if phone exists on patient schema replica
+                lastTriageCategory=cat_label,
+                lastAssessedAt=assessed_at.strftime("%d/%m/%Y %H:%M") if assessed_at else None,
+                assessmentCount=total_visits
+            )
+        )
+
+    return TriageHistorySearchResponse(
+        patients=patients_list,
+        total=total_count
+    )
+
+
+@router.get("/patients/{patient_id}/assessments", response_model=list[TriageSummaryResponse])
+async def get_patient_assessments(
+    patient_id: UUID,
+    db: AsyncSession = Depends(get_tenant_db)
+):
+    """
+    Retrieve all historical triage assessments and visits for a patient ID.
+    """
+    from app.models.triage import TriageAssessment, Patient, Visit, User
+    
+    stmt = (
+        select(Visit, TriageAssessment, Patient)
+        .join(Patient, Patient.id == cast(Visit.patient_id, pgUUID))
+        .outerjoin(TriageAssessment, TriageAssessment.visit_id == Visit.visit_id)
+        .where(cast(Visit.patient_id, pgUUID) == patient_id)
+        .order_by(Visit.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    response_list = []
+    for v, ass, p in rows:
+        nurse_data = None
+        vitals_data = None
+        
+        if ass:
+            nurse_stmt = select(User).where(User.keycloak_sub == str(ass.triage_nurse_id))
+            nurse_res = await db.execute(nurse_stmt)
+            nurse = nurse_res.scalars().first()
+            nurse_name = nurse.full_name if nurse else "Triage Nurse"
+            
+            nurse_data = {
+                "user_id": ass.triage_nurse_id,
+                "full_name": nurse_name
+            }
+            vitals_data = {
+                "blood_pressure_systolic": ass.blood_pressure_systolic,
+                "blood_pressure_diastolic": ass.blood_pressure_diastolic,
+                "temperature": ass.temperature,
+                "pulse_rate": ass.pulse_rate,
+                "oxygen_saturation": ass.oxygen_saturation,
+                "respiratory_rate": ass.respiratory_rate,
+                "weight_kg": ass.weight_kg
+            }
+
+        response_list.append(
+            {
+                "triage_id": ass.triage_id if ass else None,
+                "visit_id": v.visit_id,
+                "patient": {
+                    "patient_id": p.id,
+                    "full_name": p.full_name,
+                    "date_of_birth": p.date_of_birth,
+                    "gender": p.gender
+                },
+                "triage_nurse": nurse_data,
+                "chief_complaint": ass.chief_complaint if ass else None,
+                "complaint_code": ass.complaint_code if ass else None,
+                "triage_category": ass.triage_category if ass else None,
+                "triage_notes": ass.triage_notes if ass else None,
+                "assessed_at": ass.assessed_at if ass else None,
+                "vitals": vitals_data,
+                "visit_date": v.visit_date
+            }
+        )
+
+    return response_list
+

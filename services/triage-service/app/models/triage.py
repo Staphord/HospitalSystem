@@ -57,6 +57,8 @@ class Visit(Base):
     payment_type = Column(String(50), nullable=False)
     queue_number = Column(String(10), nullable=True)
     status = Column(String(50), nullable=False, default="registered")
+    visit_date = Column(Date, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class Queue(Base):

@@ -72,16 +72,17 @@ class NurseSummary(BaseModel):
 
 
 class TriageSummaryResponse(BaseModel):
-    triage_id: UUID
+    triage_id: Optional[UUID] = None
     visit_id: UUID
     patient: PatientSummary
-    triage_nurse: NurseSummary
-    vitals: VitalsResponse
-    chief_complaint: str
+    triage_nurse: Optional[NurseSummary] = None
+    vitals: Optional[VitalsResponse] = None
+    chief_complaint: Optional[str] = None
     complaint_code: Optional[str] = None
-    triage_category: str
+    triage_category: Optional[str] = None
     triage_notes: Optional[str] = None
-    assessed_at: datetime
+    assessed_at: Optional[datetime] = None
+    visit_date: Optional[date] = None
 
     class Config:
         from_attributes = True
@@ -144,3 +145,22 @@ class QueueSkipResponse(BaseModel):
     queue_id: UUID
     status: str
     completed_at: Optional[datetime] = None
+
+
+class TriageHistoryPatientItem(BaseModel):
+    id: UUID
+    name: str
+    patientNumber: str
+    gender: str
+    dob: str
+    age: int
+    phone: str
+    lastTriageCategory: Optional[str] = None
+    lastAssessedAt: Optional[str] = None
+    assessmentCount: int
+
+
+class TriageHistorySearchResponse(BaseModel):
+    patients: list[TriageHistoryPatientItem]
+    total: int
+
