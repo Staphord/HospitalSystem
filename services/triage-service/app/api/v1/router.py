@@ -399,13 +399,14 @@ async def get_patient_assessments(
     """
     Retrieve all historical triage assessments and visits for a patient ID.
     """
-    from app.models.triage import TriageAssessment, Patient, Visit
+    from app.models.triage import TriageAssessment, Patient, Visit, Queue
     from app.models.user import User
     
     stmt = (
-        select(Visit, TriageAssessment, Patient)
+        select(Visit, TriageAssessment, Patient, Queue)
         .join(Patient, Patient.id == cast(Visit.patient_id, pgUUID))
         .outerjoin(TriageAssessment, TriageAssessment.visit_id == Visit.visit_id)
+        .outerjoin(Queue, (Queue.visit_id == Visit.visit_id) & (Queue.queue_type == "triage"))
         .where(cast(Visit.patient_id, pgUUID) == patient_id)
         .order_by(Visit.created_at.desc())
     )
@@ -413,10 +414,15 @@ async def get_patient_assessments(
     rows = result.all()
 
     response_list = []
-    for v, ass, p in rows:
+    for v, ass, p, q in rows:
         nurse_data = None
         vitals_data = None
         
+        # Override visit status if the triage queue entry was skipped
+        raw_status = v.status
+        if q and q.status == "skipped":
+            raw_status = "skipped"
+            
         if ass:
             nurse_stmt = select(User).where(User.keycloak_sub == str(ass.triage_nurse_id))
             nurse_res = await db.execute(nurse_stmt)
@@ -455,7 +461,7 @@ async def get_patient_assessments(
                 "assessed_at": ass.assessed_at if ass else None,
                 "vitals": vitals_data,
                 "visit_date": v.visit_date,
-                "visit_status": v.status
+                "visit_status": raw_status
             }
         )
 
