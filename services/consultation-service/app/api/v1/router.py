@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select, case, func, cast, Date
+from sqlalchemy.dialects.postgresql import UUID as pgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.tenant_auth import get_current_tenant, TenantContext
@@ -120,7 +121,7 @@ async def get_doctor_queue(
     stmt = (
         select(Queue, Visit, Patient, TriageAssessment)
         .join(Visit, Queue.visit_id == Visit.visit_id)
-        .join(Patient, Queue.patient_id == Patient.id)
+        .join(Patient, Patient.id == cast(Queue.patient_id, pgUUID))
         .outerjoin(TriageAssessment, Queue.visit_id == TriageAssessment.visit_id)
         .where(
             Queue.queue_type == "doctor",
