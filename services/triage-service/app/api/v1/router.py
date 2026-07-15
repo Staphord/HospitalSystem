@@ -399,7 +399,8 @@ async def get_patient_assessments(
     """
     Retrieve all historical triage assessments and visits for a patient ID.
     """
-    from app.models.triage import TriageAssessment, Patient, Visit, User
+    from app.models.triage import TriageAssessment, Patient, Visit
+    from app.models.user import User
     
     stmt = (
         select(Visit, TriageAssessment, Patient)
