@@ -34,7 +34,7 @@ class MockAsyncSession:
                     full_name="Jane Doe",
                     date_of_birth=date(1990, 5, 12),
                     gender="female"
-                ))
+                ), None)
             ]
         elif "triage_assessments" in stmt_str:
             mock_scalar.first.return_value = self.existing_assessment

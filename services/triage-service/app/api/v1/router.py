@@ -41,7 +41,8 @@ router = APIRouter(dependencies=[Depends(get_current_tenant)])
 @router.post(
     "/assessments",
     response_model=TriageAssessmentResponse,
-    status_code=status.HTTP_201_CREATED
+    status_code=status.HTTP_201_CREATED,
+    tags=["Triage Assessments"]
 )
 async def create_assessment(
     request: Request,
@@ -73,7 +74,7 @@ async def create_assessment(
         )
 
 
-@router.post("/assessments/suggest-category", response_model=TriageCategorySuggestionResponse)
+@router.post("/assessments/suggest-category", response_model=TriageCategorySuggestionResponse, tags=["Triage Suggestions"])
 def suggest_category(payload: VitalsInput):
     """
     Calculate and suggest a triage category based on recorded vital signs.
@@ -85,7 +86,7 @@ def suggest_category(payload: VitalsInput):
     )
 
 
-@router.get("/assessments/{visit_id}", response_model=TriageSummaryResponse)
+@router.get("/assessments/{visit_id}", response_model=TriageSummaryResponse, tags=["Triage Assessments"])
 async def read_triage_summary(
     visit_id: str,
     db: AsyncSession = Depends(get_tenant_db),
@@ -103,7 +104,7 @@ async def read_triage_summary(
     return assessment
 
 
-@router.get("/queue", response_model=TriageQueueResponse)
+@router.get("/queue", response_model=TriageQueueResponse, tags=["Triage Queue"])
 async def get_triage_queue(
     status: Optional[str] = Query("waiting,in_progress"),
     db: AsyncSession = Depends(get_tenant_db),
@@ -176,7 +177,7 @@ async def get_triage_queue(
     )
 
 
-@router.patch("/queue/{queue_id}/call", response_model=QueueCallResponse)
+@router.patch("/queue/{queue_id}/call", response_model=QueueCallResponse, tags=["Triage Queue"])
 async def call_patient(
     queue_id: UUID,
     request: Request,
@@ -226,7 +227,7 @@ async def call_patient(
     )
 
 
-@router.patch("/queue/{queue_id}/skip", response_model=QueueSkipResponse)
+@router.patch("/queue/{queue_id}/skip", response_model=QueueSkipResponse, tags=["Triage Queue"])
 async def skip_patient(
     queue_id: UUID,
     request: Request,
@@ -276,7 +277,7 @@ async def skip_patient(
     )
 
 
-@router.get("/history/search", response_model=TriageHistorySearchResponse)
+@router.get("/history/search", response_model=TriageHistorySearchResponse, tags=["Triage History"])
 async def search_triage_history(
     query: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
@@ -391,7 +392,7 @@ async def search_triage_history(
     )
 
 
-@router.get("/patients/{patient_id}/assessments", response_model=list[TriageSummaryResponse])
+@router.get("/patients/{patient_id}/assessments", response_model=list[TriageSummaryResponse], tags=["Triage History"])
 async def get_patient_assessments(
     patient_id: UUID,
     db: AsyncSession = Depends(get_tenant_db)
