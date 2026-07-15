@@ -86,6 +86,9 @@ async def record_triage_assessment(
     if not db_visit:
         raise NotFoundError("Visit not found")
         
+    if db_visit.status == "skipped":
+        raise ConflictError("This patient was skipped and cannot be assessed.")
+        
     if db_visit.status != "registered":
         raise ConflictError("Visit has already been triaged or is beyond triage stage.")
         

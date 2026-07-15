@@ -119,7 +119,9 @@ def complete_triage_and_enqueue_doctor(
         Queue.status.in_(["waiting", "in_progress"])
     ).first()
     if triage_queue:
+        from datetime import datetime, timezone
         triage_queue.status = "completed"
+        triage_queue.completed_at = datetime.now(timezone.utc)
 
     # 3. Create or update doctor queue entry
     queue_number = generate_queue_number(db, "doctor")

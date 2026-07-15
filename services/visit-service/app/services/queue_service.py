@@ -64,6 +64,14 @@ def update_queue_status(
         entry.called_at = datetime.now(timezone.utc)
     if new_status in ["completed", "skipped"] and not entry.completed_at:
         entry.completed_at = datetime.now(timezone.utc)
+
+    # When a triage entry is skipped, mirror the status on the Visit record
+    # so the backend assessment guard prevents re-assessment of skipped patients.
+    if new_status == "skipped" and entry.queue_type == "triage":
+        visit = db.query(Visit).filter(Visit.visit_id == entry.visit_id).first()
+        if visit:
+            visit.status = "skipped"
+
     db.commit()
     db.refresh(entry)
     return entry

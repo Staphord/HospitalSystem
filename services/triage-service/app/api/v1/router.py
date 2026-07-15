@@ -144,6 +144,7 @@ async def get_triage_queue(
                 priority=q.priority,
                 status=q.status,
                 called_at=q.called_at,
+                completed_at=q.completed_at,
                 created_at=q.created_at,
                 patient=PatientQueueInfo(
                     patient_id=p.id,

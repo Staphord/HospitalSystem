@@ -123,6 +123,7 @@ class TriageQueueItem(BaseModel):
     priority: str
     status: str
     called_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     patient: PatientQueueInfo
     visit: VisitQueueInfo
     created_at: datetime
