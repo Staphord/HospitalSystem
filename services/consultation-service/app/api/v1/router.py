@@ -3,9 +3,9 @@ import logging
 import httpx
 import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy import select, case, func, cast, Date
+from sqlalchemy import select, case, func, cast, Date, or_, and_
 from sqlalchemy.dialects.postgresql import UUID as pgUUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -106,11 +106,13 @@ async def _generate_queue_number(db: AsyncSession, queue_type: str) -> str:
 # 1. GET /consultations/queue
 @router.get("/queue", response_model=List[QueueItemResponse], tags=["Doctor Queue"])
 async def get_doctor_queue(
+    status: Optional[str] = Query("waiting"),
     db: AsyncSession = Depends(get_tenant_db),
     current_user: TokenPayload = Depends(require_role("doctor")),
 ):
     """Retrieve active doctor queue today ordered by triage priority and arrival time."""
     today = datetime.date.today()
+    status_list = [s.strip() for s in status.split(",") if s.strip()] if status else ["waiting"]
     priority_case = case(
         (Queue.priority == "emergency", 1),
         (Queue.priority == "urgent", 2),
@@ -125,8 +127,11 @@ async def get_doctor_queue(
         .outerjoin(TriageAssessment, Queue.visit_id == TriageAssessment.visit_id)
         .where(
             Queue.queue_type == "doctor",
-            Queue.status == "waiting",
-            cast(Queue.created_at, Date) == today
+            Queue.status.in_(status_list),
+            or_(
+                Queue.status == "waiting",
+                cast(Queue.created_at, Date) == today
+            )
         )
         .order_by(priority_case, Queue.created_at.asc())
     )
