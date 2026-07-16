@@ -190,6 +190,9 @@ class QueueItemResponse(BaseModel):
     chief_complaint: Optional[str]
     wait_time_minutes: int
     queue_status: str
+    visit_status: Optional[str] = None
+    pending_investigations_count: int = 0
+    completed_investigations_count: int = 0
 
 # Patient Encounter View (aggregated)
 class EncounterViewResponse(BaseModel):

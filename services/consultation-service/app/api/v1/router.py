@@ -129,7 +129,7 @@ async def get_doctor_queue(
             Queue.queue_type == "doctor",
             Queue.status.in_(status_list),
             or_(
-                Queue.status == "waiting",
+                Queue.status.in_(["waiting", "in_progress"]),
                 cast(Queue.created_at, Date) == today
             )
         )
@@ -143,7 +143,17 @@ async def get_doctor_queue(
     for q, v, p, t in rows:
         age = today.year - p.date_of_birth.year - ((today.month, today.day) < (p.date_of_birth.month, p.date_of_birth.day))
         q_created_naive = q.created_at.replace(tzinfo=None)
-        wait_time = int((now - q_created_naive).total_seconds() / 60)
+        end_time = q.called_at or q.completed_at or now
+        end_time_naive = end_time.replace(tzinfo=None)
+        wait_time = int((end_time_naive - q_created_naive).total_seconds() / 60)
+        
+        # Calculate pending and completed investigations
+        inv_stmt = select(InvestigationRequest).where(InvestigationRequest.visit_id == q.visit_id)
+        inv_res = await db.execute(inv_stmt)
+        invs = inv_res.scalars().all()
+        pending_count = len([i for i in invs if i.status not in ("completed", "cancelled")])
+        completed_count = len([i for i in invs if i.status == "completed"])
+
         queue_list.append(QueueItemResponse(
             queue_id=q.queue_id,
             queue_number=q.queue_number,
@@ -157,7 +167,10 @@ async def get_doctor_queue(
             triage_category=t.triage_category if t else None,
             chief_complaint=t.chief_complaint if t else None,
             wait_time_minutes=max(0, wait_time),
-            queue_status=q.status
+            queue_status=q.status,
+            visit_status=v.status,
+            pending_investigations_count=pending_count,
+            completed_investigations_count=completed_count
         ))
     return queue_list
 
@@ -436,7 +449,8 @@ async def get_encounter(
             route=p.route,
             instructions=p.instructions,
             prescribed_by=p.prescribed_by,
-            status=p.status
+            status=p.status,
+            prescribed_at=p.prescribed_at
         ) for p in prescriptions
     ]
 
@@ -676,6 +690,26 @@ async def get_diagnoses(
     return res.scalars().all()
 
 
+# 7b. DELETE /diagnoses/{diagnosis_id}
+@router.delete("/diagnoses/{diagnosis_id}", tags=["Diagnoses"])
+async def delete_diagnosis(
+    diagnosis_id: uuid.UUID,
+    db: AsyncSession = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_current_tenant),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Delete a diagnosis entry."""
+    stmt = select(Diagnosis).where(Diagnosis.id == diagnosis_id)
+    res = await db.execute(stmt)
+    diagnosis = res.scalars().first()
+    if not diagnosis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis entry not found")
+
+    await db.delete(diagnosis)
+    await db.commit()
+    return {"message": "Diagnosis deleted successfully"}
+
+
 # 8. POST /consultations/{consultation_id}/investigations
 @router.post("/{consultation_id}/investigations", response_model=InvestigationRequestResponse, status_code=status.HTTP_201_CREATED, tags=["Investigations"])
 async def raise_investigation(
@@ -870,10 +904,9 @@ async def get_investigations(
     return inv_list
 
 
-# 10. DELETE /consultations/{consultation_id}/investigations/{request_id}
-@router.delete("/{consultation_id}/investigations/{request_id}", tags=["Investigations"])
+# 10. DELETE /investigations/{request_id}
+@router.delete("/investigations/{request_id}", tags=["Investigations"])
 async def cancel_investigation(
-    consultation_id: uuid.UUID,
     request_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_tenant_db),
@@ -883,8 +916,7 @@ async def cancel_investigation(
 ):
     """Cancel an investigation request before it is processed."""
     stmt = select(InvestigationRequest).where(
-        InvestigationRequest.id == request_id,
-        InvestigationRequest.consultation_id == consultation_id
+        InvestigationRequest.id == request_id
     )
     res = await db.execute(stmt)
     inv = res.scalars().first()
@@ -918,7 +950,7 @@ async def cancel_investigation(
         q_entry.completed_at = datetime.datetime.utcnow()
 
     # Re-evaluate visit status if no pending results exist
-    all_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
+    all_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == inv.consultation_id)
     all_res = await db.execute(all_stmt)
     all_invs = all_res.scalars().all()
     remaining_pending = [i for i in all_invs if i.id != request_id and i.status not in ("completed", "cancelled")]
@@ -1018,10 +1050,9 @@ async def get_prescriptions(
     return res.scalars().all()
 
 
-# 13. DELETE /consultations/{consultation_id}/prescriptions/{prescription_id}
-@router.delete("/{consultation_id}/prescriptions/{prescription_id}", tags=["Prescriptions"])
+# 13. DELETE /prescriptions/{prescription_id}
+@router.delete("/prescriptions/{prescription_id}", tags=["Prescriptions"])
 async def cancel_prescription(
-    consultation_id: uuid.UUID,
     prescription_id: uuid.UUID,
     db: AsyncSession = Depends(get_tenant_db),
     ctx: TenantContext = Depends(get_current_tenant),
@@ -1029,8 +1060,7 @@ async def cancel_prescription(
 ):
     """Cancel a prescription item before it is dispensed."""
     stmt = select(Prescription).where(
-        Prescription.id == prescription_id,
-        Prescription.consultation_id == consultation_id
+        Prescription.id == prescription_id
     )
     res = await db.execute(stmt)
     prescription = res.scalars().first()
@@ -1082,16 +1112,13 @@ async def update_disposition(
             detail="Cannot update disposition on completed consultation"
         )
 
-    # Verify at least one final diagnosis exists
-    diag_stmt = select(Diagnosis).where(
-        Diagnosis.consultation_id == consultation_id,
-        Diagnosis.diagnosis_type == "final"
-    )
+    # Verify at least one diagnosis exists
+    diag_stmt = select(Diagnosis).where(Diagnosis.consultation_id == consultation_id)
     diag_res = await db.execute(diag_stmt)
     if not diag_res.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one final diagnosis must be recorded before recording disposition"
+            detail="At least one diagnosis must be recorded before recording disposition"
         )
 
     # Investigation gate check
@@ -1144,16 +1171,13 @@ async def complete_consultation(
             detail="Consultation is already completed"
         )
 
-    # 1. Final diagnosis gate
-    diag_stmt = select(Diagnosis).where(
-        Diagnosis.consultation_id == consultation_id,
-        Diagnosis.diagnosis_type == "final"
-    )
+    # 1. Diagnosis existence gate (any diagnosis type)
+    diag_stmt = select(Diagnosis).where(Diagnosis.consultation_id == consultation_id)
     diag_res = await db.execute(diag_stmt)
     if not diag_res.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one final diagnosis must exist to complete consultation"
+            detail="At least one diagnosis must exist to complete consultation"
         )
 
     # 2. Investigation gate
