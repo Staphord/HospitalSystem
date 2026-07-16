@@ -127,11 +127,7 @@ async def get_doctor_queue(
         .outerjoin(TriageAssessment, Queue.visit_id == TriageAssessment.visit_id)
         .where(
             Queue.queue_type == "doctor",
-            Queue.status.in_(status_list),
-            or_(
-                Queue.status.in_(["waiting", "in_progress"]),
-                cast(Queue.created_at, Date) == today
-            )
+            Queue.status.in_(status_list)
         )
         .order_by(priority_case, Queue.created_at.asc())
     )
