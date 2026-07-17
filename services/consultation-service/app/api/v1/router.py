@@ -41,6 +41,8 @@ from app.api.v1.schemas import (
     OrderStatusUpdate,
     DischargeRequest,
     AdmissionSummary,
+    PatientListItem,
+    PatientSearchResponse,
 )
 from app.models.consultation import (
     Consultation,
@@ -2077,3 +2079,70 @@ async def discharge_inpatient_patient(
 
     await db.commit()
     return {"status": "success", "message": "Patient discharged successfully"}
+
+
+# ── Doctor-side Patient History Search Endpoints ──────────────────────────────
+
+@router.get("/patients/recent", response_model=List[PatientListItem], tags=["Patient History Search"])
+async def get_recent_patients(
+    limit: int = 6,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Return the most recently visited unique patients (by latest visit_date)."""
+    # Get distinct patient_ids ordered by most recent visit, then fetch patient objects
+    from sqlalchemy import func
+    subq = (
+        select(Visit.patient_id, func.max(Visit.visit_date).label("latest_visit"))
+        .group_by(Visit.patient_id)
+        .order_by(func.max(Visit.visit_date).desc())
+        .limit(limit)
+        .subquery()
+    )
+    stmt = (
+        select(Patient)
+        .join(subq, Patient.id == subq.c.patient_id)
+        .order_by(subq.c.latest_visit.desc())
+    )
+    res = await db.execute(stmt)
+    patients = res.scalars().all()
+    return [PatientListItem.model_validate(p) for p in patients]
+
+
+@router.get("/patients", response_model=PatientSearchResponse, tags=["Patient History Search"])
+async def search_patients_endpoint(
+    search: str = "",
+    page: int = 1,
+    page_size: int = 20,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Search patients by name, patient number, or phone. Returns paginated results."""
+    from sqlalchemy import func, or_
+    q = search.strip()
+    base = select(Patient)
+    if q:
+        pattern = f"%{q}%"
+        base = base.where(
+            or_(
+                Patient.full_name.ilike(pattern),
+                Patient.patient_number.ilike(pattern),
+                Patient.phone_primary.ilike(pattern),
+            )
+        )
+    # Count total
+    count_stmt = select(func.count()).select_from(base.subquery())
+    count_res = await db.execute(count_stmt)
+    total = count_res.scalar() or 0
+
+    # Paginate
+    stmt = base.order_by(Patient.full_name).offset((page - 1) * page_size).limit(page_size)
+    res = await db.execute(stmt)
+    patients = res.scalars().all()
+
+    return PatientSearchResponse(
+        patients=[PatientListItem.model_validate(p) for p in patients],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

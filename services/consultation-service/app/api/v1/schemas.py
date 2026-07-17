@@ -312,3 +312,27 @@ class AdmissionDetailsResponse(BaseModel):
     summary: AdmissionSummary
 
 
+# ── Patient search (doctor-side history search) ───────────────────────────────
+
+class PatientListItem(BaseModel):
+    """Minimal patient info returned by the history search and recent-patients endpoints."""
+    id: uuid.UUID
+    patient_number: str
+    full_name: str
+    date_of_birth: date
+    gender: str
+    phone_primary: Optional[str] = None
+    allergies: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PatientSearchResponse(BaseModel):
+    patients: List[PatientListItem]
+    total: int
+    page: int = 1
+    page_size: int = 20
+
+
