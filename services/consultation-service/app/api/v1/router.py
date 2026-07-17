@@ -43,6 +43,8 @@ from app.api.v1.schemas import (
     AdmissionSummary,
     PatientListItem,
     PatientSearchResponse,
+    InvestigationPatientResponse,
+    InvestigationResultListItem,
 )
 from app.models.consultation import (
     Consultation,
@@ -158,7 +160,7 @@ async def get_doctor_queue(
         inv_stmt = select(InvestigationRequest).where(InvestigationRequest.visit_id == q.visit_id)
         inv_res = await db.execute(inv_stmt)
         invs = inv_res.scalars().all()
-        pending_count = len([i for i in invs if i.status not in ("completed", "cancelled")])
+        pending_count = len([i for i in invs if i.status not in ("completed", "cancelled", "acknowledged")])
         completed_count = len([i for i in invs if i.status == "completed"])
 
         queue_list.append(QueueItemResponse(
@@ -613,7 +615,7 @@ async def record_diagnosis(
         inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
         inv_res = await db.execute(inv_stmt)
         invs = inv_res.scalars().all()
-        pending_invs = [i for i in invs if i.status not in ("completed", "cancelled")]
+        pending_invs = [i for i in invs if i.status not in ("completed", "cancelled", "acknowledged")]
         if pending_invs:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -676,7 +678,7 @@ async def update_diagnosis(
         inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
         inv_res = await db.execute(inv_stmt)
         invs = inv_res.scalars().all()
-        pending_invs = [i for i in invs if i.status not in ("completed", "cancelled")]
+        pending_invs = [i for i in invs if i.status not in ("completed", "cancelled", "acknowledged")]
         if pending_invs:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -971,7 +973,7 @@ async def cancel_investigation(
     all_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == inv.consultation_id)
     all_res = await db.execute(all_stmt)
     all_invs = all_res.scalars().all()
-    remaining_pending = [i for i in all_invs if i.id != request_id and i.status not in ("completed", "cancelled")]
+    remaining_pending = [i for i in all_invs if i.id != request_id and i.status not in ("completed", "cancelled", "acknowledged")]
 
     # Fetch visit
     v_stmt = select(Visit).where(Visit.visit_id == inv.visit_id)
@@ -1144,7 +1146,7 @@ async def update_disposition(
         inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
         inv_res = await db.execute(inv_stmt)
         invs = inv_res.scalars().all()
-        pending_invs = [i for i in invs if i.status not in ("completed", "cancelled")]
+        pending_invs = [i for i in invs if i.status not in ("completed", "cancelled", "acknowledged")]
         if pending_invs:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1263,7 +1265,7 @@ async def complete_consultation(
     inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
     inv_res = await db.execute(inv_stmt)
     invs = inv_res.scalars().all()
-    pending_invs = [i for i in invs if i.status not in ("completed", "cancelled")]
+    pending_invs = [i for i in invs if i.status not in ("completed", "cancelled", "acknowledged")]
     if pending_invs:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2146,3 +2148,126 @@ async def search_patients_endpoint(
         page=page,
         page_size=page_size,
     )
+
+
+# ── Doctor-side Investigation Results Dashboard ───────────────────────────────
+
+@router.get("/investigations/results", response_model=List[InvestigationResultListItem], tags=["Investigations"])
+async def get_all_investigation_results(
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Retrieve all active/recent investigation requests and results for the doctor dashboard."""
+    stmt = select(InvestigationRequest).order_by(InvestigationRequest.created_at.desc())
+    res = await db.execute(stmt)
+    invs = res.scalars().all()
+
+    results = []
+    for inv in invs:
+        # Load patient
+        pat_stmt = select(Patient).where(Patient.id == inv.patient_id)
+        pat_res = await db.execute(pat_stmt)
+        patient = pat_res.scalars().first()
+        if not patient:
+            continue
+
+        result_data = None
+        completed_at = None
+        
+        # Check status
+        if inv.request_type == "laboratory" or inv.request_type == "lab":
+            lab_stmt = select(LabResult).where(LabResult.request_id == inv.id)
+            lab_res = await db.execute(lab_stmt)
+            lab = lab_res.scalars().first()
+            if lab:
+                result_data = {
+                    "result_value": lab.result_value,
+                    "unit": lab.unit,
+                    "reference_range": lab.reference_range,
+                    "result_notes": lab.result_notes,
+                    "is_critical": lab.is_critical
+                }
+                completed_at = lab.resulted_at
+        elif inv.request_type == "radiology":
+            rad_stmt = select(RadiologyReport).where(RadiologyReport.request_id == inv.id)
+            rad_res = await db.execute(rad_stmt)
+            rad = rad_res.scalars().first()
+            if rad:
+                result_data = {
+                    "findings": rad.findings,
+                    "impression": rad.impression
+                }
+                completed_at = rad.reported_at
+
+        # Determine UI status
+        ui_status = inv.status  # default to db status e.g. pending
+        if inv.status == "acknowledged":
+            ui_status = "acknowledged"
+        elif inv.status == "completed":
+            if result_data:
+                # critical check
+                is_critical = False
+                if inv.request_type == "laboratory" or inv.request_type == "lab":
+                    is_critical = result_data.get("is_critical", False)
+                elif inv.request_type == "radiology":
+                    findings = (result_data.get("findings") or "").lower()
+                    impression = (result_data.get("impression") or "").lower()
+                    critical_keywords = ["subdural", "fracture", "hemorrhage", "bleed", "critical", "severe", "pneumothorax"]
+                    is_critical = any(kw in findings or kw in impression for kw in critical_keywords)
+
+                ui_status = "critical" if is_critical else "ready"
+            else:
+                ui_status = "ready"
+
+        # Construct final string values for results
+        result_values_str = None
+        ref_range_str = None
+        notes_str = None
+
+        if result_data:
+            if inv.request_type == "laboratory" or inv.request_type == "lab":
+                unit = f" {result_data['unit']}" if result_data.get("unit") else ""
+                result_values_str = f"{inv.test_name}: {result_data['result_value']}{unit}"
+                ref_range_str = result_data.get("reference_range")
+                notes_str = result_data.get("result_notes")
+            elif inv.request_type == "radiology":
+                result_values_str = result_data.get("findings")
+                ref_range_str = result_data.get("impression")
+                notes_str = "Reported by Radiologist"
+
+        results.append(InvestigationResultListItem(
+            id=inv.id,
+            patient=InvestigationPatientResponse(
+                id=patient.id,
+                patient_number=patient.patient_number,
+                full_name=patient.full_name
+            ),
+            visit_id=inv.visit_id,
+            test_name=inv.test_name,
+            request_type=inv.request_type,
+            urgency=inv.urgency,
+            status=ui_status,
+            ordered_at=inv.requested_at,
+            completed_at=completed_at,
+            result_values=result_values_str,
+            reference_range=ref_range_str,
+            lab_notes=notes_str
+        ))
+    return results
+
+
+@router.put("/investigations/{request_id}/acknowledge", tags=["Investigations"])
+async def acknowledge_investigation(
+    request_id: uuid.UUID,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Acknowledge an investigation result."""
+    stmt = select(InvestigationRequest).where(InvestigationRequest.id == request_id)
+    res = await db.execute(stmt)
+    inv = res.scalars().first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Investigation request not found")
+    inv.status = "acknowledged"
+    await db.commit()
+    return {"status": "success", "message": "Result acknowledged"}

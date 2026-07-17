@@ -336,3 +336,25 @@ class PatientSearchResponse(BaseModel):
     page_size: int = 20
 
 
+# ── Doctor-side Investigation Results Dashboard ───────────────────────────────
+
+class InvestigationPatientResponse(BaseModel):
+    id: uuid.UUID
+    patient_number: str
+    full_name: str
+
+class InvestigationResultListItem(BaseModel):
+    id: uuid.UUID
+    patient: InvestigationPatientResponse
+    visit_id: uuid.UUID
+    test_name: str
+    request_type: str
+    urgency: str
+    status: str
+    ordered_at: datetime
+    completed_at: Optional[datetime] = None
+    result_values: Optional[str] = None
+    reference_range: Optional[str] = None
+    lab_notes: Optional[str] = None
+
+
