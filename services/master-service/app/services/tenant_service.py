@@ -158,6 +158,20 @@ async def check_and_update_tenant_status(
 
 async def _revoke_keycloak_sessions(tenant_id: str) -> None:
     try:
+        from app.db.master import MasterSessionLocal
+        db = MasterSessionLocal()
+        try:
+            row = db.execute(
+                text("SELECT keycloak_realm FROM tenants WHERE tenant_id = :tid"),
+                {"tid": tenant_id},
+            ).first()
+            realm = row[0] if row and row[0] else settings.keycloak_realm
+        finally:
+            db.close()
+    except Exception:
+        realm = settings.keycloak_realm
+
+    try:
         token_url = f"{settings.keycloak_url}/realms/master/protocol/openid-connect/token"
         admin_data = {
             "grant_type": "password",
@@ -171,7 +185,7 @@ async def _revoke_keycloak_sessions(tenant_id: str) -> None:
             admin_token = tr.json()["access_token"]
             headers = {"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"}
 
-            users_url = f"{settings.keycloak_url}/admin/realms/{settings.keycloak_realm}/users"
+            users_url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
             params = {"q": f"tenant_id:{tenant_id}"}
             ur = await c.get(users_url, headers=headers, params=params)
             if ur.is_success:

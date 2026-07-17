@@ -46,7 +46,7 @@ class Tenant(Base):
     date_format = Column(String(20), nullable=False, default="%Y-%m-%d")
 
     # Branding / infra
-    logo_url = Column(String(255), nullable=True)
+    logo_url = Column(Text, nullable=True)
     data_region = Column(String(50), nullable=True)
     db_connection_string = Column(Text, nullable=False)  # encrypted connection string
 
@@ -82,6 +82,7 @@ class Tenant(Base):
     trial_start = Column(DateTime(timezone=True), nullable=True)
     trial_end = Column(DateTime(timezone=True), nullable=True)
     has_used_trial = Column(Boolean, default=False, nullable=False)
+    grace_period_days = Column(Integer, default=7, nullable=False)
     grace_period_end = Column(DateTime(timezone=True), nullable=True)
     auto_renew = Column(Boolean, default=True, nullable=False)
     suspended_at = Column(DateTime(timezone=True), nullable=True)
@@ -96,6 +97,15 @@ class Tenant(Base):
     # Deferred downgrade: pending plan applied at next renewal
     pending_plan = Column(String(64), nullable=True)
     pending_billing_cycle = Column(String(16), nullable=True)
+
+    # Subscription request workflow (plan change / cancellation request → super admin approval)
+    pending_action = Column(String(32), nullable=True)  # 'upgrade' | 'downgrade' | 'cancellation' | NULL
+    requested_plan = Column(String(64), nullable=True)  # target plan name for upgrade/downgrade
+    request_reason = Column(Text, nullable=True)  # reason submitted by hospital admin
+    requested_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(UUID(as_uuid=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    review_notes = Column(Text, nullable=True)  # rejection reason or approval notes
 
     keycloak_realm = Column(String(255), nullable=True, default="hospital-realm")
     is_active = Column(Boolean, default=True, nullable=False)

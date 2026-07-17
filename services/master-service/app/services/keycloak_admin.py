@@ -39,6 +39,7 @@ async def create_keycloak_user(
     email: str,
     roles: list[str],
     full_name: str | None = None,
+    temporary_password: bool = False,
     realm: str | None = None,
 ) -> str:
     hdrs = await _headers()
@@ -55,7 +56,7 @@ async def create_keycloak_user(
         "enabled": True,
         "email": email,
         "emailVerified": True,
-        "requiredActions": [],
+        "requiredActions": ["UPDATE_PASSWORD"] if temporary_password else [],
     }
 
     async with httpx.AsyncClient(timeout=10.0) as c:
@@ -77,19 +78,19 @@ async def create_keycloak_user(
             users2 = search2.json()
             user_id = users2[0]["id"] if users2 else None
 
-        # Explicitly clear any auto-added required actions (e.g. VERIFY_EMAIL)
+        # Explicitly clear/set any required actions
         if user_id:
             await c.put(f"{url}/{user_id}", json=payload, headers=hdrs)
 
-    await set_user_password(user_id, password, realm=realm)
+    await set_user_password(user_id, password, temporary=temporary_password, realm=realm)
     await assign_user_roles(user_id, roles, realm=realm)
     return user_id
 
 
-async def set_user_password(user_id: str, password: str, realm: str | None = None) -> None:
+async def set_user_password(user_id: str, password: str, temporary: bool = False, realm: str | None = None) -> None:
     hdrs = await _headers()
     url = f"{_admin_api_url(realm)}/users/{user_id}/reset-password"
-    payload = {"type": "password", "value": password, "temporary": False}
+    payload = {"type": "password", "value": password, "temporary": temporary}
     async with httpx.AsyncClient(timeout=10.0) as c:
         r = await c.put(url, json=payload, headers=hdrs)
         r.raise_for_status()

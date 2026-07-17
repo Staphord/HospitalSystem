@@ -19,7 +19,6 @@ class SubscriptionPlan(str, Enum):
     BASIC = "basic"
     STANDARD = "standard"
     PREMIUM = "premium"
-    ENTERPRISE = "enterprise"
 
 
 # Deterministic UUIDs for canonical plans so they stay stable across restarts.
@@ -28,7 +27,6 @@ PLAN_UUIDS: dict[SubscriptionPlan, uuid.UUID] = {
     SubscriptionPlan.BASIC: uuid.UUID("22222222-2222-2222-2222-222222222222"),
     SubscriptionPlan.STANDARD: uuid.UUID("33333333-3333-3333-3333-333333333333"),
     SubscriptionPlan.PREMIUM: uuid.UUID("44444444-4444-4444-4444-444444444444"),
-    SubscriptionPlan.ENTERPRISE: uuid.UUID("55555555-5555-5555-5555-555555555555"),
 }
 
 
@@ -54,6 +52,9 @@ class SubscriptionStatus(str, Enum):
     SUSPENDED = "suspended"
     CANCELLED = "cancelled"
     TERMINATED = "terminated"
+    SUPERSEDED = "superseded"
+    EXPIRED = "expired"
+    PENDING = "pending"
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,8 @@ class PlanDetails:
     monthly_price: int  # whole currency units, e.g. USD cents or major units
     annual_price: int
     trial_days: int
-    max_users: int
+    max_users: int | None
+    storage_gb: int
     features: frozenset[str] = field(default_factory=frozenset)
 
 
@@ -74,7 +76,6 @@ PLAN_RANK: dict[SubscriptionPlan, int] = {
     SubscriptionPlan.BASIC: 1,
     SubscriptionPlan.STANDARD: 2,
     SubscriptionPlan.PREMIUM: 3,
-    SubscriptionPlan.ENTERPRISE: 4,
 }
 
 
@@ -83,9 +84,10 @@ PLAN_CATALOG: dict[SubscriptionPlan, PlanDetails] = {
         display_name="Free Trial",
         monthly_price=0,
         annual_price=0,
-        trial_days=14,
+        trial_days=30,  # 30-day default trial period
         max_users=3,
-        features=frozenset({"reception", "triage"}),
+        storage_gb=10,
+        features=frozenset({"reception", "triage", "consultation", "pharmacy", "billing", "laboratory", "radiology", "ward", "reports", "insurance", "analytics"}),
     ),
     SubscriptionPlan.BASIC: PlanDetails(
         display_name="Basic",
@@ -93,7 +95,8 @@ PLAN_CATALOG: dict[SubscriptionPlan, PlanDetails] = {
         annual_price=990,
         trial_days=0,
         max_users=20,
-        features=frozenset({"reception", "triage", "consultation"}),
+        storage_gb=10,
+        features=frozenset({"reception", "triage", "consultation", "pharmacy", "billing"}),
     ),
     SubscriptionPlan.STANDARD: PlanDetails(
         display_name="Standard",
@@ -101,42 +104,88 @@ PLAN_CATALOG: dict[SubscriptionPlan, PlanDetails] = {
         annual_price=2990,
         trial_days=0,
         max_users=100,
-        features=frozenset({"reception", "triage", "consultation", "laboratory", "radiology", "pharmacy"}),
+        storage_gb=50,
+        features=frozenset({"reception", "triage", "consultation", "laboratory", "radiology", "pharmacy", "billing", "reports"}),
     ),
     SubscriptionPlan.PREMIUM: PlanDetails(
         display_name="Premium",
         monthly_price=599,
         annual_price=5990,
         trial_days=0,
-        max_users=500,
+        max_users=None,  # unlimited
+        storage_gb=200,
         features=frozenset({
             "reception", "triage", "consultation", "laboratory", "radiology",
-            "pharmacy", "billing", "ward", "reports",
+            "pharmacy", "billing", "ward", "reports", "insurance", "analytics"
         }),
-    ),
-    SubscriptionPlan.ENTERPRISE: PlanDetails(
-        display_name="Enterprise",
-        monthly_price=0,
-        annual_price=0,
-        trial_days=0,
-        max_users=0,  # unlimited
-        features=frozenset({"*"}),  # all features
     ),
 }
 
 
-def get_plan(plan: str | SubscriptionPlan) -> PlanDetails:
-    """Return plan details or raise ValueError for unknown plans."""
-    if isinstance(plan, str):
-        plan = SubscriptionPlan(plan)
-    return PLAN_CATALOG[plan]
+import logging
+logger = logging.getLogger("hospital.subscriptions")
+
+# Thread-safe local memory cache for plan specifications fetched from DB to avoid redundant reads during active sessions.
+_db_plans_cache: dict[str, PlanDetails] = {}
+
+
+def invalidate_plan_cache(plan_name: str) -> None:
+    """Remove a specific plan from the database cache."""
+    _db_plans_cache.pop(plan_name, None)
+
+
+def get_plan(plan: str | SubscriptionPlan, db: Any = None) -> PlanDetails:
+    """Return plan details from the database if db session is provided; otherwise, use the static catalog."""
+    plan_val = plan.value if isinstance(plan, SubscriptionPlan) else plan
+    
+    # Check cache first
+    if plan_val in _db_plans_cache:
+        return _db_plans_cache[plan_val]
+        
+    if db is not None:
+        try:
+            from app.models.saas import SubscriptionPlan as DBPlan
+            db_row = db.query(DBPlan).filter(DBPlan.plan_name == plan_val).first()
+            if db_row:
+                details = PlanDetails(
+                    display_name=db_row.description or db_row.plan_name,
+                    monthly_price=int(db_row.monthly_price),
+                    annual_price=int(db_row.annual_price),
+                    trial_days=30 if plan_val == "free_trial" else 0,
+                    max_users=db_row.max_users or 0,
+                    storage_gb=db_row.storage_gb,
+                    features=frozenset(db_row.modules_included or []),
+                )
+                _db_plans_cache[plan_val] = details
+                return details
+        except Exception:
+            logger.warning("Failed to query plan '%s' from database, using code catalog fallback", plan_val)
+
+    # Fallback to local catalog
+    try:
+        canonical_plan = SubscriptionPlan(plan_val)
+        return PLAN_CATALOG[canonical_plan]
+    except ValueError:
+        # Fallback for dynamic plan names not matching canonical enums
+        return PlanDetails(
+            display_name=plan_val.replace("_", " ").title(),
+            monthly_price=0,
+            annual_price=0,
+            trial_days=0,
+            max_users=0,
+            storage_gb=0,
+            features=frozenset(),
+        )
 
 
 def plan_rank(plan: str | SubscriptionPlan) -> int:
     """Return numeric rank of a plan (higher == more privileged)."""
     if isinstance(plan, str):
-        plan = SubscriptionPlan(plan)
-    return PLAN_RANK[plan]
+        try:
+            plan = SubscriptionPlan(plan)
+        except ValueError:
+            return 0
+    return PLAN_RANK.get(plan, 0)
 
 
 def is_upgrade(from_plan: str | SubscriptionPlan, to_plan: str | SubscriptionPlan) -> bool:
@@ -152,7 +201,10 @@ def is_downgrade(from_plan: str | SubscriptionPlan, to_plan: str | SubscriptionP
 def valid_plan_transition(from_plan: str | SubscriptionPlan, to_plan: str | SubscriptionPlan) -> bool:
     """A transition is valid if it is not to free_trial (trials are one-time only)."""
     if isinstance(to_plan, str):
-        to_plan = SubscriptionPlan(to_plan)
+        try:
+            to_plan = SubscriptionPlan(to_plan)
+        except ValueError:
+            return True
     return to_plan is not SubscriptionPlan.FREE_TRIAL
 
 
@@ -179,67 +231,53 @@ def plan_to_json(plan: SubscriptionPlan) -> dict[str, Any]:
         "annual_price": details.annual_price,
         "trial_days": details.trial_days,
         "max_users": details.max_users,
+        "storage_gb": details.storage_gb,
         "features": sorted(details.features),
         "rank": PLAN_RANK[plan],
+        "plan_name": details.display_name,
+        "modules_included": sorted(details.features),
+        "uptime_sla_pct": 99.9,
+        "backup_frequency_hours": 24,
     }
+
+
+# Cache flag to avoid database sync checks once verified on startup.
+_db_synced = False
 
 
 def sync_plans_to_db(db) -> None:
     """Upsert canonical plans into the subscription_plans table."""
-    from datetime import datetime, timezone
+    global _db_synced
+    if _db_synced:
+        return
 
-    from sqlalchemy import text
+    from datetime import datetime, timezone
+    from app.models.saas import SubscriptionPlan as DBPlan
 
     now = datetime.now(timezone.utc)
     for plan in SubscriptionPlan:
         details = PLAN_CATALOG[plan]
-        db.execute(
-            text(
-                """
-                INSERT INTO subscription_plans (
-                    plan_id, plan_name, description, max_users, max_patients,
-                    storage_gb, modules_included, monthly_price, annual_price,
-                    annual_discount_pct, uptime_sla_pct, backup_frequency_hours, is_active,
-                    created_at
-                ) VALUES (
-                    :plan_id, :plan_name, :description, :max_users, :max_patients,
-                    :storage_gb, to_jsonb(:modules), :monthly_price, :annual_price,
-                    :annual_discount_pct, :uptime_sla_pct, :backup_frequency_hours, :is_active,
-                    :created_at
-                )
-                ON CONFLICT (plan_id) DO UPDATE SET
-                    plan_name = EXCLUDED.plan_name,
-                    description = EXCLUDED.description,
-                    max_users = EXCLUDED.max_users,
-                    max_patients = EXCLUDED.max_patients,
-                    storage_gb = EXCLUDED.storage_gb,
-                    modules_included = EXCLUDED.modules_included,
-                    monthly_price = EXCLUDED.monthly_price,
-                    annual_price = EXCLUDED.annual_price,
-                    annual_discount_pct = EXCLUDED.annual_discount_pct,
-                    uptime_sla_pct = EXCLUDED.uptime_sla_pct,
-                    backup_frequency_hours = EXCLUDED.backup_frequency_hours,
-                    is_active = EXCLUDED.is_active,
-                    created_at = EXCLUDED.created_at
-                """
-            ),
-            {
-                "plan_id": str(plan_uuid(plan)),
-                "plan_name": plan.value,
-                "description": details.display_name,
-                "max_users": details.max_users,
-                "max_patients": None,
-                "storage_gb": 0 if plan is not SubscriptionPlan.ENTERPRISE else 0,
-                "modules": list(details.features),
-                "monthly_price": details.monthly_price,
-                "annual_price": details.annual_price,
-                "annual_discount_pct": 0.0 if details.monthly_price == 0 else round(
+        pid = plan_uuid(plan)
+        exists = db.query(DBPlan).filter(DBPlan.plan_id == pid).first()
+        if not exists:
+            db_plan = DBPlan(
+                plan_id=pid,
+                plan_name=plan.value,
+                description=details.display_name,
+                max_users=details.max_users,
+                max_patients=None,
+                storage_gb=details.storage_gb,
+                modules_included=list(details.features),
+                monthly_price=details.monthly_price,
+                annual_price=details.annual_price,
+                annual_discount_pct=0.0 if details.monthly_price == 0 else round(
                     (1 - details.annual_price / (details.monthly_price * 12)) * 100, 1
                 ),
-                "uptime_sla_pct": 99.9,
-                "backup_frequency_hours": 24,
-                "is_active": True,
-                "created_at": now,
-            },
-        )
+                uptime_sla_pct=99.9,
+                backup_frequency_hours=24,
+                is_active=True,
+                created_at=now,
+            )
+            db.add(db_plan)
     db.commit()
+    _db_synced = True

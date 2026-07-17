@@ -24,6 +24,7 @@ from app.api.v1.auth.schemas import (
     SuperAdminLoginRequest,
     SuperAdminTokenResponse,
     TokenResponse,
+    FirstLoginChangePasswordRequest,
 )
 from app.core.config import settings
 from app.core.database import get_db
@@ -660,6 +661,154 @@ async def login(
     return result
 
 
+@public_router.post("/first-login/change-password", response_model=TokenResponse)
+@limiter.limit("5/minute")
+async def first_login_change_password(
+    request: Request,
+    body: FirstLoginChangePasswordRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    ip = request.client.host if request.client else None
+    logger.info("First-login password change attempt for %s from %s", body.username, ip)
+
+    # 1. Resolve the user's realm
+    from app.services.keycloak_admin import find_user_realm_by_username
+    realm = await find_user_realm_by_username(body.username)
+    if not realm:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found in any realm"
+        )
+
+    # 2. Verify temporary credentials by attempting to authenticate.
+    credentials_valid = False
+    try:
+        await auth_service.login(
+            username=body.username,
+            password=body.temp_password,
+            db=db,
+            realm=realm,
+        )
+        credentials_valid = True
+    except HTTPException as exc:
+        detail_str = str(exc.detail)
+        if "not fully set up" in detail_str.lower() or "setup" in detail_str.lower():
+            credentials_valid = True
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid temporary password"
+            )
+    except Exception as exc:
+        logger.error("Authentication check failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal authentication service error"
+        )
+
+    if not credentials_valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid temporary password"
+        )
+
+    # 3. Retrieve user object from Keycloak admin API to get user UUID
+    try:
+        from app.services.keycloak_admin import _headers
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            hdrs = await _headers()
+            url = f"{settings.keycloak_url}/admin/realms/{realm}/users?username={body.username}&exact=true"
+            r = await client.get(url, headers=hdrs)
+            r.raise_for_status()
+            users_list = r.json()
+            if not users_list:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found in identity provider"
+                )
+            user_id = users_list[0]["id"]
+            
+            # 4. Set the new password and clear requiredActions
+            from app.services.keycloak_admin import set_user_password
+            await set_user_password(user_id=user_id, password=body.new_password, realm=realm)
+            
+            # Retrieve current user config to preserve fields, but remove UPDATE_PASSWORD from requiredActions
+            user_url = f"{settings.keycloak_url}/admin/realms/{realm}/users/{user_id}"
+            user_resp = await client.get(user_url, headers=hdrs)
+            user_resp.raise_for_status()
+            user_data = user_resp.json()
+            
+            req_actions = user_data.get("requiredActions", [])
+            if "UPDATE_PASSWORD" in req_actions:
+                req_actions.remove("UPDATE_PASSWORD")
+            user_data["requiredActions"] = req_actions
+            
+            # Update user profile in Keycloak
+            update_resp = await client.put(user_url, json=user_data, headers=hdrs)
+            update_resp.raise_for_status()
+            
+    except Exception as exc:
+        logger.exception("Keycloak password change failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to establish permanent password: {exc}"
+        )
+
+    # 5. Log in using the newly established permanent password
+    try:
+        login_result = await auth_service.login(
+            username=body.username,
+            password=body.new_password,
+            db=db,
+            realm=realm,
+        )
+    except Exception as exc:
+        logger.exception("Login failed with new password: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Password changed successfully, but automatic login failed. Please sign in manually."
+        )
+
+    # Write login audit log
+    audit_db = None
+    try:
+        audit_db = get_session_local()()
+        record = GlobalAuditLog(
+            user_sub=login_result.get("session_id", ""),
+            action="FIRST_LOGIN_PASSWORD_ESTABLISHED",
+            detail=f"User '{body.username}' established permanent password and logged in",
+            ip_address=ip,
+        )
+        audit_db.add(record)
+        audit_db.commit()
+    except Exception:
+        pass
+    finally:
+        if audit_db:
+            audit_db.close()
+
+    # Enforce tenant suspension
+    try:
+        from jose import jwt as _jwt
+        token = login_result["access_token"]
+        unverified = _jwt.get_unverified_claims(token)
+        login_tenant_id = unverified.get("tenant_id")
+        if login_tenant_id and await is_tenant_suspended(login_tenant_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "TENANT_SUSPENDED", "message": "Tenant subscription is suspended"},
+            )
+        login_result["tenant_id"] = login_tenant_id
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    login_result["scope"] = "full"
+    return login_result
+
+
 @public_router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("20/minute")
 async def refresh(
@@ -1214,6 +1363,26 @@ async def impersonate(
     )
 
     return result
+
+
+@router.post("/impersonate/exit")
+@limiter.limit("10/minute")
+async def impersonate_exit(
+    request: Request,
+    user: TokenPayload = Depends(get_current_active_user),
+) -> dict:
+    tenant_id = user.raw.get("tenant_id") if user.raw else None
+    if not tenant_id:
+        return {"detail": "No active impersonation session"}
+
+    ip = request.client.host if request.client else None
+    await log_impersonation_event(
+        action="IMPERSONATION_EXIT",
+        super_admin_sub=user.sub,
+        target_tenant_id=tenant_id,
+        ip_address=ip,
+    )
+    return {"detail": "Impersonation session exited"}
 
 
 @router.get("/session-check")

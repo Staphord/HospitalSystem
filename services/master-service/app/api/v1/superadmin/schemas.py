@@ -113,6 +113,7 @@ class TenantOut(BaseModel):
     trial_ends_at: datetime | None = None
     has_used_trial: bool
     auto_renew: bool
+    grace_period_days: int
     grace_period_end: datetime | None = None
     pending_plan: str | None = None
     pending_billing_cycle: str | None = None
@@ -135,7 +136,7 @@ class TenantOut(BaseModel):
 class TenantCreate(BaseModel):
     hospital_name: str
     admin_username: str
-    admin_password: str
+    admin_password: str | None = None
     admin_email: EmailStr
     admin_full_name: str = ""
 
@@ -150,8 +151,9 @@ class TenantCreate(BaseModel):
     timezone: str | None = Field(default=None, max_length=50)
     currency: str | None = Field(default=None, max_length=5)
     date_format: str | None = Field(default=None, max_length=20)
-    logo_url: str | None = Field(default=None, max_length=255)
+    logo_url: str | None = Field(default=None)
     data_region: str | None = Field(default=None, max_length=50)
+    grace_period_days: int | None = Field(default=7, ge=0)
 
 
 class TenantUpdate(BaseModel):
@@ -171,8 +173,9 @@ class TenantUpdate(BaseModel):
     timezone: str | None = Field(default=None, max_length=50)
     currency: str | None = Field(default=None, max_length=5)
     date_format: str | None = Field(default=None, max_length=20)
-    logo_url: str | None = Field(default=None, max_length=255)
+    logo_url: str | None = Field(default=None)
     data_region: str | None = Field(default=None, max_length=50)
+    grace_period_days: int | None = Field(default=None, ge=0)
 
 
 class RoleCreate(BaseModel):
@@ -296,7 +299,7 @@ class SubscriptionSubscribeRequest(BaseModel):
 class SubscriptionPlanChangeRequest(BaseModel):
     plan: str
     billing_cycle: str | None = None
-    effective_at_end: bool = False
+    effective_at_end: bool | None = None
 
     @field_validator("billing_cycle")
     @classmethod
@@ -368,6 +371,8 @@ class SubscriptionStateOut(BaseModel):
     suspension: SuspensionSnapshot
     termination: TerminationSnapshot
     payment_provider_id: str | None
+    currency: str | None = None
+    grace_days: int | None = None
 
 
 class SubscriptionActionOut(BaseModel):
@@ -387,9 +392,14 @@ class PlanCatalogOut(BaseModel):
     monthly_price: int
     annual_price: int
     trial_days: int
-    max_users: int
+    max_users: int | None = None
     features: list[str]
     rank: int
+    plan_name: str
+    modules_included: list[str]
+    storage_gb: int
+    uptime_sla_pct: float
+    backup_frequency_hours: int
 
 
 # ---------------------------------------------------------------------------
@@ -447,6 +457,7 @@ class InvoiceOut(BaseModel):
     currency: str
     due_date: date
     status: str
+    hospital_name: str | None = None
     issued_at: datetime
     paid_at: datetime | None
     amount_paid: Decimal | None = None
@@ -573,6 +584,7 @@ class PlanUpdate(BaseModel):
 class SuperAdminAuditLogOut(BaseModel):
     log_id: UUID
     super_admin_id: UUID
+    actor_name: str | None = None
     action: str
     tenant_id: str | None
     action_detail: dict | None
@@ -584,7 +596,7 @@ class SuperAdminAuditLogOut(BaseModel):
 
 
 class InvoiceCreate(BaseModel):
-    invoice_number: str = Field(..., max_length=30)
+    invoice_number: str | None = Field(default=None, max_length=64)
     billing_period_start: date
     billing_period_end: date
     plan_name: str = Field(..., max_length=50)
@@ -652,3 +664,84 @@ class IncidentOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SuperAdminSessionOut(BaseModel):
+    id: str
+    user_sub: str
+    username: str
+    email: str
+    full_name: str
+    role: str
+    login_time: datetime
+    expires_at: datetime
+    is_impersonation: bool
+    impersonation_tenant_id: str | None = None
+    impersonation_tenant_name: str | None = None
+    ip_address: str
+    device: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Subscription request / approval workflow schemas
+# ---------------------------------------------------------------------------
+
+class PlanChangeRequestCreate(BaseModel):
+    plan: str
+    reason: str = Field(default="", max_length=1000)
+    billing_cycle: str | None = Field(default=None)
+    effective_at_end: bool | None = Field(default=None)
+
+    @field_validator("plan")
+    @classmethod
+    def validate_plan(cls, value: str) -> str:
+        allowed = {"free_trial", "basic", "standard", "premium"}
+        if value.lower() not in allowed:
+            raise ValueError(f"plan must be one of {allowed}")
+        return value.lower()
+
+    @field_validator("billing_cycle")
+    @classmethod
+    def validate_cycle(cls, value: str | None) -> str | None:
+        if value is not None:
+            allowed = {"monthly", "annual"}
+            if value.lower() not in allowed:
+                raise ValueError(f"billing_cycle must be one of {allowed}")
+            return value.lower()
+        return value
+
+
+class CancellationRequestCreate(BaseModel):
+    reason: str = Field(default="", max_length=1000)
+
+
+class SubscriptionRequestOut(BaseModel):
+    tenant_id: str
+    hospital_name: str
+    pending_action: str | None = None
+    requested_plan: str | None = None
+    request_reason: str | None = None
+    requested_at: datetime | None = None
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    review_notes: str | None = None
+    request_id: str | None = None
+    status: str = "pending"
+    billing_cycle: str | None = None
+    effective_at_end: bool | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RequestApprove(BaseModel):
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class RequestReject(BaseModel):
+    notes: str = Field(..., max_length=1000)
+
+
+class ToggleAutoRenewRequest(BaseModel):
+    auto_renew: bool
