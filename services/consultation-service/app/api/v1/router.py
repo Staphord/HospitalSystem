@@ -374,7 +374,10 @@ async def get_encounter(
     diagnoses = diag_res.scalars().all()
 
     # Fetch investigations with result details
-    inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation.id)
+    inv_stmt = select(InvestigationRequest).where(
+        InvestigationRequest.consultation_id == consultation.id,
+        InvestigationRequest.status != "cancelled"
+    )
     inv_res = await db.execute(inv_stmt)
     investigations = inv_res.scalars().all()
 
@@ -845,7 +848,10 @@ async def get_investigations(
     current_user: TokenPayload = Depends(require_role("doctor")),
 ):
     """Retrieve all investigations and their results for a consultation."""
-    stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
+    stmt = select(InvestigationRequest).where(
+        InvestigationRequest.consultation_id == consultation_id,
+        InvestigationRequest.status != "cancelled"
+    )
     res = await db.execute(stmt)
     investigations = res.scalars().all()
 
@@ -1288,7 +1294,10 @@ async def get_consultation_summary(
     diagnoses = diag_res.scalars().all()
 
     # Fetch investigations with result details
-    inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
+    inv_stmt = select(InvestigationRequest).where(
+        InvestigationRequest.consultation_id == consultation_id,
+        InvestigationRequest.status != "cancelled"
+    )
     inv_res = await db.execute(inv_stmt)
     investigations = inv_res.scalars().all()
 
@@ -1478,7 +1487,10 @@ async def get_patient_encounter_view(
         diag_res = await db.execute(diag_stmt)
         diagnoses = diag_res.scalars().all()
 
-        inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation.id)
+        inv_stmt = select(InvestigationRequest).where(
+            InvestigationRequest.consultation_id == consultation.id,
+            InvestigationRequest.status != "cancelled"
+        )
         inv_res = await db.execute(inv_stmt)
         investigations = inv_res.scalars().all()
 
@@ -1582,7 +1594,10 @@ async def get_patient_history(
             diag_res = await db.execute(diag_stmt)
             diagnoses = diag_res.scalars().all()
 
-            inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation.id)
+            inv_stmt = select(InvestigationRequest).where(
+                InvestigationRequest.consultation_id == consultation.id,
+                InvestigationRequest.status != "cancelled"
+            )
             inv_res = await db.execute(inv_stmt)
             investigations = inv_res.scalars().all()
             inv_list = []

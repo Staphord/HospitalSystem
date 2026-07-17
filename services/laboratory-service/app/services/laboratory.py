@@ -53,7 +53,8 @@ async def get_lab_queue(
             and_(
                 Queue.visit_id == InvestigationRequest.visit_id,
                 InvestigationRequest.request_type == "laboratory",
-                InvestigationRequest.status != "completed"
+                InvestigationRequest.status != "completed",
+                InvestigationRequest.status != "cancelled"
             )
         )
         .join(Patient, Queue.patient_id == Patient.id)

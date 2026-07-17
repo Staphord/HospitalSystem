@@ -451,7 +451,7 @@ def test_investigations_and_cancellation(mock_db):
     with patch("httpx.AsyncClient.patch") as mock_patch:
         mock_patch.return_value = MagicMock(status_code=200)
         resp2 = client.delete(
-            f"/api/v1/consultation/{cons.id}/investigations/{inv_data['id']}",
+            f"/api/v1/consultation/investigations/{inv_data['id']}",
             headers={"Authorization": "Bearer test_token"},
         )
         assert resp2.status_code == 200
@@ -499,7 +499,7 @@ def test_prescription_endpoints(mock_db):
 
     # Cancel prescription
     resp3 = client.delete(
-        f"/api/v1/consultation/{cons.id}/prescriptions/{p_data['id']}",
+        f"/api/v1/consultation/prescriptions/{p_data['id']}",
         headers={"Authorization": "Bearer test_token"},
     )
     assert resp3.status_code == 200
@@ -526,7 +526,7 @@ def test_complete_consultation_gates(mock_db):
         headers={"Authorization": "Bearer test_token"},
     )
     assert resp_fail1.status_code == 400
-    assert "At least one final diagnosis" in resp_fail1.json()["detail"]
+    assert "At least one diagnosis" in resp_fail1.json()["detail"]
 
     # Add final diagnosis
     client.post(
