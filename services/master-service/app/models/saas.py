@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    JSON,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -43,7 +44,7 @@ class SubscriptionPlan(Base):
     max_users = Column(Integer, nullable=True)  # null = unlimited
     max_patients = Column(Integer, nullable=True)  # null = unlimited
     storage_gb = Column(Integer, nullable=False, default=0)
-    modules_included = Column(JSONB, nullable=False, default=list)
+    modules_included = Column(JSON().with_variant(JSONB, "postgresql"), nullable=False, default=list)
 
     monthly_price = Column(Numeric(10, 2), nullable=False, default=0)
     annual_price = Column(Numeric(10, 2), nullable=False, default=0)
@@ -241,7 +242,7 @@ class SuperAdminAuditLog(Base):
         nullable=True,
         index=True,
     )
-    action_detail = Column(JSONB, nullable=True)
+    action_detail = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     is_impersonation = Column(Boolean, nullable=False, default=False)
     ip_address = Column(String(45), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)
@@ -265,7 +266,7 @@ class Announcement(Base):
     title = Column(String(200), nullable=False)
     body = Column(Text, nullable=False)
     audience = Column(String(16), nullable=False, default="all")
-    target_tenant_ids = Column(JSONB, nullable=True)
+    target_tenant_ids = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     publish_at = Column(DateTime(timezone=True), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -297,7 +298,7 @@ class SystemRole(Base):
     )
     name = Column(String(50), unique=True, nullable=False, index=True)
     description = Column(Text, nullable=True)
-    scope = Column(JSONB, nullable=True)
+    scope = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
     is_global = Column(Boolean, nullable=False, default=False)
 
     created_by = Column(
@@ -346,7 +347,7 @@ class GlobalRole(Base):
     )
     name = Column(String(50), unique=True, nullable=False, index=True)
     description = Column(Text, nullable=True)
-    scope = Column(JSONB, nullable=True)
+    scope = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
 
     created_by = Column(
         UUID(as_uuid=True),
@@ -375,7 +376,7 @@ class TenantRole(Base):
     )
     name = Column(String(50), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    scope = Column(JSONB, nullable=True)
+    scope = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
 
     created_by = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utc_now, nullable=False)

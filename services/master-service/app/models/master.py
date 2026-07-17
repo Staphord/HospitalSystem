@@ -98,6 +98,15 @@ class Tenant(Base):
     pending_plan = Column(String(64), nullable=True)
     pending_billing_cycle = Column(String(16), nullable=True)
 
+    # Subscription request workflow (plan change / cancellation request → super admin approval)
+    pending_action = Column(String(32), nullable=True)  # 'upgrade' | 'downgrade' | 'cancellation' | NULL
+    requested_plan = Column(String(64), nullable=True)  # target plan name for upgrade/downgrade
+    request_reason = Column(Text, nullable=True)  # reason submitted by hospital admin
+    requested_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(UUID(as_uuid=True), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    review_notes = Column(Text, nullable=True)  # rejection reason or approval notes
+
     keycloak_realm = Column(String(255), nullable=True, default="hospital-realm")
     is_active = Column(Boolean, default=True, nullable=False)
 
