@@ -40,6 +40,7 @@ from app.api.v1.schemas import (
     InpatientOrderCreate,
     OrderStatusUpdate,
     DischargeRequest,
+    AdmissionSummary,
 )
 from app.models.consultation import (
     Consultation,
