@@ -66,6 +66,27 @@ def _migrate_super_admins_table() -> None:
             conn.commit()
 
 
+def _migrate_consultation_disposition_columns() -> None:
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(_engine)
+    if "consultations" not in inspector.get_table_names():
+        return
+    columns = [c["name"] for c in inspector.get_columns("consultations")]
+    with _engine.connect() as conn:
+        if "admission_reason" not in columns:
+            conn.execute(text("ALTER TABLE consultations ADD COLUMN admission_reason TEXT"))
+        if "discharge_instructions" not in columns:
+            conn.execute(text("ALTER TABLE consultations ADD COLUMN discharge_instructions TEXT"))
+        if "follow_up_date" not in columns:
+            conn.execute(text("ALTER TABLE consultations ADD COLUMN follow_up_date DATE"))
+        if "return_date" not in columns:
+            conn.execute(text("ALTER TABLE consultations ADD COLUMN return_date DATE"))
+        if "return_reason" not in columns:
+            conn.execute(text("ALTER TABLE consultations ADD COLUMN return_reason TEXT"))
+        conn.commit()
+
+
 def init_db() -> None:
     from app.db.base import Base
     import app.models
@@ -74,6 +95,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=_engine)
     _migrate_user_table()
     _migrate_super_admins_table()
+    _migrate_consultation_disposition_columns()
 
 
 class DatabaseRouter(ABC):

@@ -148,6 +148,11 @@ class ConsultationResponse(BaseModel):
     disposition: Optional[str] = None
     referral_type: Optional[str] = None
     referral_notes: Optional[str] = None
+    admission_reason: Optional[str] = None
+    discharge_instructions: Optional[str] = None
+    follow_up_date: Optional[date] = None
+    return_date: Optional[date] = None
+    return_reason: Optional[str] = None
     created_by: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -164,9 +169,14 @@ class NotesUpdateRequest(BaseModel):
     clinical_impression: str = Field(..., description="clinical impression")
 
 class DispositionUpdateRequest(BaseModel):
-    disposition: str = Field(..., description="'outpatient' / 'admission' / 'referral' / 'deceased'")
+    disposition: str = Field(..., description="'outpatient' / 'admission' / 'referral' / 'return_visit' / 'deceased'")
     referral_type: Optional[str] = Field(None, description="required if disposition = 'referral'")
     referral_notes: Optional[str] = Field(None, description="required if disposition = 'referral'")
+    admission_reason: Optional[str] = Field(None, description="required if disposition = 'admission'")
+    discharge_instructions: Optional[str] = Field(None, description="optional instructions for discharge")
+    follow_up_date: Optional[str] = Field(None, description="optional follow-up date (YYYY-MM-DD) for discharge")
+    return_date: Optional[str] = Field(None, description="required if disposition = 'return_visit' (YYYY-MM-DD)")
+    return_reason: Optional[str] = Field(None, description="required if disposition = 'return_visit'")
 
 class ConsultationCompleteResponse(BaseModel):
     consultation_id: uuid.UUID

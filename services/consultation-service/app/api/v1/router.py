@@ -1123,21 +1123,82 @@ async def update_disposition(
             detail="At least one diagnosis must be recorded before recording disposition"
         )
 
-    # Investigation gate check
-    inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
-    inv_res = await db.execute(inv_stmt)
-    invs = inv_res.scalars().all()
-    pending_invs = [i for i in invs if i.status not in ("completed", "cancelled")]
-    if pending_invs:
+    # Investigation gate check — return_visit is allowed even with pending investigations
+    if body.disposition != "return_visit":
+        inv_stmt = select(InvestigationRequest).where(InvestigationRequest.consultation_id == consultation_id)
+        inv_res = await db.execute(inv_stmt)
+        invs = inv_res.scalars().all()
+        pending_invs = [i for i in invs if i.status not in ("completed", "cancelled")]
+        if pending_invs:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="All investigations must be completed or cancelled before disposition"
+            )
+
+    # Per-disposition required-field validation
+    valid_dispositions = {"outpatient", "admission", "referral", "return_visit", "deceased"}
+    if body.disposition not in valid_dispositions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="All investigations must be completed or cancelled before disposition"
+            detail=f"Invalid disposition value. Must be one of: {', '.join(sorted(valid_dispositions))}"
         )
 
+    if body.disposition == "admission":
+        if not body.admission_reason or not body.admission_reason.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Admission reason is required for admission disposition"
+            )
+
+    if body.disposition == "referral":
+        errors = []
+        if not body.referral_type or not body.referral_type.strip():
+            errors.append("Department/Specialty is required")
+        if not body.referral_notes or not body.referral_notes.strip():
+            errors.append("Referral reason is required")
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="; ".join(errors)
+            )
+
+    if body.disposition == "return_visit":
+        errors = []
+        if not body.return_date:
+            errors.append("Return date is required")
+        if not body.return_reason or not body.return_reason.strip():
+            errors.append("Return reason is required")
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="; ".join(errors)
+            )
+
+    # Persist disposition and all detail fields
     consultation.disposition = body.disposition
     consultation.referral_type = body.referral_type
     consultation.referral_notes = body.referral_notes
+    consultation.admission_reason = body.admission_reason
+    consultation.discharge_instructions = body.discharge_instructions
+    consultation.return_reason = body.return_reason
     consultation.updated_at = datetime.datetime.utcnow()
+
+    # Parse date strings into date objects
+    if body.follow_up_date:
+        try:
+            consultation.follow_up_date = datetime.datetime.strptime(body.follow_up_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="follow_up_date must be in YYYY-MM-DD format")
+    else:
+        consultation.follow_up_date = None
+
+    if body.return_date:
+        try:
+            consultation.return_date = datetime.datetime.strptime(body.return_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="return_date must be in YYYY-MM-DD format")
+    else:
+        consultation.return_date = None
 
     await db.commit()
     await db.refresh(consultation)
