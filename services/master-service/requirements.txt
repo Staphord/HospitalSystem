@@ -22,3 +22,4 @@ python-dotenv
 aio-pika
 psutil
 aiosmtplib
+reportlab
