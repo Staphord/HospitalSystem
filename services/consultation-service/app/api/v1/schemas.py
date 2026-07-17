@@ -358,3 +358,44 @@ class InvestigationResultListItem(BaseModel):
     lab_notes: Optional[str] = None
 
 
+# ── Doctor-side Referrals ─────────────────────────────────────────────────────
+
+class ReferralCreateRequest(BaseModel):
+    patient_id: uuid.UUID
+    visit_id: Optional[uuid.UUID] = None
+    type: str  # internal, external
+    referred_to: str
+    reason: str
+    urgency: str  # routine, urgent, emergency
+    category: str  # general, follow-up, second-opinion, lab-imaging
+    department: Optional[str] = None
+    preferred_doctor: Optional[str] = None
+    hospital_name: Optional[str] = None
+    external_doctor: Optional[str] = None
+    contact_number: Optional[str] = None
+
+class ReferralPatientResponse(BaseModel):
+    id: uuid.UUID
+    patient_number: str
+    full_name: str
+
+class ReferralResponse(BaseModel):
+    id: uuid.UUID
+    patient: ReferralPatientResponse
+    visit_id: Optional[uuid.UUID] = None
+    referred_to: str
+    type: str
+    reason: str
+    status: str
+    urgency: str
+    category: str
+    department: Optional[str] = None
+    preferred_doctor: Optional[str] = None
+    hospital_name: Optional[str] = None
+    external_doctor: Optional[str] = None
+    contact_number: Optional[str] = None
+    decline_reason: Optional[str] = None
+    referred_at: datetime
+    responded_at: Optional[datetime] = None
+
+

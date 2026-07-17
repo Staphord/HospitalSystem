@@ -251,3 +251,29 @@ class InpatientOrder(Base):
     completed_by = Column(String(255), nullable=True)
 
     admission = relationship("InpatientAdmission", back_populates="orders")
+
+
+class Referral(Base):
+    __tablename__ = "referrals"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="SET NULL"), nullable=True)
+    referred_to = Column(String(255), nullable=False)
+    type = Column(String(50), nullable=False)  # internal, external
+    reason = Column(Text, nullable=False)
+    status = Column(String(50), nullable=False, default="pending")  # pending, accepted, declined, completed, cancelled
+    urgency = Column(String(50), nullable=False, default="routine")  # routine, urgent, emergency
+    category = Column(String(50), nullable=False, default="general")  # general, follow-up, second-opinion, lab-imaging
+    department = Column(String(100), nullable=True)
+    preferred_doctor = Column(String(255), nullable=True)
+    hospital_name = Column(String(255), nullable=True)
+    external_doctor = Column(String(255), nullable=True)
+    contact_number = Column(String(50), nullable=True)
+    decline_reason = Column(Text, nullable=True)
+    referred_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    responded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    patient = relationship("Patient", lazy="selectin")
+    visit = relationship("Visit", lazy="selectin")

@@ -45,6 +45,9 @@ from app.api.v1.schemas import (
     PatientSearchResponse,
     InvestigationPatientResponse,
     InvestigationResultListItem,
+    ReferralCreateRequest,
+    ReferralResponse,
+    ReferralPatientResponse,
 )
 from app.models.consultation import (
     Consultation,
@@ -62,6 +65,7 @@ from app.models.consultation import (
     RadiologyReport,
     InpatientAdmission,
     InpatientOrder,
+    Referral,
 )
 
 logger = logging.getLogger("consultation_service.api")
@@ -2271,3 +2275,118 @@ async def acknowledge_investigation(
     inv.status = "acknowledged"
     await db.commit()
     return {"status": "success", "message": "Result acknowledged"}
+
+
+# ── Doctor-side Referrals Dashboard ───────────────────────────────────────────
+
+@router.get("/referrals", response_model=List[ReferralResponse], tags=["Referrals"])
+async def get_all_referrals(
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Retrieve all active outgoing referrals."""
+    stmt = select(Referral).where(Referral.status != "cancelled").order_by(Referral.referred_at.desc())
+    res = await db.execute(stmt)
+    referrals = res.scalars().all()
+    
+    out = []
+    for ref in referrals:
+        out.append(ReferralResponse(
+            id=ref.id,
+            patient=ReferralPatientResponse(
+                id=ref.patient.id,
+                patient_number=ref.patient.patient_number,
+                full_name=ref.patient.full_name
+            ),
+            visit_id=ref.visit_id,
+            referred_to=ref.referred_to,
+            type=ref.type,
+            reason=ref.reason,
+            status=ref.status,
+            urgency=ref.urgency,
+            category=ref.category,
+            department=ref.department,
+            preferred_doctor=ref.preferred_doctor,
+            hospital_name=ref.hospital_name,
+            external_doctor=ref.external_doctor,
+            contact_number=ref.contact_number,
+            decline_reason=ref.decline_reason,
+            referred_at=ref.referred_at,
+            responded_at=ref.responded_at
+        ))
+    return out
+
+
+@router.post("/referrals", response_model=ReferralResponse, tags=["Referrals"])
+async def create_referral(
+    body: ReferralCreateRequest,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Create a new outgoing patient referral."""
+    # Verify patient exists
+    pat_stmt = select(Patient).where(Patient.id == body.patient_id)
+    pat_res = await db.execute(pat_stmt)
+    patient = pat_res.scalars().first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    new_ref = Referral(
+        id=uuid.uuid4(),
+        patient_id=body.patient_id,
+        visit_id=body.visit_id,
+        referred_to=body.referred_to,
+        type=body.type,
+        reason=body.reason,
+        status="pending",
+        urgency=body.urgency,
+        category=body.category,
+        department=body.department,
+        preferred_doctor=body.preferred_doctor,
+        hospital_name=body.hospital_name,
+        external_doctor=body.external_doctor,
+        contact_number=body.contact_number,
+        referred_at=datetime.datetime.utcnow()
+    )
+    db.add(new_ref)
+    await db.commit()
+    
+    return ReferralResponse(
+        id=new_ref.id,
+        patient=ReferralPatientResponse(
+            id=patient.id,
+            patient_number=patient.patient_number,
+            full_name=patient.full_name
+        ),
+        visit_id=new_ref.visit_id,
+        referred_to=new_ref.referred_to,
+        type=new_ref.type,
+        reason=new_ref.reason,
+        status=new_ref.status,
+        urgency=new_ref.urgency,
+        category=new_ref.category,
+        department=new_ref.department,
+        preferred_doctor=new_ref.preferred_doctor,
+        hospital_name=new_ref.hospital_name,
+        external_doctor=new_ref.external_doctor,
+        contact_number=new_ref.contact_number,
+        referred_at=new_ref.referred_at
+    )
+
+
+@router.put("/referrals/{referral_id}/cancel", tags=["Referrals"])
+async def cancel_referral_endpoint(
+    referral_id: uuid.UUID,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Soft-delete / cancel a pending referral."""
+    stmt = select(Referral).where(Referral.id == referral_id)
+    res = await db.execute(stmt)
+    ref = res.scalars().first()
+    if not ref:
+        raise HTTPException(status_code=404, detail="Referral not found")
+        
+    ref.status = "cancelled"
+    await db.commit()
+    return {"status": "success", "message": "Referral cancelled"}
