@@ -399,3 +399,46 @@ class ReferralResponse(BaseModel):
     responded_at: Optional[datetime] = None
 
 
+# ── Doctor Dashboard Overview ─────────────────────────────────────────────────
+
+class DashboardStatsCard(BaseModel):
+    waiting_patients: int
+    in_progress: int
+    completed_today: int
+    pending_results: int
+
+class DashboardQueuePatient(BaseModel):
+    name: str
+    patient_id: str
+    condition: str
+    wait_time: str
+    urgency: str  # urgent, normal, consulting
+    visit_id: str
+
+class DashboardPendingResult(BaseModel):
+    id: uuid.UUID
+    patient_name: str
+    test: str
+    time: str
+    status: str  # critical, ready, pending
+
+class DashboardSummary(BaseModel):
+    diagnoses_count: int
+    prescriptions_issued: int
+    investigations_ordered: int
+    referrals_made: int
+
+class DashboardCriticalAlert(BaseModel):
+    id: uuid.UUID
+    title: str
+    description: str
+    is_highlight: bool
+
+class DoctorDashboardStatsResponse(BaseModel):
+    stats: DashboardStatsCard
+    next_patients: List[DashboardQueuePatient]
+    pending_results: List[DashboardPendingResult]
+    summary: DashboardSummary
+    critical_alerts: List[DashboardCriticalAlert]
+
+

@@ -48,6 +48,7 @@ from app.api.v1.schemas import (
     ReferralCreateRequest,
     ReferralResponse,
     ReferralPatientResponse,
+    DoctorDashboardStatsResponse,
 )
 from app.models.consultation import (
     Consultation,
@@ -2374,19 +2375,206 @@ async def create_referral(
     )
 
 
-@router.put("/referrals/{referral_id}/cancel", tags=["Referrals"])
-async def cancel_referral_endpoint(
-    referral_id: uuid.UUID,
-    db: AsyncSession = Depends(get_tenant_db),
-    current_user: TokenPayload = Depends(require_role("doctor")),
-):
-    """Soft-delete / cancel a pending referral."""
-    stmt = select(Referral).where(Referral.id == referral_id)
-    res = await db.execute(stmt)
-    ref = res.scalars().first()
-    if not ref:
-        raise HTTPException(status_code=404, detail="Referral not found")
-        
     ref.status = "cancelled"
     await db.commit()
     return {"status": "success", "message": "Referral cancelled"}
+
+
+@router.get("/dashboard/stats", response_model=DoctorDashboardStatsResponse, tags=["Dashboard"])
+async def get_doctor_dashboard_stats(
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Retrieve doctor dashboard statistics, queue, pending results, daily summary, and critical alerts."""
+    now = datetime.datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # ── 1. Calculate Stat Cards ───────────────────────────────────────────────
+    w_stmt = select(func.count(Queue.queue_id)).where(Queue.queue_type == "doctor", Queue.status == "waiting")
+    w_res = await db.execute(w_stmt)
+    waiting_patients = w_res.scalar() or 0
+
+    ip_stmt = select(func.count(Queue.queue_id)).where(Queue.queue_type == "doctor", Queue.status == "in_progress")
+    ip_res = await db.execute(ip_stmt)
+    in_progress = ip_res.scalar() or 0
+
+    c_stmt = select(func.count(Queue.queue_id)).where(
+        Queue.queue_type == "doctor", 
+        Queue.status == "completed",
+        Queue.completed_at >= today_start
+    )
+    c_res = await db.execute(c_stmt)
+    completed_today = c_res.scalar() or 0
+
+    pr_stmt = select(func.count(InvestigationRequest.id)).where(
+        InvestigationRequest.status.in_(["pending", "completed"])
+    )
+    pr_res = await db.execute(pr_stmt)
+    pending_results_count = pr_res.scalar() or 0
+
+    # ── 2. Next Patients Table (Top 4 waiting/in-progress) ─────────────────────
+    priority_case = case(
+        (Queue.priority == "emergency", 1),
+        (Queue.priority == "urgent", 2),
+        (Queue.priority == "semi_urgent", 3),
+        (Queue.priority == "non_urgent", 4),
+        else_=5
+    )
+    q_stmt = (
+        select(Queue, Visit, Patient, TriageAssessment)
+        .join(Visit, Queue.visit_id == Visit.visit_id)
+        .join(Patient, Patient.id == cast(Queue.patient_id, pgUUID))
+        .outerjoin(TriageAssessment, Queue.visit_id == TriageAssessment.visit_id)
+        .where(
+            Queue.queue_type == "doctor",
+            Queue.status.in_(["waiting", "in_progress"])
+        )
+        .order_by(priority_case, Queue.created_at.asc())
+        .limit(4)
+    )
+    q_res = await db.execute(q_stmt)
+    q_rows = q_res.all()
+
+    next_patients = []
+    for q, v, p, t in q_rows:
+        q_created_naive = q.created_at.replace(tzinfo=None)
+        wait_mins = int((now - q_created_naive).total_seconds() / 60)
+        wait_label = f"{wait_mins} min" if wait_mins >= 0 else "0 min"
+
+        if q.status == "in_progress":
+            urgency = "consulting"
+        elif q.priority in ["emergency", "urgent"]:
+            urgency = "urgent"
+        else:
+            urgency = "normal"
+
+        condition = t.chief_complaint if t else "No Triage complaint recorded"
+
+        next_patients.append({
+            "name": p.full_name,
+            "patient_id": p.patient_number,
+            "condition": condition,
+            "wait_time": wait_label,
+            "urgency": urgency,
+            "visit_id": str(v.visit_id)
+        })
+
+    # ── 3. Pending Results List & Critical Alerts ─────────────────────────────
+    inv_stmt = select(InvestigationRequest).order_by(InvestigationRequest.created_at.desc())
+    inv_res = await db.execute(inv_stmt)
+    invs = inv_res.scalars().all()
+
+    pending_results_list = []
+    critical_alerts_list = []
+    
+    for inv in invs:
+        pat_stmt = select(Patient).where(Patient.id == inv.patient_id)
+        pat_res = await db.execute(pat_stmt)
+        patient = pat_res.scalars().first()
+        if not patient:
+            continue
+
+        result_data = None
+        completed_at = None
+
+        if inv.request_type == "laboratory" or inv.request_type == "lab":
+            lab_stmt = select(LabResult).where(LabResult.request_id == inv.id)
+            lab_res = await db.execute(lab_stmt)
+            lab = lab_res.scalars().first()
+            if lab:
+                result_data = {
+                    "result_value": lab.result_value,
+                    "unit": lab.unit,
+                    "is_critical": lab.is_critical,
+                    "result_notes": lab.result_notes
+                }
+                completed_at = lab.resulted_at
+        elif inv.request_type == "radiology":
+            rad_stmt = select(RadiologyReport).where(RadiologyReport.request_id == inv.id)
+            rad_res = await db.execute(rad_stmt)
+            rad = rad_res.scalars().first()
+            if rad:
+                result_data = {
+                    "findings": rad.findings,
+                    "impression": rad.impression
+                }
+                completed_at = rad.reported_at
+
+        ui_status = inv.status
+        if inv.status == "completed":
+            if result_data:
+                is_critical = False
+                if inv.request_type == "laboratory" or inv.request_type == "lab":
+                    is_critical = result_data.get("is_critical", False)
+                elif inv.request_type == "radiology":
+                    findings = (result_data.get("findings") or "").lower()
+                    impression = (result_data.get("impression") or "").lower()
+                    critical_keywords = ["subdural", "fracture", "hemorrhage", "bleed", "critical", "severe", "pneumothorax"]
+                    is_critical = any(kw in findings or kw in impression for kw in critical_keywords)
+                ui_status = "critical" if is_critical else "ready"
+            else:
+                ui_status = "ready"
+
+        time_source = completed_at or inv.requested_at
+        time_label = time_source.strftime("%H:%M")
+
+        if len(pending_results_list) < 5 and ui_status in ["pending", "ready", "critical"]:
+            pending_results_list.append({
+                "id": inv.id,
+                "patient_name": patient.full_name,
+                "test": inv.test_name,
+                "time": time_label,
+                "status": ui_status
+            })
+
+        if ui_status == "critical":
+            desc = ""
+            if inv.request_type == "laboratory" or inv.request_type == "lab":
+                unit = f" {result_data['unit']}" if result_data.get('unit') else ""
+                desc = f"{inv.test_name}: {result_data['result_value']}{unit}. "
+                if result_data.get("result_notes"):
+                    desc += result_data["result_notes"]
+            else:
+                desc = result_data.get("findings") or "Critical findings reported."
+            
+            critical_alerts_list.append({
+                "id": inv.id,
+                "title": f"Critical Result: {patient.full_name}",
+                "description": desc,
+                "is_highlight": (inv.request_type in ["laboratory", "lab"])
+            })
+
+    # ── 4. Clinical Daily Summary ─────────────────────────────────────────────
+    diag_cnt_stmt = select(func.count(Diagnosis.id)).where(Diagnosis.created_at >= today_start)
+    diag_cnt_res = await db.execute(diag_cnt_stmt)
+    diagnoses_count = diag_cnt_res.scalar() or 0
+
+    presc_cnt_stmt = select(func.count(Prescription.id)).where(Prescription.prescribed_at >= today_start)
+    presc_cnt_res = await db.execute(presc_cnt_stmt)
+    prescriptions_issued = presc_cnt_res.scalar() or 0
+
+    inv_cnt_stmt = select(func.count(InvestigationRequest.id)).where(InvestigationRequest.created_at >= today_start)
+    inv_cnt_res = await db.execute(inv_cnt_stmt)
+    investigations_ordered = inv_cnt_res.scalar() or 0
+
+    ref_cnt_stmt = select(func.count(Referral.id)).where(Referral.created_at >= today_start)
+    ref_cnt_res = await db.execute(ref_cnt_stmt)
+    referrals_made = ref_cnt_res.scalar() or 0
+
+    return {
+        "stats": {
+            "waiting_patients": waiting_patients,
+            "in_progress": in_progress,
+            "completed_today": completed_today,
+            "pending_results": pending_results_count
+        },
+        "next_patients": next_patients,
+        "pending_results": pending_results_list,
+        "summary": {
+            "diagnoses_count": diagnoses_count,
+            "prescriptions_issued": prescriptions_issued,
+            "investigations_ordered": investigations_ordered,
+            "referrals_made": referrals_made
+        },
+        "critical_alerts": critical_alerts_list
+    }
