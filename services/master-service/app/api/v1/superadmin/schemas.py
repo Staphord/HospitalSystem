@@ -351,6 +351,8 @@ class SubscriptionStateOut(BaseModel):
     suspension: SuspensionSnapshot
     termination: TerminationSnapshot
     payment_provider_id: str | None
+    currency: str | None = None
+    grace_days: int | None = None
 
 
 class SubscriptionActionOut(BaseModel):
@@ -373,6 +375,11 @@ class PlanCatalogOut(BaseModel):
     max_users: int | None = None
     features: list[str]
     rank: int
+    plan_name: str
+    modules_included: list[str]
+    storage_gb: int
+    uptime_sla_pct: float
+    backup_frequency_hours: int
 
 
 # ---------------------------------------------------------------------------
@@ -632,3 +639,66 @@ class SuperAdminSessionOut(BaseModel):
     device: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Subscription request / approval workflow schemas
+# ---------------------------------------------------------------------------
+
+class PlanChangeRequestCreate(BaseModel):
+    plan: str
+    reason: str = Field(default="", max_length=1000)
+    billing_cycle: str | None = Field(default=None)
+    effective_at_end: bool | None = Field(default=None)
+
+    @field_validator("plan")
+    @classmethod
+    def validate_plan(cls, value: str) -> str:
+        allowed = {"free_trial", "basic", "standard", "premium"}
+        if value.lower() not in allowed:
+            raise ValueError(f"plan must be one of {allowed}")
+        return value.lower()
+
+    @field_validator("billing_cycle")
+    @classmethod
+    def validate_cycle(cls, value: str | None) -> str | None:
+        if value is not None:
+            allowed = {"monthly", "annual"}
+            if value.lower() not in allowed:
+                raise ValueError(f"billing_cycle must be one of {allowed}")
+            return value.lower()
+        return value
+
+
+class CancellationRequestCreate(BaseModel):
+    reason: str = Field(default="", max_length=1000)
+
+
+class SubscriptionRequestOut(BaseModel):
+    tenant_id: str
+    hospital_name: str
+    pending_action: str | None = None
+    requested_plan: str | None = None
+    request_reason: str | None = None
+    requested_at: datetime | None = None
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    review_notes: str | None = None
+    request_id: str | None = None
+    status: str = "pending"
+    billing_cycle: str | None = None
+    effective_at_end: bool | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RequestApprove(BaseModel):
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class RequestReject(BaseModel):
+    notes: str = Field(..., max_length=1000)
+
+
+class ToggleAutoRenewRequest(BaseModel):
+    auto_renew: bool

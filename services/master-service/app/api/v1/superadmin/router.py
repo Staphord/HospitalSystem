@@ -83,6 +83,9 @@ from app.api.v1.superadmin.schemas import (
     GlobalRoleOut,
     AllRolesOut,
     AllRolesTenantRole,
+    SubscriptionRequestOut,
+    RequestApprove,
+    RequestReject,
 )
 from app.models.user import User
 from app.models.admin import SuperAdmin
@@ -1350,6 +1353,18 @@ async def reactivate_tenant_endpoint(
     )
 
 
+async def delete_keycloak_realm_if_needed(db: Session, tenant_id: str) -> None:
+    """Delete Keycloak realm for the tenant if it exists."""
+    from app.config import settings
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if tenant and tenant.keycloak_realm and tenant.keycloak_realm != settings.keycloak_realm:
+        try:
+            from app.services.keycloak_realm import delete_tenant_realm
+            await delete_tenant_realm(tenant.keycloak_realm)
+        except Exception as exc:
+            logger.warning("Failed to delete tenant realm %s: %s", tenant.keycloak_realm, exc)
+
+
 @router.post("/tenants/{tenant_id}/terminate", response_model=SubscriptionActionOut, tags=["Subscriptions"])
 @limiter.limit("10/minute")
 async def terminate_tenant_endpoint(
@@ -1361,15 +1376,7 @@ async def terminate_tenant_endpoint(
 ) -> SubscriptionActionOut:
     user_sub, ip_address = _request_meta(request, user)
 
-    # Optionally delete the tenant's Keycloak realm
-    from app.config import settings
-    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
-    if tenant and tenant.keycloak_realm and tenant.keycloak_realm != settings.keycloak_realm:
-        try:
-            from app.services.keycloak_realm import delete_tenant_realm
-            await delete_tenant_realm(tenant.keycloak_realm)
-        except Exception as exc:
-            logger.warning("Failed to delete tenant realm %s: %s", tenant.keycloak_realm, exc)
+    await delete_keycloak_realm_if_needed(db, tenant_id)
 
     result = subscription_service.terminate_tenant(
         db=db,
@@ -3873,6 +3880,126 @@ async def update_subscription_endpoint(
     db.commit()
     db.refresh(sub)
     return SubscriptionOut.model_validate(sub)
+
+
+# ---------------------------------------------------------------------------
+# Subscription request / approval workflow (plan changes + cancellations)
+# ---------------------------------------------------------------------------
+
+# Get all subscription requests
+@router.get("/subscription-requests", response_model=list[SubscriptionRequestOut], tags=["Subscription Requests"])
+@limiter.limit("60/minute")
+async def list_subscription_requests_endpoint(
+    request: Request,
+    tenant_id: str | None = None,
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    _: TokenPayload = Depends(get_current_active_user),
+) -> list[SubscriptionRequestOut]:
+    """List all subscription requests (pending, approved, or rejected) optionally filtered by tenant_id and status."""
+    from app.services.subscription_request_service import list_subscription_requests
+    requests_data = list_subscription_requests(db, tenant_id=tenant_id, status=status)
+    return [SubscriptionRequestOut.model_validate(r) for r in requests_data]
+
+
+# Approve a pending request
+@router.post("/subscription-requests/{tenant_id}/approve", response_model=SubscriptionRequestOut, tags=["Subscription Requests"])
+@limiter.limit("30/minute")
+async def approve_subscription_request(
+    request: Request,
+    tenant_id: str,
+    body: RequestApprove,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+) -> SubscriptionRequestOut:
+    """Approve a pending plan change or cancellation request."""
+    from app.services.subscription_request_service import approve_request
+
+    # Check if request is cancellation to trigger Keycloak realm deletion
+    tenant_check = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    is_cancellation = tenant_check and tenant_check.pending_action == "cancellation"
+
+    user_sub, ip_address = _request_meta(request, user)
+    
+    if is_cancellation:
+        await delete_keycloak_realm_if_needed(db, tenant_id)
+
+    tenant = approve_request(
+        db=db,
+        tenant_id=tenant_id,
+        reviewer_sub=user_sub,
+        notes=body.notes,
+        ip_address=ip_address,
+    )
+    db.commit()
+
+    from app.services.tenant_service import cache_tenant_suspension
+    if tenant.status == "terminated" or tenant.status == "suspended":
+        await cache_tenant_suspension(tenant_id)
+
+    hist = tenant.subscription_metadata.get("requests_history") or [] if tenant.subscription_metadata else []
+    hist_entry = hist[-1] if hist else {}
+
+    return SubscriptionRequestOut.model_validate({
+        "tenant_id": tenant.tenant_id,
+        "hospital_name": tenant.hospital_name,
+        "pending_action": hist_entry.get("pending_action") or "upgrade",
+        "requested_plan": hist_entry.get("requested_plan"),
+        "request_reason": hist_entry.get("request_reason"),
+        "requested_at": hist_entry.get("requested_at"),
+        "reviewed_by": hist_entry.get("reviewed_by"),
+        "reviewed_at": hist_entry.get("reviewed_at"),
+        "review_notes": hist_entry.get("review_notes"),
+        "status": hist_entry.get("status") or "approved",
+        "billing_cycle": hist_entry.get("billing_cycle"),
+        "effective_at_end": hist_entry.get("effective_at_end"),
+    })
+
+
+# Reject a pending request
+@router.post("/subscription-requests/{tenant_id}/reject", response_model=SubscriptionRequestOut, tags=["Subscription Requests"])
+@limiter.limit("30/minute")
+async def reject_subscription_request(
+    request: Request,
+    tenant_id: str,
+    body: RequestReject,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+) -> SubscriptionRequestOut:
+    """Reject a pending plan change or cancellation request.
+
+    No state transition is executed; the request is simply cleared with a
+    rejection note.
+    """
+    from app.services.subscription_request_service import reject_request, get_pending_request
+
+    user_sub, ip_address = _request_meta(request, user)
+    tenant = reject_request(
+        db=db,
+        tenant_id=tenant_id,
+        reviewer_sub=user_sub,
+        notes=body.notes,
+        ip_address=ip_address,
+    )
+    db.commit()
+
+    hist = tenant.subscription_metadata.get("requests_history") or [] if tenant.subscription_metadata else []
+    hist_entry = hist[-1] if hist else {}
+
+    return SubscriptionRequestOut.model_validate({
+        "tenant_id": tenant.tenant_id,
+        "hospital_name": tenant.hospital_name,
+        "pending_action": hist_entry.get("pending_action") or "upgrade",
+        "requested_plan": hist_entry.get("requested_plan"),
+        "request_reason": hist_entry.get("request_reason"),
+        "requested_at": hist_entry.get("requested_at"),
+        "reviewed_by": hist_entry.get("reviewed_by"),
+        "reviewed_at": hist_entry.get("reviewed_at"),
+        "review_notes": hist_entry.get("review_notes"),
+        "status": hist_entry.get("status") or "rejected",
+        "billing_cycle": hist_entry.get("billing_cycle"),
+        "effective_at_end": hist_entry.get("effective_at_end"),
+    })
 
 
 # Retrieve all tenant invoices across the platform
