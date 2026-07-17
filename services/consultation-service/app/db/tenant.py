@@ -37,6 +37,12 @@ async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
         pool_recycle=3600,
         echo=settings.environment == "dev",
     )
+    # Automatically migrate dynamic tenant database tables on first access
+    async with engine.begin() as conn:
+        from app.db.base import Base
+        import app.models  # noqa
+        await conn.run_sync(Base.metadata.create_all)
+
     factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     _async_engine_cache[tenant_id] = factory
     _async_engine_instances[tenant_id] = engine

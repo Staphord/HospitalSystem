@@ -235,3 +235,80 @@ class EncounterOpenResponse(BaseModel):
     consultation_status: str
     started_at: datetime
 
+# Inpatient / Ward schemas
+class InpatientOrderResponse(BaseModel):
+    id: uuid.UUID
+    admissionId: uuid.UUID = Field(..., alias="admission_id")
+    type: str = Field(..., alias="order_type")
+    description: str
+    subDescription: Optional[str] = Field(None, alias="sub_description")
+    issuedAt: str = Field(..., alias="issued_at")
+    dueLabel: Optional[str] = Field(None, alias="due_label")
+    status: str
+    completedBy: Optional[str] = Field(None, alias="completed_by")
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class InpatientOrderCreate(BaseModel):
+    order_type: str = Field(..., description="medication / nursing / diet / investigation")
+    description: str = Field(..., description="e.g. Aspirin 75mg PO Daily")
+    sub_description: Optional[str] = None
+    due_label: Optional[str] = None
+
+class OrderStatusUpdate(BaseModel):
+    status: str = Field(..., description="done / discontinued / pending")
+
+class ClinicalEvent(BaseModel):
+    date: str
+    description: str
+
+class AdmissionSummary(BaseModel):
+    admittingDiagnosis: str = Field(..., alias="admitting_diagnosis")
+    admittingDoctor: str = Field(..., alias="admitting_doctor")
+    wardService: str = Field(..., alias="ward_service")
+    keyEvents: List[ClinicalEvent] = Field(default=[], alias="key_events")
+
+    class Config:
+        populate_by_name = True
+
+class DischargeMedicationSchema(BaseModel):
+    drugName: str = Field(..., alias="drug_name")
+    doseFreq: str = Field(..., alias="dose_freq")
+
+    class Config:
+        populate_by_name = True
+
+class DischargeRequest(BaseModel):
+    discharge_diagnosis: str
+    condition: str
+    care_summary: str
+    instructions: str
+    follow_up_date: Optional[str] = None
+    medications: List[DischargeMedicationSchema] = []
+
+class AdmittedPatientResponse(BaseModel):
+    id: uuid.UUID
+    patientId: uuid.UUID = Field(..., alias="patient_id")
+    name: str
+    patientNumber: str = Field(..., alias="patient_number")
+    initials: str
+    gender: str
+    age: int
+    ward: Optional[str] = None
+    bed: Optional[str] = None
+    admissionDate: str = Field(..., alias="admission_date")
+    lengthOfStay: int = Field(..., alias="length_of_stay")
+    diagnosis: Optional[str] = None
+    primaryDiagnosis: Optional[str] = None
+    status: str
+
+    class Config:
+        populate_by_name = True
+
+class AdmissionDetailsResponse(BaseModel):
+    patient: AdmittedPatientResponse
+    summary: AdmissionSummary
+
+

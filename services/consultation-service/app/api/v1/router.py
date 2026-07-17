@@ -34,6 +34,12 @@ from app.api.v1.schemas import (
     TriageAssessmentResponse,
     VisitHistoryItem,
     EncounterOpenResponse,
+    AdmittedPatientResponse,
+    AdmissionDetailsResponse,
+    InpatientOrderResponse,
+    InpatientOrderCreate,
+    OrderStatusUpdate,
+    DischargeRequest,
 )
 from app.models.consultation import (
     Consultation,
@@ -49,6 +55,8 @@ from app.models.consultation import (
     FeeSchedule,
     LabResult,
     RadiologyReport,
+    InpatientAdmission,
+    InpatientOrder,
 )
 
 logger = logging.getLogger("consultation_service.api")
@@ -1752,3 +1760,319 @@ async def get_patient_history(
         )
 
     return PatientHistoryResponse(patient=patient, previous_visits=previous_visits)
+
+
+# ── Doctor's Inpatient Module Endpoints ─────────────────────────────────────
+
+@router.get("/inpatient/admissions", response_model=List[AdmittedPatientResponse], tags=["Inpatient Dashboard"])
+async def get_inpatient_admissions(
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """List all currently active admitted patients (and auto-admit pending ones)."""
+    # 1. Self-Healing Bridge: Find all visits with status = "admitted"
+    visits_stmt = select(Visit).where(Visit.status == "admitted")
+    visits_res = await db.execute(visits_stmt)
+    admitted_visits = visits_res.scalars().all()
+
+    for visit in admitted_visits:
+        # Check if InpatientAdmission exists
+        adm_stmt = select(InpatientAdmission).where(InpatientAdmission.visit_id == visit.visit_id)
+        adm_res = await db.execute(adm_stmt)
+        existing_adm = adm_res.scalars().first()
+
+        if not existing_adm:
+            # Fetch admitting diagnosis/reason from completed consultation
+            cons_stmt = select(Consultation).where(Consultation.visit_id == visit.visit_id)
+            cons_res = await db.execute(cons_stmt)
+            consultation = cons_res.scalars().first()
+            
+            admitting_diag = "Inpatient Admission Requested"
+            if consultation:
+                admitting_diag = consultation.admission_reason or consultation.clinical_impression or admitting_diag
+
+            new_adm = InpatientAdmission(
+                visit_id=visit.visit_id,
+                patient_id=visit.patient_id,
+                ward="Unassigned Ward",
+                bed="Pending Bed",
+                status="admitted",
+                condition="monitoring",
+                admitting_diagnosis=admitting_diag,
+                admission_date=datetime.datetime.utcnow(),
+            )
+            db.add(new_adm)
+    
+    await db.commit()
+
+    # 2. Return all admissions where status != 'discharged'
+    stmt = (
+        select(InpatientAdmission)
+        .where(InpatientAdmission.status != "discharged")
+        .order_by(InpatientAdmission.admission_date.desc())
+    )
+    res = await db.execute(stmt)
+    admissions = res.scalars().all()
+
+    results = []
+    for adm in admissions:
+        # Join with Patient to get demographics
+        patient_stmt = select(Patient).where(Patient.id == adm.patient_id)
+        patient_res = await db.execute(patient_stmt)
+        patient = patient_res.scalars().first()
+        if not patient:
+            continue
+
+        # Calculate length of stay (minimum 1 day)
+        los = (datetime.datetime.utcnow() - adm.admission_date).days
+        if los < 1:
+            los = 1
+
+        # Calculate age
+        today = datetime.date.today()
+        birth = patient.date_of_birth
+        age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+
+        # Get initials
+        names = patient.full_name.split()
+        initials = "".join([n[0] for n in names[:2]]).upper() if names else "PT"
+
+        results.append(
+            AdmittedPatientResponse(
+                id=adm.id,
+                patient_id=adm.patient_id,
+                name=patient.full_name,
+                patient_number=patient.patient_number,
+                initials=initials,
+                gender=patient.gender,
+                age=age,
+                ward=adm.ward or "Unassigned Ward",
+                bed=adm.bed or "Pending Bed",
+                admission_date=adm.admission_date.strftime("%b %d, %Y"),
+                length_of_stay=los,
+                diagnosis=adm.admitting_diagnosis or "Unknown",
+                primary_diagnosis=adm.admitting_diagnosis or "Unknown",
+                status=adm.condition, # 'critical' | 'stable' | 'monitoring' | 'discharge-ready'
+            )
+        )
+    return results
+
+
+@router.get("/inpatient/admissions/{admission_id}", response_model=AdmissionDetailsResponse, tags=["Inpatient Dashboard"])
+async def get_admission_details(
+    admission_id: uuid.UUID,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Retrieve full details and summary for a single inpatient admission."""
+    adm_stmt = select(InpatientAdmission).where(InpatientAdmission.id == admission_id)
+    adm_res = await db.execute(adm_stmt)
+    adm = adm_res.scalars().first()
+    if not adm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admission not found")
+
+    patient_stmt = select(Patient).where(Patient.id == adm.patient_id)
+    patient_res = await db.execute(patient_stmt)
+    patient = patient_res.scalars().first()
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient demographics not found")
+
+    # Fetch admitting doctor from consultation
+    cons_stmt = select(Consultation).where(Consultation.visit_id == adm.visit_id)
+    cons_res = await db.execute(cons_stmt)
+    consultation = cons_res.scalars().first()
+    doc_name = consultation.created_by if (consultation and consultation.created_by) else "Dr. Amina Hassan"
+
+    # Calculate length of stay (minimum 1 day)
+    los = (datetime.datetime.utcnow() - adm.admission_date).days
+    if los < 1:
+        los = 1
+
+    # Calculate age
+    today = datetime.date.today()
+    birth = patient.date_of_birth
+    age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+
+    names = patient.full_name.split()
+    initials = "".join([n[0] for n in names[:2]]).upper() if names else "PT"
+
+    pat_resp = AdmittedPatientResponse(
+        id=adm.id,
+        patient_id=adm.patient_id,
+        name=patient.full_name,
+        patient_number=patient.patient_number,
+        initials=initials,
+        gender=patient.gender,
+        age=age,
+        ward=adm.ward or "Unassigned Ward",
+        bed=adm.bed or "Pending Bed",
+        admission_date=adm.admission_date.strftime("%b %d, %Y"),
+        length_of_stay=los,
+        diagnosis=adm.admitting_diagnosis or "Unknown",
+        primary_diagnosis=adm.admitting_diagnosis or "Unknown",
+        status=adm.condition,
+    )
+
+    # Generate mock key events based on admission logs
+    key_events = [
+        {"date": adm.admission_date.strftime("%d %b"), "description": f"Admitted to {adm.ward or 'Unassigned Ward'} / {adm.bed or 'Pending Bed'} with diagnosis: {adm.admitting_diagnosis or 'Unknown'}."}
+    ]
+
+    summary = AdmissionSummary(
+        admitting_diagnosis=adm.admitting_diagnosis or "Unknown",
+        admitting_doctor=doc_name,
+        ward_service=adm.ward or "Unassigned Ward",
+        key_events=key_events,
+    )
+
+    return AdmissionDetailsResponse(patient=pat_resp, summary=summary)
+
+
+@router.get("/inpatient/admissions/{admission_id}/orders", response_model=List[InpatientOrderResponse], tags=["Inpatient Dashboard"])
+async def get_inpatient_orders_route(
+    admission_id: uuid.UUID,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Retrieve all active inpatient orders for the admission."""
+    stmt = (
+        select(InpatientOrder)
+        .where(InpatientOrder.admission_id == admission_id)
+        .where(InpatientOrder.status != "discontinued")
+        .order_by(InpatientOrder.issued_at.desc())
+    )
+    res = await db.execute(stmt)
+    orders = res.scalars().all()
+
+    return [
+        InpatientOrderResponse(
+            id=o.id,
+            admission_id=o.admission_id,
+            order_type=o.order_type,
+            description=o.description,
+            sub_description=o.sub_description,
+            issued_at="Issued " + o.issued_at.strftime("%b %d %H:%M"),
+            due_label=o.due_label,
+            status=o.status,
+            completed_by=o.completed_by,
+        )
+        for o in orders
+    ]
+
+
+@router.post("/inpatient/admissions/{admission_id}/orders", response_model=InpatientOrderResponse, tags=["Inpatient Dashboard"])
+async def create_inpatient_order_route(
+    admission_id: uuid.UUID,
+    body: InpatientOrderCreate,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Issue a new daily ward inpatient order (Medication, Nursing, Diet, Investigation)."""
+    # Verify admission exists
+    adm_stmt = select(InpatientAdmission).where(InpatientAdmission.id == admission_id)
+    adm_res = await db.execute(adm_stmt)
+    adm = adm_res.scalars().first()
+    if not adm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admission not found")
+
+    new_order = InpatientOrder(
+        id=uuid.uuid4(),
+        admission_id=admission_id,
+        order_type=body.order_type,
+        description=body.description,
+        sub_description=body.sub_description,
+        issued_at=datetime.datetime.utcnow(),
+        issued_by=current_user.username if hasattr(current_user, "username") else "doctor",
+        due_label=body.due_label or "Due as scheduled",
+        status="pending",
+    )
+    db.add(new_order)
+    await db.commit()
+    await db.refresh(new_order)
+
+    return InpatientOrderResponse(
+        id=new_order.id,
+        admission_id=new_order.admission_id,
+        order_type=new_order.order_type,
+        description=new_order.description,
+        sub_description=new_order.sub_description,
+        issued_at="Issued Today " + new_order.issued_at.strftime("%H:%M"),
+        due_label=new_order.due_label,
+        status=new_order.status,
+        completed_by=new_order.completed_by,
+    )
+
+
+@router.put("/inpatient/orders/{order_id}/status", response_model=InpatientOrderResponse, tags=["Inpatient Dashboard"])
+async def update_inpatient_order_status(
+    order_id: uuid.UUID,
+    body: OrderStatusUpdate,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Transition an inpatient order status (e.g., mark as done or discontinued)."""
+    stmt = select(InpatientOrder).where(InpatientOrder.id == order_id)
+    res = await db.execute(stmt)
+    order = res.scalars().first()
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+
+    order.status = body.status
+    if body.status == "done":
+        order.completed_at = datetime.datetime.utcnow()
+        order.completed_by = current_user.username if hasattr(current_user, "username") else "doctor"
+    
+    await db.commit()
+    await db.refresh(order)
+
+    return InpatientOrderResponse(
+        id=order.id,
+        admission_id=order.admission_id,
+        order_type=order.order_type,
+        description=order.description,
+        sub_description=order.sub_description,
+        issued_at="Issued " + order.issued_at.strftime("%b %d %H:%M"),
+        due_label=order.due_label,
+        status=order.status,
+        completed_by=order.completed_by,
+    )
+
+
+@router.post("/inpatient/admissions/{admission_id}/discharge", tags=["Inpatient Dashboard"])
+async def discharge_inpatient_patient(
+    admission_id: uuid.UUID,
+    body: DischargeRequest,
+    db: AsyncSession = Depends(get_tenant_db),
+    current_user: TokenPayload = Depends(require_role("doctor")),
+):
+    """Discharge an inpatient patient and transition visit status to completed."""
+    # 1. Fetch Admission
+    adm_stmt = select(InpatientAdmission).where(InpatientAdmission.id == admission_id)
+    adm_res = await db.execute(adm_stmt)
+    adm = adm_res.scalars().first()
+    if not adm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admission not found")
+
+    # 2. Update Admission details
+    adm.status = "discharged"
+    adm.discharge_diagnosis = body.discharge_diagnosis
+    adm.care_summary = body.care_summary
+    adm.discharge_instructions = body.instructions
+    if body.follow_up_date:
+        try:
+            adm.follow_up_date = datetime.datetime.strptime(body.follow_up_date, "%Y-%m-%d").date()
+        except ValueError:
+            pass
+    adm.discharged_at = datetime.datetime.utcnow()
+    adm.updated_at = datetime.datetime.utcnow()
+
+    # 3. Transition Visit directly in DB
+    visit_stmt = select(Visit).where(Visit.visit_id == adm.visit_id)
+    visit_res = await db.execute(visit_stmt)
+    visit = visit_res.scalars().first()
+    if visit:
+        visit.status = "completed"
+        visit.updated_at = datetime.datetime.utcnow()
+
+    await db.commit()
+    return {"status": "success", "message": "Patient discharged successfully"}

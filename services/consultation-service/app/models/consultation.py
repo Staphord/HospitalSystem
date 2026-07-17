@@ -212,3 +212,42 @@ class RadiologyReport(Base):
     status = Column(String(50), nullable=False, default="scheduled")
     reported_by = Column(UUID(as_uuid=True), nullable=True)
     reported_at = Column(DateTime, nullable=True)
+
+class InpatientAdmission(Base):
+    __tablename__ = "inpatient_admissions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="CASCADE"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    ward = Column(String(100), nullable=True)
+    bed = Column(String(50), nullable=True)
+    status = Column(String(50), nullable=False, default="admitted") # admitted, discharge-ready, discharged
+    condition = Column(String(50), nullable=False, default="monitoring") # critical, stable, monitoring
+    admitting_diagnosis = Column(Text, nullable=True)
+    discharge_diagnosis = Column(Text, nullable=True)
+    care_summary = Column(Text, nullable=True)
+    discharge_instructions = Column(Text, nullable=True)
+    follow_up_date = Column(Date, nullable=True)
+    admission_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    discharged_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    patient = relationship("Patient", lazy="selectin")
+    visit = relationship("Visit", lazy="selectin")
+    orders = relationship("InpatientOrder", back_populates="admission", cascade="all, delete-orphan", lazy="selectin")
+
+class InpatientOrder(Base):
+    __tablename__ = "inpatient_orders"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admission_id = Column(UUID(as_uuid=True), ForeignKey("inpatient_admissions.id", ondelete="CASCADE"), nullable=False)
+    order_type = Column(String(50), nullable=False) # medication, nursing, diet, investigation
+    description = Column(Text, nullable=False)
+    sub_description = Column(Text, nullable=True)
+    issued_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    issued_by = Column(String(255), nullable=True)
+    due_label = Column(String(100), nullable=True)
+    status = Column(String(50), nullable=False, default="pending") # pending, done, discontinued
+    completed_at = Column(DateTime, nullable=True)
+    completed_by = Column(String(255), nullable=True)
+
+    admission = relationship("InpatientAdmission", back_populates="orders")
