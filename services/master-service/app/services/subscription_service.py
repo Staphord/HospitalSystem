@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -139,6 +140,29 @@ def _terminate_active_subscriptions(
         logger.exception("Failed to terminate active subscriptions for tenant %s", tenant_id)
 
 
+def _cancel_pending_subscriptions(db: Session, tenant_id: str) -> None:
+    """Transition any pending subscription records for the tenant to 'cancelled'."""
+    if not inspect(db.connection()).has_table(SubscriptionRecord.__tablename__):
+        return
+    try:
+        from sqlalchemy import text
+        db.execute(
+            text(
+                """
+                UPDATE subscriptions 
+                SET status = 'cancelled'
+                WHERE tenant_id = :tenant_id 
+                  AND status = 'pending'
+                """
+            ),
+            {"tenant_id": tenant_id},
+        )
+        db.flush()
+        db.expire_all()
+    except Exception:
+        logger.exception("Failed to cancel pending subscriptions for tenant %s", tenant_id)
+
+
 def _require_tenant(db: Session, tenant_id: str) -> Tenant:
     tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
     if not tenant:
@@ -245,11 +269,18 @@ def _subscription_audit_event(
     try:
         if not inspect(db.connection()).has_table(SubscriptionAuditLog.__tablename__):
             return
+        parsed_actor_id = None
+        if actor_id:
+            try:
+                parsed_actor_id = uuid.UUID(actor_id) if isinstance(actor_id, str) else actor_id
+            except ValueError:
+                parsed_actor_id = None
+
         log = SubscriptionAuditLog(
             tenant_id=tenant_id,
             subscription_id=subscription_id,
             event_type=event_type,
-            actor_id=actor_id,
+            actor_id=parsed_actor_id,
             actor_type=actor_type,
             reason=reason,
         )
@@ -551,6 +582,7 @@ def upgrade_subscription(
         tenant.pending_billing_cycle = None
 
         _terminate_active_subscriptions(db, tenant_id, "superseded", start)
+        _cancel_pending_subscriptions(db, tenant_id)
         sub_record = _record_subscription(
             db=db,
             tenant_id=tenant_id,
@@ -767,6 +799,7 @@ def downgrade_subscription(
         tenant.grace_period_end = end + timedelta(days=g_days)
 
         _terminate_active_subscriptions(db, tenant_id, "superseded", start)
+        _cancel_pending_subscriptions(db, tenant_id)
         sub_record = _record_subscription(
             db=db,
             tenant_id=tenant_id,
@@ -1328,6 +1361,8 @@ def get_subscription_state(tenant: Tenant, db: Session | None = None) -> dict[st
             "reason": tenant.termination_reason,
         },
         "payment_provider_id": tenant.payment_provider_id,
+        "currency": getattr(tenant, "currency", "USD"),
+        "grace_days": getattr(tenant, "grace_period_days", 14),
     }
 
 

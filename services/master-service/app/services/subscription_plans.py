@@ -234,6 +234,10 @@ def plan_to_json(plan: SubscriptionPlan) -> dict[str, Any]:
         "storage_gb": details.storage_gb,
         "features": sorted(details.features),
         "rank": PLAN_RANK[plan],
+        "plan_name": details.display_name,
+        "modules_included": sorted(details.features),
+        "uptime_sla_pct": 99.9,
+        "backup_frequency_hours": 24,
     }
 
 
