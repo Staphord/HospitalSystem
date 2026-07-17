@@ -56,12 +56,22 @@ openapi_url = None if settings.environment == "prod" else "/openapi.json"
 
 app = FastAPI(
     title="Ward Service",
-    description="Ward service for the hospital management system",
+    description=(
+        "Inpatient ward operations: bed board, admissions, orders, nursing notes, discharge. "
+        "Create beds via admin-service POST /api/v1/admin/beds (ward_name defines the ward)."
+    ),
     version="1.0.0",
     docs_url=docs_url,
     openapi_url=openapi_url,
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "Beds", "description": "Bed board, assign, and release (beds created in admin-service)."},
+        {"name": "Admissions", "description": "Admit, list, LOS, and discharge."},
+        {"name": "Orders", "description": "Inpatient clinical orders."},
+        {"name": "Nursing Notes", "description": "Nursing progress notes."},
+    ],
 )
+
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

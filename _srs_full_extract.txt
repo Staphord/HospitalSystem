@@ -1,0 +1,2085 @@
+Hospital Patient Flow System    | Software Requirements Specification  
+
+HOSPITAL PATIENT FLOW SYSTEM 
+Software Requirements Specification (SRS) 
+
+Document Title 
+
+Hospital Patient Flow System — SRS 
+
+Version 
+
+Date 
+
+Status 
+
+1.0 
+
+March 2026 
+
+Draft 
+
+Prepared For 
+
+Hospital Management 
+
+Client 
+
+Dr. Dinna 
+
+This document describes the functional and non-functional requirements 
+for a digital Hospital Patient Flow Management System. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+1. Introduction 
+
+1.1 Purpose 
+
+This  Software  Requirements  Specification  (SRS)  v1.0  defines  the  functional  and  non-functional 
+requirements for the Hospital Patient Flow Management System deployed as a Multi-Tenant Software as 
+a Service (SaaS)  platform.  The  system  serves multiple hospitals  simultaneously,  where  each  hospital 
+operates as an independent tenant with complete data isolation from all other hospitals. 
+
+1.2 Multi-Tenant SaaS Model 
+
+The system operates under the following model: 
+
+Layer 
+
+Description 
+
+System Owner 
+
+Hospital Tenant 
+
+Subscription 
+
+Data Isolation 
+
+The company that builds, hosts, and maintains the Hospital Patient Flow System. 
+Manages all hospital tenants through a Super Admin portal. 
+
+Each hospital that subscribes to use the system. A hospital is a self-contained tenant with 
+its own data, staff accounts, configurations, and subscription. 
+
+Each hospital pays a recurring subscription fee (monthly or annual) to access the system. 
+Access is suspended if the subscription lapses. 
+
+Each hospital has its own dedicated database. No data from Hospital A is ever accessible 
+to Hospital B, their staff, or their administrators. 
+
+1.3 Deployment Architecture Overview 
+
+The recommended architecture uses a separate database per hospital tenant: 
+
+•  One central application server hosts the system for all tenants. 
+•  Each hospital is provisioned its own isolated database upon subscription activation. 
+•  A tenant identifier routes each login session to the correct hospital database. 
+•  The Super Admin portal connects to a separate master database tracking tenant accounts and 
+
+subscriptions. 
+
+•  No queries cross tenant database boundaries under any circumstance. 
+
+1.4 Why Separate Database Per Hospital 
+
+Factor 
+
+Data isolation 
+
+Separate DB Per Hospital 
+(Recommended) 
+
+Complete — physically impossible to 
+cross-query 
+
+Shared DB with Tenant ID 
+
+Depends on code — risk of developer error 
+
+Patient data safety 
+
+Highest — medical data fully 
+separated 
+
+Medium — all data in same tables 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+Factor 
+
+Backup & restore 
+
+Compliance 
+
+Separate DB Per Hospital 
+(Recommended) 
+
+Per hospital — restore one without 
+affecting others 
+
+Easiest to demonstrate isolation to 
+regulators 
+
+Shared DB with Tenant ID 
+
+Entire database must be restored 
+
+Harder to prove isolation 
+
+Hospital offboarding 
+
+Delete one database cleanly 
+
+Complex data extraction needed 
+
+Performance 
+
+Each hospital's queries do not affect 
+others 
+
+Heavy hospitals slow down all tenants 
+
+Complexity 
+
+More databases to manage 
+
+Simpler infrastructure 
+
+1.5 System Users  
+
+The following user roles interact with the system: 
+
+User Role 
+
+Scope 
+
+Primary Responsibilities 
+
+Super 
+Administrator 
+
+Hospital 
+Administrator 
+
+Receptionist 
+
+Triage Nurse 
+
+Doctor 
+
+Lab Technician 
+
+Radiographer 
+
+Pharmacist 
+
+System-wide (all 
+hospitals) 
+
+Onboard new hospitals, manage subscriptions, monitor 
+system health, access no patient data. 
+
+Single hospital tenant 
+only 
+
+Manage hospital staff accounts, configure departments, fee 
+schedules, and hospital settings. 
+
+Single hospital tenant 
+only 
+
+Patient registration, payment type selection, queue 
+management. 
+
+Single hospital tenant 
+only 
+
+Vitals recording, triage assessment, priority assignment. 
+
+Single hospital tenant 
+only 
+
+Consultation, diagnosis, investigations, prescriptions, 
+discharge. 
+
+Single hospital tenant 
+only 
+
+Single hospital tenant 
+only 
+
+Single hospital tenant 
+only 
+
+Test requests, specimen tracking, results entry. 
+
+Imaging requests, report entry, results notification. 
+
+Prescription dispensing, drug interaction checks, inventory. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+1.6 Patient Flow Overview 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+2. Functional Requirements 
+
+Functional requirements define what the system must do. They are organized by module, aligned with 
+each stage of the patient flow. 
+
+2.1 Reception Module 
+
+2.1.1 Patient Registration 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-01 
+
+New Patient Registration 
+
+The system shall allow receptionists to register new patients by 
+capturing: full name, date of birth, gender, national ID/passport 
+number, contact details, and next of kin. 
+
+FR-02 
+
+Returning Patient Lookup 
+
+The system shall enable search and retrieval of existing patient 
+records by name, ID number, or patient number. 
+
+FR-03 
+
+Patient Number Generation 
+
+The system shall automatically generate a unique patient number 
+upon registration. 
+
+FR-04 
+
+Payment Type Selection 
+
+The receptionist shall select the patient's payment method: Cash 
+or Insurance (with insurer name and policy number). 
+
+FR-05 
+
+Insurance Verification 
+
+For insurance patients, the system shall validate insurance 
+eligibility and coverage limits in real time or flag for manual 
+verification. 
+
+FR-06 
+
+Visit Record Creation 
+
+The system shall create a new visit/encounter record for each 
+patient attendance, linked to their master record. 
+
+FR-07 
+
+Queue Assignment 
+
+The system shall assign the patient to the triage queue and display 
+their queue number. 
+
+2.2 Triage Module 
+
+2.2.1 Triage Assessment 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-08 
+
+Vital Signs Recording 
+
+FR-09 
+
+Triage Category Assignment 
+
+The nurse shall record patient vital signs: blood pressure, 
+temperature, pulse, oxygen saturation, respiratory rate, and 
+weight. 
+
+The system shall support triage classification (e.g. Emergency, 
+Urgent, Semi-Urgent, Non-Urgent) based on recorded vitals and 
+presenting complaint. 
+
+FR-10 
+
+Chief Complaint Entry 
+
+The nurse shall document the patient's presenting complaint in 
+free text and/or from a structured complaint list. 
+
+FR-11 
+
+Priority Queue Management  The system shall order the doctor's consultation queue based on 
+triage category and time of arrival. 
+
+FR-12 
+
+Triage Summary 
+
+A triage summary shall be available to the attending doctor upon 
+opening the patient's encounter. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+2.3 Doctor Consultation Module 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-13 
+
+Patient Encounter View 
+
+The doctor shall view the full patient record including history, triage 
+summary, vitals, and previous visits. 
+
+FR-14 
+
+Clinical Notes 
+
+The doctor shall document consultation notes including history of 
+presenting illness, examination findings, and clinical impression. 
+
+FR-15 
+
+Investigation Requests 
+
+The doctor shall raise requests for laboratory tests and/or 
+radiology imaging directly within the system. 
+
+FR-16 
+
+Provisional Diagnosis 
+
+FR-17 
+
+Differential Diagnosis 
+
+FR-18 
+
+Final / Working Diagnosis 
+
+The doctor shall record a provisional diagnosis using ICD-10 
+coding or free text based on the patient's symptoms and clinical 
+examination, before any investigations are requested. 
+
+The doctor shall record one or more differential diagnoses using 
+ICD-10 coding or free text, representing alternative conditions 
+being considered alongside the provisional diagnosis. 
+
+The doctor shall record a final or working diagnosis using ICD-10 
+coding or free text after reviewing laboratory and/or radiology 
+results. This must be completed before a discharge or admission 
+decision is made. 
+
+FR-19 
+
+Prescription Issuance 
+
+The doctor shall issue prescriptions electronically, specifying drug 
+name, dose, frequency, duration, and route. 
+
+FR-20 
+
+Referral Management 
+
+The doctor shall be able to refer a patient internally (to another 
+department/specialist) or externally. 
+
+FR-21 
+
+Discharge Decision 
+
+The doctor shall mark the patient as Outpatient (for home 
+discharge) or Admission Required. 
+
+2.4 Laboratory Module 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-22 
+
+Test Request Receipt 
+
+Lab technicians shall receive electronic test requests from doctors, 
+showing patient details and tests ordered. 
+
+FR-23 
+
+Specimen Tracking 
+
+The system shall track specimen collection, labelling, and 
+processing status. 
+
+FR-24 
+
+Results Entry 
+
+Lab technicians shall enter test results numerically or categorically, 
+with reference ranges displayed. 
+
+FR-25 
+
+Critical Value Alerts 
+
+The system shall automatically flag and notify the requesting 
+doctor of critical/panic values. 
+
+FR-26 
+
+Results Availability 
+
+Completed results shall be immediately available to the requesting 
+doctor within the patient's encounter. 
+
+FR-27 
+
+Lab Billing Integration 
+
+The system shall generate a charge for each test ordered and 
+route it to the cashier for payment processing. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+2.5 Radiology Module 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-28 
+
+Imaging Request Receipt 
+
+Radiographers shall receive electronic imaging requests specifying 
+modality (X-ray, CT, MRI, Ultrasound) and clinical indication. 
+
+FR-29 
+
+Imaging Scheduling 
+
+The system shall support scheduling of imaging appointments 
+where required. 
+
+FR-30 
+
+Report Entry 
+
+Radiographers or radiologists shall enter findings and impressions 
+as structured or free-text reports. 
+
+FR-31 
+
+Image Attachment 
+
+The system shall support attachment or linking images or scanned 
+reports to the patient's record. 
+
+FR-32 
+
+Results Notification 
+
+The requesting doctor shall be notified when the radiology report is 
+available. 
+
+FR-33 
+
+Radiology Billing Integration 
+
+The system shall generate a charge for each imaging study and 
+route it to the cashier for payment. 
+
+2.6 Billing & Cashier Module 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-34 
+
+Itemized Bill Generation 
+
+FR-35 
+
+Multiple Payment Points 
+
+The system shall generate an itemised bill for each patient visit 
+covering: consultation fee, investigations, medications, ward 
+charges, and procedures. 
+
+The system shall support payment collection at multiple points: 
+before consultation, before lab, before radiology, and at final 
+discharge. 
+
+FR-36 
+
+Cash Payment Processing 
+
+The cashier shall record cash payments and issue a receipt. 
+
+FR-37 
+
+Insurance Claims 
+Processing 
+
+The system shall generate and submit insurance claims 
+electronically, tracking approval/rejection status. 
+
+FR-38 
+
+Bill Adjustment 
+
+Authorized staff shall be able to apply discounts, waivers, or 
+adjustments with a documented reason. 
+
+FR-39 
+
+Receipt Generation 
+
+The system shall print or issue digital receipts for every payment 
+transaction. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+2.7 Pharmacy Module 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-40 
+
+Prescription Receipt 
+
+Pharmacists shall receive electronic prescriptions from doctors, 
+showing drug, dose, frequency, and duration. 
+
+FR-41 
+
+Drug Dispensing 
+
+The pharmacist shall confirm and record drug dispensing against 
+each prescription item. 
+
+FR-42 
+
+Drug Interaction Check 
+
+The system shall alert the pharmacist to known drug-drug 
+interactions or allergy contraindications. 
+
+FR-43 
+
+Inventory Management 
+
+The system shall track drug stock levels and generate low-stock 
+alerts. 
+
+FR-44 
+
+Dispensing Label Printing 
+
+The system shall print dispensing labels with patient name, drug, 
+dose, and instructions. 
+
+FR-45 
+
+Billing Clearance Verification  The pharmacy module shall verify that billing clearance has been 
+
+granted before dispensing. 
+
+FR-46 
+
+Pharmacy Billing 
+
+The system shall generate a charge for dispensed medications 
+and link it to the patient's bill. 
+
+2.8 Ward / Inpatient Module 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-47 
+
+Bed Assignment 
+
+The system shall support bed allocation in wards and ICU, 
+displaying bed availability in real time. 
+
+FR-48 
+
+Admission Record 
+
+Upon admission, a formal admission record shall be created with 
+admitting doctor, admitting diagnosis, and ward. 
+
+FR-49 
+
+Inpatient Orders 
+
+FR-50 
+
+Nursing Notes 
+
+FR-51 
+
+Discharge Order 
+
+Doctors shall issue inpatient orders (medication, nursing, diet, 
+investigations) through the system. 
+
+Nurses shall document observations, interventions, and patient 
+progress notes against the admission record. 
+
+The admitting or covering doctor shall issue a formal electronic 
+discharge order with discharge diagnosis and instructions. 
+
+FR-52 
+
+Length of Stay Tracking 
+
+The system shall calculate and display the patient's length of stay 
+for billing and reporting purposes. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+2.9 Administration Module 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-53 
+
+User Account Management 
+
+The administrator shall create, modify, deactivate, and assign roles 
+to system user accounts. 
+
+FR-54 
+
+Role-Based Access Control 
+
+The system shall restrict access to modules and functions based 
+on user role. 
+
+FR-55 
+
+System Configuration 
+
+The administrator shall configure: hospital name, departments, bed 
+counts, fee schedules, and insurance providers. 
+
+FR-56 
+
+Audit Trail 
+
+The system shall maintain a complete, tamper-proof audit log of all 
+user actions with timestamp and user ID. 
+
+FR-57 
+
+Reports & Analytics 
+
+FR-58 
+
+Data Backup 
+
+The system shall generate standard reports: patient census, 
+revenue summary, average wait times, bed occupancy, and 
+discharge statistics. 
+
+The system shall support scheduled automated backups and 
+manual backup initiation by the administrator. 
+
+Tenant Context Rule (Applies to All Modules) 
+
+TENANT ISOLATION RULE 
+Every  data  query,  record  creation,  update,  deletion,  and  report  across  all  modules  must  be  automatically 
+scoped to the logged-in user's hospital tenant. It is architecturally impossible for a user of Hospital A to read, 
+write, or interact with any data belonging to Hospital B. This rule is enforced at the database connection level, 
+not solely at the application code level. 
+
+3. Super Administration & SaaS Management 
+
+3.1 Super Administration Module  
+
+The Super Administrator is an employee of the system owner company. They manage all hospital 
+tenants through a dedicated Super Admin portal that is completely separate from the hospital-facing 
+system. 
+
+3.2 Hospital Tenant Management 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-59  Create new hospital tenant 
+
+FR-60  Configure hospital profile 
+
+The Super Admin shall onboard a new hospital by entering: hospital 
+name, country, city, address, primary contact name, email, and phone. 
+The system shall automatically provision a new isolated database and 
+assign a unique tenant ID. 
+
+The Super Admin shall configure each hospital's: time zone, currency, 
+date format, and logo. These settings apply system-wide for that 
+tenant. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-61  Activate hospital account 
+
+The Super Admin shall activate a newly onboarded hospital, triggering 
+welcome email to the hospital administrator and enabling login access. 
+
+FR-62  Suspend hospital account 
+
+The Super Admin shall suspend a hospital's access (e.g. for non-
+payment). Suspended hospitals cannot log in. Existing data is retained 
+and not deleted. 
+
+FR-63  Reactivate hospital account 
+
+The Super Admin shall reactivate a suspended hospital upon payment 
+or resolution of the suspension reason. 
+
+FR-64  Terminate hospital account 
+
+The Super Admin shall permanently close a hospital account after a 
+defined notice period. Data export must be offered before termination. 
+
+FR-65  View all hospital tenants 
+
+FR-66 
+
+Impersonate hospital admin 
+
+The Super Admin shall see a dashboard listing all hospitals with their 
+status (Active, Suspended, Trial, Terminated), subscription plan, and 
+subscription expiry date. 
+
+The Super Admin shall be able to view a hospital's system in read-only 
+mode for support purposes. All impersonation sessions must be logged 
+in the audit trail with a clear flag. 
+
+3.3 System Monitoring 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-67  System health dashboard 
+
+FR-68  Per-tenant usage statistics 
+
+FR-69  Global audit log 
+
+The Super Admin shall view a real-time dashboard showing: system 
+uptime, active users across all tenants, server resource usage (CPU, 
+memory, disk), and any active incidents. 
+
+The Super Admin shall view usage metrics per hospital: number of 
+active users, patient records created per month, storage consumed, 
+and API call volume. 
+
+The Super Admin shall access a global audit log of all Super Admin 
+actions including tenant creation, suspension, reactivation, and 
+impersonation. 
+
+FR-70  System announcements 
+
+The Super Admin shall broadcast system maintenance notices and 
+announcements to all hospital tenants or selected tenants only. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+3.4 Subscription & Billing Module  
+
+This module manages the commercial relationship between the system owner and each subscribing 
+hospital. 
+
+3.5 Subscription Plans 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-71  Subscription plan definition 
+
+FR-72  Monthly subscription 
+
+FR-73  Annual subscription 
+
+FR-74  Free trial period 
+
+The system shall support multiple subscription tiers (e.g. Basic, 
+Standard, Premium) each with defined: price, billing cycle (monthly or 
+annual), user seat limit, storage limit, and included modules. 
+
+Hospitals may subscribe on a monthly basis. Payment is due on the 
+same date each month. Access continues month to month until 
+cancelled. 
+
+Hospitals may subscribe on an annual basis at a discounted rate. 
+Payment covers 12 months upfront or in agreed instalments. 
+
+New hospital tenants shall be offered a configurable free trial period 
+(default 30 days) with full system access before a subscription is 
+required. 
+
+FR-75  Plan upgrade and 
+
+downgrade 
+
+The Super Admin or hospital administrator shall be able to upgrade or 
+downgrade the subscription plan. Changes take effect at the next billing 
+cycle. 
+
+FR-76  Subscription renewal 
+
+The system shall automatically generate a renewal invoice before the 
+subscription expiry date (default: 14 days before expiry). 
+
+3.6 Payment & Invoicing 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-77 
+
+Invoice generation 
+
+The system shall automatically generate an itemised invoice for each 
+billing cycle showing: hospital name, plan name, billing period, amount, 
+and due date. 
+
+FR-78  Payment recording 
+
+The Super Admin shall record payment receipt against each invoice, 
+specifying: payment method, reference number, amount, and date. 
+
+FR-79  Payment receipt issuance 
+
+Upon payment confirmation, the system shall send a payment receipt 
+to the hospital's registered billing email address. 
+
+FR-80  Overdue payment escalation 
+
+If payment is not received within 7 days of the due date, the system 
+shall send an automated reminder. If payment is not received within 30 
+days, the account shall be automatically suspended. 
+
+FR-81  Grace period configuration 
+
+The Super Admin shall configure the grace period (days after due date 
+before suspension) per tenant if required. 
+
+FR-82  Subscription history 
+
+The system shall maintain a full history of all invoices, payments, and 
+plan changes for each hospital tenant. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+3.7 Hospital Self-Service Subscription Portal 
+
+REF 
+
+Requirement 
+
+Description 
+
+FR-83  View subscription status 
+
+FR-84  View invoice history 
+
+FR-85  Request plan change 
+
+FR-86  Cancellation request 
+
+The hospital administrator shall view their current subscription plan, 
+billing cycle, next payment due date, and account status from within 
+the system. 
+
+The hospital administrator shall download all past invoices and 
+payment receipts from the subscription portal. 
+
+The hospital administrator shall submit a plan upgrade or downgrade 
+request to the Super Admin through the portal. 
+
+The hospital administrator shall submit a cancellation request with a 
+reason. The Super Admin must confirm before the account is closed. 
+
+3.8 Hospital Onboarding Workflow  
+
+The following steps define the complete lifecycle from a hospital signing up to becoming fully 
+operational: 
+
+Step  Action 
+
+Performed By 
+
+System Action 
+
+1 
+
+2 
+
+3 
+
+4 
+
+5 
+
+6 
+
+7 
+
+8 
+
+9 
+
+Hospital enquires and agrees to 
+subscribe 
+
+Super Admin creates new tenant 
+account 
+
+Hospital 
+management 
+
+Super Admin 
+
+Provisions isolated database. Assigns 
+tenant ID. Sets trial or subscription 
+plan. 
+
+Super Admin configures hospital 
+profile 
+
+Super Admin 
+
+Sets name, country, timezone, 
+currency, logo. 
+
+Super Admin activates account 
+
+Super Admin 
+
+Hospital Administrator logs in for first 
+time 
+
+Hospital 
+Administrator 
+
+Sends welcome email with login 
+credentials to hospital administrator. 
+
+Forced password change on first login. 
+
+Hospital Administrator configures 
+departments, wards, fee schedule 
+
+Hospital 
+Administrator 
+
+System saves configuration to tenant's 
+own database. 
+
+Hospital Administrator creates staff 
+user accounts 
+
+Hospital 
+Administrator 
+
+User accounts created, scoped to this 
+tenant only. 
+
+Staff complete system training 
+
+All staff roles 
+
+Go-live 
+
+All staff 
+
+System fully operational for this 
+hospital tenant. 
+
+10 
+
+Subscription invoice generated at 
+end of trial / billing cycle 
+
+System (automated) 
+
+Invoice emailed to hospital billing 
+contact. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+4. Non-Functional Requirements 
+
+Functional requirements define what the system must do. They are organized by module, aligned with 
+each stage of the patient flow. 
+
+4.1 Performance 
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-01 
+
+Page Load Time 
+
+All system pages and screens shall load within 3 seconds under 
+normal operating conditions (up to 100 concurrent users). 
+
+NFR-02 
+
+Search Response 
+
+Patient record searches shall return results within 2 seconds. 
+
+NFR-03 
+
+Concurrent Users 
+
+The system shall support at least 200 concurrent users without 
+performance degradation. 
+
+NFR-04 
+
+Lab Results Turnaround 
+
+Results entered by lab technicians shall be visible to the 
+requesting doctor within 5 seconds. 
+
+NFR-05 
+
+Report Generation 
+
+Standard management reports shall generate within 30 seconds 
+for up to 12 months of data. 
+
+4.2 Availability & Reliability 
+Requirement 
+REF 
+
+NFR-06 
+
+System Uptime 
+
+Description 
+
+The system shall achieve a minimum uptime of 99.5% (excluding 
+scheduled maintenance windows). 
+
+NFR-07 
+
+Scheduled Maintenance 
+
+Maintenance windows shall occur outside peak hours (e.g. 
+02:00–04:00) and communicated to users 24 hours in advance. 
+
+NFR-08 
+
+Data Backup Frequency 
+
+Automated backups shall run every 6 hours. Full daily backups 
+shall be retained for 30 days. 
+
+NFR-09 
+
+Disaster Recovery 
+
+In the event of system failure, the system shall recover to the last 
+backed-up state within 4 hours (RTO) with no more than 6 hours 
+of data loss (RPO). 
+
+NFR-10 
+
+Offline Fallback 
+
+The system should fallback to local area network (LAN) if 
+available. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+4.3 Security 
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-11 
+
+Authentication 
+
+All users shall authenticate with a unique username and 
+password. Multi-factor authentication (MFA) shall be supported 
+for administrator accounts. 
+
+NFR-12 
+
+Session Management 
+
+User sessions shall automatically time out after 15 minutes of 
+inactivity. 
+
+NFR-13 
+
+Role-Based Access 
+
+No user shall access modules, records, or functions outside their 
+assigned role permissions. 
+
+NFR-14 
+
+Data Encryption 
+
+All patient data shall be encrypted. 
+
+NFR-15 
+
+Audit Logging 
+
+NFR-16 
+
+Password Policy 
+
+NFR-17 
+
+Data Privacy 
+
+Every data access, creation, modification, and deletion event 
+shall be logged with user ID, timestamp, and IP address. 
+
+Passwords shall be a minimum of 8 characters, contain upper 
+and lowercase letters, a number, and a special character. 
+Passwords shall expire every 90 days. 
+
+The system shall comply with applicable personal data privacy 
+regulations, including the Personal Data Protection Act, 2022 
+(Tanzania). Personal data shall not be shared with unauthorized 
+third parties. 
+
+4.4 Usability 
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-18 
+
+Intuitive Interface 
+
+NFR-19 
+
+Training Time 
+
+NFR-20 
+
+Error Messages 
+
+The system shall have a role-specific dashboard so each user 
+type sees only the functions relevant to their role upon login. 
+
+New users in non-technical roles (receptionists, nurses, 
+pharmacists) shall be able to perform core tasks after no more 
+than 4 hours of training. 
+
+All error messages shall be written in plain language, clearly 
+describing the problem and suggested corrective action. 
+
+NFR-21 
+
+Accessibility 
+
+The system be accessible 24/7. 
+
+NFR-22 
+
+Multi-Device Support 
+
+The system shall be accessible from desktop computers, laptops, 
+and tablets via a web browser without requiring additional 
+software installation. 
+
+NFR-23 
+
+Language Support 
+
+The system shall support English as the primary language.  
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+4.5 Scalability & Maintainability 
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-24 
+
+Scalable Architecture 
+
+NFR-25 
+
+Modular Design 
+
+The system architecture shall support horizontal scaling to 
+accommodate growth in patient volume and additional hospital 
+branches. 
+
+The system shall be designed in modules (Reception, Triage, 
+Doctor, Lab, Radiology, Pharmacy, Billing, Ward, Admin) that can 
+be independently updated or extended. 
+
+NFR-26 
+
+Database Growth 
+
+The database shall handle at least 10 years of patient records 
+(estimated 500,000+ records) without performance degradation. 
+
+NFR-27 
+
+Integration Readiness 
+
+The system shall expose APIs to support future integration with 
+external systems such as national health registries, insurance 
+portals, and laboratory instruments. 
+
+4.6 Interoperability 
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-28 
+
+HL7/FHIR Support 
+
+Where applicable, the system shall support HL7 v2.x or FHIR R4 
+messaging standards for exchange of clinical data. 
+
+NFR-29 
+
+DICOM Support 
+
+The radiology module shall support DICOM standards for imaging 
+data storage and retrieval. 
+
+NFR-30 
+
+Insurance Portal Integration 
+
+The billing module shall support electronic claims submission to 
+major insurance portals via standard API or file format. 
+
+4.7 Regulatory Compliance 
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-31 
+
+Health Data Regulations 
+
+The system shall comply with applicable national health data 
+protection laws and regulations. 
+
+NFR-32 
+
+Medical Records Retention 
+
+Patient records shall be retained for a minimum of 10 years (or as 
+required by local regulation) and shall not be permanently deleted 
+without authorization. 
+
+NFR-33 
+
+Billing Standards 
+
+The billing module shall comply with applicable medical billing 
+codes and standards (e.g. ICD-10 for diagnoses). 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+4.8 Multi-Tenancy & Data Isolation  
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-
+34 
+
+Complete tenant data 
+isolation 
+
+The system shall ensure that no user from Hospital A can ever 
+access, view, modify, or delete data belonging to Hospital B. This 
+isolation shall be enforced at the database level, not solely at the 
+application level. 
+
+NFR-
+35 
+
+Separate database per 
+tenant 
+
+Each hospital tenant shall have its own dedicated database instance. 
+No patient data, staff records, configuration, or audit logs shall be 
+stored in a shared table with other tenants. 
+
+NFR-
+36 
+
+NFR-
+37 
+
+Tenant ID enforcement 
+
+Tenant provisioning time 
+
+NFR-
+38 
+
+Tenant suspension 
+enforcement 
+
+NFR-
+39 
+
+Data residency 
+
+Every database connection shall be tied to a specific tenant. The 
+application shall never open a connection that can query across 
+tenant databases simultaneously. 
+
+When a Super Admin creates a new hospital tenant, the system shall 
+complete database provisioning and send the welcome email within 
+10 minutes. 
+
+When a hospital account is suspended, all active sessions for that 
+tenant shall be terminated within 60 seconds. No new logins shall be 
+permitted until reactivation. 
+
+Where required by regulation, tenant databases shall be hosted in a 
+specified geographic region. The Super Admin shall be able to assign 
+a data region per tenant at onboarding. 
+
+4.9 SaaS Availability & Scalability 
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-
+40 
+
+NFR-
+41 
+
+NFR-
+42 
+
+NFR-
+43 
+
+Tenant-independent uptime 
+
+A failure or performance issue in one tenant's database shall not 
+cause downtime or degradation for any other tenant. 
+
+Horizontal tenant scaling 
+
+The system shall support onboarding of new hospital tenants without 
+requiring system downtime or architectural changes. 
+
+Maximum tenant capacity 
+
+The system shall be designed to support at least 500 hospital tenants 
+simultaneously without performance degradation. 
+
+Per-tenant storage limits 
+
+NFR-
+44 
+
+Tenant backup 
+independence 
+
+Each tenant's storage consumption shall be monitored and enforced 
+according to their subscription plan. Alerts shall be sent to the hospital 
+administrator at 80% and 95% of their storage limit. 
+
+Each tenant's database shall be backed up independently. Restoring 
+one hospital's data shall not affect any other hospital's data or 
+operations. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+4.10 Subscription Management  
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-
+45 
+
+NFR-
+46 
+
+NFR-
+47 
+
+NFR-
+48 
+
+NFR-
+49 
+
+Automated suspension 
+
+Suspension data retention 
+
+Termination data export 
+
+Invoice delivery 
+
+Subscription audit trail 
+
+The system shall automatically suspend a hospital account exactly 30 
+days after a payment due date if no payment is recorded. A warning 
+notification shall be sent at 7 days and 3 days before suspension. 
+
+When a hospital is suspended, all their data must be retained in full for 
+a minimum of 90 days before any deletion is permitted, giving the 
+hospital time to settle payment and reactivate. 
+
+Before a hospital account is permanently terminated, the system shall 
+generate and deliver a complete export of all their data in a standard, 
+readable format (CSV/JSON/PDF). 
+
+Subscription invoices shall be delivered to the hospital's registered 
+billing email within 24 hours of the billing cycle start date. 
+
+All subscription events — plan changes, payments, suspensions, 
+reactivations, and terminations — shall be logged with timestamp, 
+actor, and reason. 
+
+4.11 Security — Multi-Tenant Additions  
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-
+50 
+
+NFR-
+51 
+
+NFR-
+52 
+
+NFR-
+53 
+
+NFR-
+54 
+
+Super Admin MFA 
+mandatory 
+
+Multi-factor authentication (MFA) shall be mandatory for all Super 
+Administrator accounts without exception. 
+
+Super Admin action logging 
+
+Read-only impersonation 
+
+Tenant credential isolation 
+
+Penetration testing 
+
+Every Super Admin action — including tenant creation, suspension, 
+reactivation, and impersonation — shall be logged in a tamper-proof 
+global audit trail separate from individual hospital audit logs. 
+
+When a Super Admin views a hospital's system for support, they shall 
+have read-only access. They shall not be able to create, modify, or 
+delete any patient or staff data. All impersonation sessions shall 
+display a visible banner indicating the session is being monitored. 
+
+Database credentials for each tenant's database shall be unique per 
+tenant and stored in an encrypted secrets manager. No single 
+credential shall grant access to more than one tenant database. 
+
+The system shall undergo an independent penetration test at least 
+annually, with specific focus on cross-tenant data leakage scenarios. 
+Results and remediation must be documented. 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+4.12 Compliance — Multi-Tenant Additions  
+
+REF 
+
+Requirement 
+
+Description 
+
+NFR-
+55 
+
+NFR-
+56 
+
+NFR-
+57 
+
+Per-tenant data privacy 
+compliance 
+
+The system shall be configurable to apply the relevant data retention 
+and privacy rules per tenant. 
+
+Right to data portability 
+
+Upon request, a hospital tenant shall be able to export all of their data 
+in a portable format within 30 days of the request. 
+
+Right to erasure 
+
+Upon account termination and after the mandatory retention period, all 
+data for a terminated tenant shall be permanently and irreversibly 
+deleted. A deletion certificate shall be issued. 
+
+4.13 Subscription Plan Structure 
+
+The following plan structure is proposed for the SaaS subscription offering. Exact pricing is to be defined 
+by management. Plans are designed to accommodate hospitals of different sizes. 
+
+Feature 
+
+Basic 
+
+Standard 
+
+Premium 
+
+Target hospital size 
+
+User accounts 
+
+Modules included 
+
+Small (up to 50 
+beds) 
+
+Medium (50-200 
+beds) 
+
+Large (200+ beds / multi-
+branch) 
+
+Up to 20 users 
+
+Up to 100 users 
+
+Unlimited users 
+
+Reception, Triage, 
+Doctor, Pharmacy, 
+Basic Billing 
+
+All Basic + Lab, 
+Radiology, Full 
+Billing, Reports 
+
+All Standard + Ward/ICU, 
+Insurance Integration, 
+Advanced Analytics 
+
+Storage per tenant 
+
+10 GB 
+
+50 GB 
+
+200 GB (expandable) 
+
+Patient records 
+
+Up to 10,000 
+
+Up to 100,000 
+
+Unlimited 
+
+Monthly billing option 
+
+Yes 
+
+Yes 
+
+Yes 
+
+Annual billing option 
+
+Yes (5% discount) 
+
+Yes (10% discount) 
+
+Yes (15% discount) 
+
+Free trial period 
+
+Support level 
+
+30 days 
+
+30 days 
+
+30 days 
+
+Email support 
+
+Email + Phone 
+support 
+
+Dedicated account manager 
+
+Uptime SLA 
+
+Data backup frequency 
+
+Custom branding 
+
+99.0% 
+
+Daily 
+
+No 
+
+99.5% 
+
+99.9% 
+
+Every 6 hours 
+
+Every 1 hour 
+
+No 
+
+Yes (hospital logo on 
+system) 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+ 
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+Requirements Summary 
+
+5.1 Functional Requirements Summary 
+
+Category 
+
+Reception Module 
+
+Triage Module 
+
+Doctor Consultation 
+
+Laboratory Module 
+
+Radiology Module 
+
+Billing & Cashier 
+
+Pharmacy Module 
+
+Ward / Inpatient 
+
+Administration 
+
+Super Administration 
+
+Subscription & Billing 
+
+Total Functional Requirements 
+
+v1.0 Count 
+
+Ref Range 
+
+7 
+
+5 
+
+7 
+
+6 
+
+6 
+
+7 
+
+7 
+
+6 
+
+6 
+
+11 
+
+16 
+
+84 
+
+FR-01 – FR-07 
+
+FR-08 – FR-12 
+
+FR-13 – FR-19 
+
+FR-20 – FR-25 
+
+FR-26 – FR-31 
+
+FR-32 – FR-38 
+
+FR-39 – FR-45 
+
+FR-46 – FR-51 
+
+FR-52 – FR-57 
+
+FR-58 – FR-68 
+
+FR-69 – FR-85 
+
+FR-01 – FR-85 
+
+5.2 Non-Functional Requirements Summary 
+
+v1.0 Count 
+
+Ref Range 
+
+Category 
+
+Performance 
+
+Availability & Reliability 
+
+Security 
+
+Usability 
+
+Scalability & Maintainability 
+
+Interoperability 
+
+Regulatory Compliance 
+
+Multi-Tenancy & Data Isolation  
+
+SaaS Availability & Scalability 
+
+Subscription Management 
+
+5 
+
+5 
+
+12 
+
+6 
+
+4 
+
+3 
+
+6 
+
+6 
+
+5 
+
+5 
+
+Total Non-Functional Requirements 
+
+33 
+
+NFR-01 – NFR-05 
+
+NFR-06 – NFR-10 
+
+NFR-11 – NFR-17, NFR-50 – NFR-54 
+
+NFR-18 – NFR-23 
+
+NFR-24 – NFR-27 
+
+NFR-28 – NFR-30 
+
+NFR-31 – NFR-33, NFR-55 – NFR-57 
+
+NFR-34 – NFR-39 
+
+NFR-40 – NFR-44 
+
+NFR-45 – NFR-49 
+
+NFR-01 – NFR-57 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+Hospital Patient Flow System    | Software Requirements Specification  
+
+5.3 Overall Totals  
+
+Requirement Type 
+
+Functional Requirements 
+
+Non-Functional Requirements 
+
+Grand Total 
+
+Total 
+
+85 
+
+57 
+
+142 
+
+Hospital Patient Flow System 
+
+SRS v1.0 
+
+ 
+ 
+

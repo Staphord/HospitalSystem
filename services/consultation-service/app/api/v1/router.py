@@ -16,6 +16,8 @@ from app.api.v1.schemas import (
     ConsultationResponse,
     DiagnosisCreate,
     DiagnosisResponse,
+    DispositionRequest,
+    DispositionResponse,
     InvestigationRequestCreate,
     InvestigationRequestResponse,
     EncounterViewResponse,
@@ -132,10 +134,10 @@ async def add_diagnosis(
     if not consultation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consultation not found")
 
-    if body.diagnosis_type not in ("provisional", "differential"):
+    if body.diagnosis_type not in ("provisional", "differential", "final"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="diagnosis_type must be either 'provisional' or 'differential'"
+            detail="diagnosis_type must be 'provisional', 'differential', or 'final'",
         )
 
     db_diagnosis = Diagnosis(
@@ -150,6 +152,52 @@ async def add_diagnosis(
     await db.commit()
     await db.refresh(db_diagnosis)
     return db_diagnosis
+
+
+@router.post(
+    "/encounters/{consultation_id}/disposition",
+    response_model=DispositionResponse,
+    tags=["Disposition"],
+)
+async def set_disposition(
+    consultation_id: uuid.UUID,
+    body: DispositionRequest,
+    db: AsyncSession = Depends(get_tenant_db),
+    ctx: TenantContext = Depends(get_current_tenant),
+):
+    """FR-21 discharge/admission decision; FR-18 requires a final diagnosis first."""
+    allowed = {"outpatient", "admission", "referral", "deceased"}
+    if body.disposition not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"disposition must be one of {sorted(allowed)}",
+        )
+
+    stmt = select(Consultation).where(Consultation.id == consultation_id)
+    res = await db.execute(stmt)
+    consultation = res.scalars().first()
+    if not consultation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consultation not found")
+
+    if body.disposition in ("admission", "outpatient"):
+        diag_stmt = select(Diagnosis).where(
+            Diagnosis.consultation_id == consultation_id,
+            Diagnosis.diagnosis_type == "final",
+        )
+        diag_res = await db.execute(diag_stmt)
+        if diag_res.scalars().first() is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A final diagnosis is required before an admission or outpatient discharge decision (FR-18).",
+            )
+
+    consultation.disposition = body.disposition
+    consultation.disposition_notes = body.notes
+    consultation.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(consultation)
+    return consultation
+
 
 @router.post("/encounters/{consultation_id}/investigations", response_model=list[InvestigationRequestResponse], status_code=status.HTTP_201_CREATED)
 async def raise_investigations(

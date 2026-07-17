@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     keycloak_introspect: bool = Field(default=True, alias="KEYCLOAK_INTROSPECT")
 
     allowed_origins: str = Field(default="", alias="ALLOWED_ORIGINS")
-    default_hospital_id: str = Field(default="default-hospital", alias="DEFAULT_HOSPITAL_ID")
+    default_hospital_id: str = Field(default="hosp-ac224699", alias="DEFAULT_HOSPITAL_ID")
+    dev_tenant_id: str = Field(default="hosp-ac224699", alias="DEV_TENANT_ID")
 
     tenant_db_encryption_key: str = Field(alias="TENANT_DB_ENCRYPTION_KEY")
     impersonation_token_ttl: int = Field(default=900, alias="IMPERSONATION_TOKEN_TTL")

@@ -5,9 +5,26 @@ from pydantic import BaseModel, Field
 
 # Diagnosis
 class DiagnosisCreate(BaseModel):
-    diagnosis_type: str = Field(..., description="'provisional' or 'differential'")
+    diagnosis_type: str = Field(..., description="'provisional', 'differential', or 'final'")
     code: Optional[str] = Field(None, description="Optional ICD-10 code")
     description: str = Field(..., description="Diagnosis text or description")
+
+
+class DispositionRequest(BaseModel):
+    disposition: str = Field(..., description="outpatient | admission | referral | deceased")
+    notes: Optional[str] = None
+
+
+class DispositionResponse(BaseModel):
+    id: uuid.UUID
+    visit_id: uuid.UUID
+    patient_id: uuid.UUID
+    disposition: Optional[str]
+    disposition_notes: Optional[str]
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class DiagnosisResponse(BaseModel):
     id: uuid.UUID
@@ -56,6 +73,8 @@ class ConsultationResponse(BaseModel):
     history_of_presenting_illness: Optional[str]
     examination_findings: Optional[str]
     clinical_impression: Optional[str]
+    disposition: Optional[str] = None
+    disposition_notes: Optional[str] = None
     created_by: Optional[str]
     created_at: datetime
     updated_at: datetime

@@ -61,6 +61,8 @@ class Consultation(Base):
     history_of_presenting_illness = Column(Text, nullable=True)
     examination_findings = Column(Text, nullable=True)
     clinical_impression = Column(Text, nullable=True)
+    disposition = Column(String(50), nullable=True)
+    disposition_notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     created_by = Column(String(255), nullable=True)

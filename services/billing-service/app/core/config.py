@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     password_reset_token_ttl: int = Field(default=3600, alias="PASSWORD_RESET_TOKEN_TTL")
 
     audit_db_url: str | None = Field(default=None, alias="AUDIT_DATABASE_URL")
+    default_ward_day_rate: float = Field(default=100.0, alias="DEFAULT_WARD_DAY_RATE")
 
     class Config:
         env_file = ".env"

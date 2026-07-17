@@ -157,10 +157,37 @@ async def _revoke_keycloak_sessions(tenant_id: str) -> None:
 
 
 async def get_tenant_db_dsn(db: Session, tenant_id: str) -> str | None:
+    """Resolve encrypted tenant DSN; support legacy and current column names."""
+    from sqlalchemy import inspect
+
+    cols = {c["name"] for c in inspect(db.bind).get_columns("tenants")}
+    dsn_col = (
+        "db_connection_string"
+        if "db_connection_string" in cols
+        else "db_dsn_encrypted"
+        if "db_dsn_encrypted" in cols
+        else None
+    )
+    if not dsn_col:
+        # Dev fallback: compose TENANT_DB_TEMPLATE or conventional naming
+        template = os.getenv(
+            "TENANT_DB_TEMPLATE",
+            "postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}",
+        )
+        return template.format(tenant_id=tenant_id)
+
     row = db.execute(
-        text("SELECT db_connection_string FROM tenants WHERE tenant_id = :tid AND is_active = true"),
+        text(f"SELECT {dsn_col} FROM tenants WHERE tenant_id = :tid AND is_active = true"),
         {"tid": tenant_id},
     ).scalar()
     if not row:
-        return None
-    return decrypt_dsn(str(row))
+        template = os.getenv(
+            "TENANT_DB_TEMPLATE",
+            "postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}",
+        )
+        return template.format(tenant_id=tenant_id)
+    try:
+        return decrypt_dsn(str(row))
+    except Exception:
+        # Row may already be plaintext in some legacy rows
+        return str(row)

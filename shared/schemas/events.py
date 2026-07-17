@@ -82,6 +82,8 @@ class PatientDischargedPayload(BaseModel):
     patient_id: str
     tenant_id: str
     discharge_date: datetime
+    length_of_stay_days: float = 0.0
+    visit_id: str | None = None
 
 
 class PaymentReceivedPayload(BaseModel):
