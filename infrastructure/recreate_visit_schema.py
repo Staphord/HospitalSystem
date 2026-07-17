@@ -3,7 +3,7 @@ import os
 import sys
 
 sys.path.insert(0, "/app")
-os.environ["DATABASE_URL"] = "postgresql://postgres:nasr@postgres-master:5432/master_db"
+os.environ["DATABASE_URL"] = "postgresql://postgres:12345678@postgres-master:5432/master_db"
 
 from app.dependencies import resolve_tenant_db_url
 from app.db.base import Base

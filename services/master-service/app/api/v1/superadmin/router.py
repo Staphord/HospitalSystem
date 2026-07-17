@@ -1483,10 +1483,10 @@ async def create_announcement(
 
     announcement = AnnouncementModel(
         title=body.title,
-        body=body.body,
-        audience=body.audience,
+        body=body.resolved_body,
+        audience=body.resolved_audience,
         target_tenant_ids=body.target_tenant_ids,
-        publish_at=body.publish_at,
+        publish_at=body.resolved_publish_at,
         expires_at=body.expires_at,
         created_by=created_by,
     )
@@ -3117,8 +3117,10 @@ async def system_health(
             except Exception as exc:
                 results[name] = {"status": "unreachable", "error": str(exc)[:100]}
 
+    overall = "healthy" if healthy_count == len(services) else "degraded" if healthy_count > 0 else "unhealthy"
     return {
-        "overall": "healthy" if healthy_count == len(services) else "degraded" if healthy_count > 0 else "unhealthy",
+        "status": overall,
+        "overall": overall,
         "healthy_count": healthy_count,
         "total_count": len(services),
         "services": results,

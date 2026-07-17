@@ -66,6 +66,26 @@ class SuperAdminDelete(BaseModel):
     username: str
 
 
+class SuperAdminSessionOut(BaseModel):
+    """Response schema for active super-admin sessions (GET /sessions)."""
+
+    id: str
+    user_sub: str
+    username: str
+    email: str
+    full_name: str
+    role: str
+    login_time: datetime
+    expires_at: datetime
+    is_impersonation: bool
+    impersonation_tenant_id: str | None = None
+    impersonation_tenant_name: str | None = None
+    ip_address: str
+    device: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TenantOut(BaseModel):
     id: int
     tenant_id: str
@@ -492,11 +512,34 @@ class AnnouncementOut(BaseModel):
 
 class AnnouncementCreate(BaseModel):
     title: str = Field(..., max_length=200)
-    body: str
+    # Accept both "body" and legacy "message" field name
+    body: str | None = None
+    message: str | None = None
     audience: str = Field(default="all")
+    # Accept legacy "scope" field name as alias for audience
+    scope: str | None = None
     target_tenant_ids: list[str] | None = None
-    publish_at: datetime
+    publish_at: datetime | None = None
     expires_at: datetime | None = None
+    # Accept legacy extra fields that older callers may send
+    type: str | None = None
+    display_format: str | None = None
+
+    model_config = ConfigDict(extra="ignore")
+
+    @property
+    def resolved_body(self) -> str:
+        """Return body content, falling back to message field."""
+        return self.body or self.message or ""
+
+    @property
+    def resolved_audience(self) -> str:
+        return self.scope or self.audience
+
+    @property
+    def resolved_publish_at(self) -> datetime:
+        from datetime import timezone
+        return self.publish_at or datetime.now(timezone.utc)
 
 
 class AnnouncementUpdate(BaseModel):

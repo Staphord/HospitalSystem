@@ -7,7 +7,7 @@ from app.api.v1.patients.schemas import (
     PatientSearchResponse,
     PatientUpdateRequest,
 )
-from app.core.security import require_role
+from app.core.security import require_any_role
 from app.dependencies import get_tenant_db, get_tenant_id_from_token
 from app.services.patient_service import (
     delete_patient,
@@ -21,25 +21,25 @@ from app.services.patient_service import (
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
-@router.get("", response_model=PatientSearchResponse)
+@router.get("", response_model=PatientSearchResponse, summary="List registered patients with pagination")
 def list_patients(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     patients = search_patients(db=db, hospital_id=tenant_id, limit=limit, offset=offset)
     total = get_patient_count(db, tenant_id)
     return PatientSearchResponse(patients=patients, total=total)
 
 
-@router.post("/register", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=PatientResponse, status_code=status.HTTP_201_CREATED, summary="Register a new patient profile")
 def register(
     body: PatientRegisterRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     existing = search_patients(
         db, tenant_id, national_id=body.national_id
@@ -71,7 +71,7 @@ def register(
     return patient
 
 
-@router.get("/search", response_model=PatientSearchResponse)
+@router.get("/search", response_model=PatientSearchResponse, summary="Search patients by name, national_id, or patient_number")
 def search(
     query: str = Query(None, min_length=1),
     national_id: str = Query(None, min_length=1),
@@ -80,7 +80,7 @@ def search(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     patients = search_patients(
         db=db,
@@ -95,12 +95,12 @@ def search(
     return PatientSearchResponse(patients=patients, total=total)
 
 
-@router.get("/{patient_id}", response_model=PatientResponse)
+@router.get("/{patient_id}", response_model=PatientResponse, summary="Get patient profile details by ID")
 def get_patient(
     patient_id: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     patient = get_patient_by_id(db, tenant_id, patient_id)
     if not patient:
@@ -108,13 +108,13 @@ def get_patient(
     return patient
 
 
-@router.patch("/{patient_id}", response_model=PatientResponse)
+@router.patch("/{patient_id}", response_model=PatientResponse, summary="Update patient profile details")
 def update(
     patient_id: str,
     body: PatientUpdateRequest,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     patient = update_patient(
         db=db,
@@ -139,12 +139,12 @@ def update(
     return patient
 
 
-@router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Soft-delete or remove a patient profile")
 def remove_patient(
     patient_id: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_role("hospital_admin")),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
 ):
     deleted = delete_patient(db, tenant_id, patient_id)
     if not deleted:

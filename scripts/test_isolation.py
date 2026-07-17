@@ -4,9 +4,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-os.environ["DATABASE_URL"] = "postgresql://postgres:nasr@localhost:5432/hospital-master"
-os.environ["DB_ADMIN_URL"] = "postgresql://postgres:nasr@localhost:5432/postgres"
-os.environ["TENANT_DB_TEMPLATE"] = "postgresql://postgres:nasr@localhost:5432/tenant_{tenant_id}"
+os.environ["DATABASE_URL"] = "postgresql://postgres:12345678@localhost:5432/hospital-master"
+os.environ["DB_ADMIN_URL"] = "postgresql://postgres:12345678@localhost:5432/postgres"
+os.environ["TENANT_DB_TEMPLATE"] = "postgresql://postgres:12345678@localhost:5432/tenant_{tenant_id}"
 os.environ["TENANT_DB_ENCRYPTION_KEY"] = "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0="
 
 from sqlalchemy import create_engine, text
@@ -16,7 +16,7 @@ print("=== Testing Tenant Database Isolation ===")
 print()
 
 # 1. Check all databases
-engine = create_engine("postgresql://postgres:nasr@localhost:5432/postgres")
+engine = create_engine("postgresql://postgres:12345678@localhost:5432/postgres")
 with engine.connect() as conn:
     result = conn.execute(text("SELECT datname FROM pg_database WHERE datname LIKE 'tenant_%' ORDER BY datname"))
     tenant_dbs = [r[0] for r in result]
@@ -33,7 +33,7 @@ print()
 
 # 2. Check each tenant database for users
 for db_name in tenant_dbs:
-    tenant_engine = create_engine(f"postgresql://postgres:nasr@localhost:5432/{db_name}")
+    tenant_engine = create_engine(f"postgresql://postgres:12345678@localhost:5432/{db_name}")
     try:
         with tenant_engine.connect() as conn:
             # Check if users table exists
@@ -62,7 +62,7 @@ print()
 
 # 3. Check master database for tenant users
 print("=== Master Database (should NOT have tenant users) ===")
-master_engine = create_engine("postgresql://postgres:nasr@localhost:5432/hospital-master")
+master_engine = create_engine("postgresql://postgres:12345678@localhost:5432/hospital-master")
 with master_engine.connect() as conn:
     result = conn.execute(text("SELECT COUNT(*) FROM users WHERE hospital_id LIKE 'hosp-%'"))
     count = result.scalar()

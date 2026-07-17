@@ -54,6 +54,17 @@ async def lifespan(app: FastAPI):
 docs_url = None if settings.environment == "prod" else "/docs"
 openapi_url = None if settings.environment == "prod" else "/openapi.json"
 
+tags_metadata = [
+    {
+        "name": "patients",
+        "description": "Operations with patients. Includes registering new patients, searching existing patients, and managing patient profiles.",
+    },
+    {
+        "name": "visits",
+        "description": "Operations with visits and queue registration. Includes creating patient visits, fetching visit details, managing insurance policies, verifying policy coverage, and checking the receptionist queue/worklist.",
+    },
+]
+
 app = FastAPI(
     title="Reception Service",
     description="Reception service for the hospital management system",
@@ -61,6 +72,7 @@ app = FastAPI(
     docs_url=docs_url,
     openapi_url=openapi_url,
     lifespan=lifespan,
+    openapi_tags=tags_metadata,
 )
 
 app.state.limiter = limiter

@@ -266,21 +266,23 @@ def _subscription_audit_event(
     Silently skips when the audit table does not exist (e.g. lightweight SQLite
     unit-test fixtures), so the business transaction is never blocked.
     """
+    import uuid as _uuid_mod
     try:
         if not inspect(db.connection()).has_table(SubscriptionAuditLog.__tablename__):
             return
-        parsed_actor_id = None
-        if actor_id:
-            try:
-                parsed_actor_id = uuid.UUID(actor_id) if isinstance(actor_id, str) else actor_id
-            except ValueError:
-                parsed_actor_id = None
-
+        # Ensure actor_id is a uuid.UUID object — UUID(as_uuid=True) columns
+        # require a proper UUID object for non-Postgres dialects (e.g. SQLite).
+        resolved_actor_id = None
+        if actor_id is not None:
+            resolved_actor_id = (
+                actor_id if isinstance(actor_id, _uuid_mod.UUID)
+                else _uuid_mod.UUID(str(actor_id))
+            )
         log = SubscriptionAuditLog(
             tenant_id=tenant_id,
             subscription_id=subscription_id,
             event_type=event_type,
-            actor_id=parsed_actor_id,
+            actor_id=resolved_actor_id,
             actor_type=actor_type,
             reason=reason,
         )

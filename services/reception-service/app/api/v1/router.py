@@ -15,6 +15,7 @@ router.include_router(visits_router, tags=["visits"])
 @router.post(
     "/register-and-visit",
     response_model=CombinedRegisterAndVisitResponse,
+    tags=["visits"]
 )
 @limiter.limit("10/minute")
 async def register_and_visit(

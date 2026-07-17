@@ -89,6 +89,7 @@ class InvestigationRequest(Base):
     test_name = Column(String(255), nullable=False)
     clinical_history = Column(Text, nullable=True)
     status = Column(String(50), nullable=False, default="pending")  # "pending", "completed", "cancelled"
+    urgency = Column(String(50), nullable=False, default="routine")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(String(255), nullable=True)
 
