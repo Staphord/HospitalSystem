@@ -368,3 +368,39 @@ class BackupJobOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ActiveSessionOut(BaseModel):
+    id: str
+    staff_id: str
+    staff_name: str
+    staff_role: str
+    department: str | None = None
+    login_time: datetime
+    device: str
+    ip_address: str
+    avatar_url: str = ""
+
+
+class HospitalSettingOut(BaseModel):
+    key: str
+    value: str | None
+    updated_by: str | None = None
+    updated_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class HospitalSettingsUpdate(BaseModel):
+    settings: dict[str, str | None]
+
+
+class LoginHistoryOut(BaseModel):
+    timestamp: datetime
+    ip: str | None = None
+    device: str = "Web Browser"
+    duration: str = "—"
+    workspace: str = "Hospital Portal"
+    status: str = "Success"
+    detail: str | None = None

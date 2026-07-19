@@ -518,12 +518,15 @@ async def login(
         except Exception:
             pass
 
+    user_agent = request.headers.get("user-agent")
     try:
         result = await auth_service.login(
             username=body.username,
             password=body.password,
             db=db,
             realm=login_realm,
+            ip_address=ip,
+            user_agent=user_agent,
         )
     except HTTPException as exc:
         record_failed_attempt(body.username, ip)
@@ -562,6 +565,8 @@ async def login(
     record_successful_login(body.username, ip)
 
     # Decode access token to check role — super_admins must use the superadmin portal
+    login_user_sub = result.get("user_sub") or ""
+    login_tenant_id_claim = None
     try:
         from jose import jwt as _jwt
         token = result["access_token"]
@@ -573,6 +578,8 @@ async def login(
                 detail="Super admin must use the Super Admin Portal",
             )
         result["tenant_id"] = unverified.get("tenant_id")
+        login_tenant_id_claim = unverified.get("tenant_id")
+        login_user_sub = unverified.get("sub") or login_user_sub
     except HTTPException:
         raise
     except Exception:
@@ -581,7 +588,8 @@ async def login(
     try:
         audit_db = get_session_local()()
         record = GlobalAuditLog(
-            user_sub=result.get("session_id", ""),
+            user_sub=login_user_sub,
+            tenant_id=login_tenant_id_claim,
             action="LOGIN",
             detail=f"User '{body.username}' logged in",
             ip_address=ip,

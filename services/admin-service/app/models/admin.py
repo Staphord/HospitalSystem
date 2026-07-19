@@ -171,3 +171,19 @@ class RolePermission(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class HospitalSetting(Base):
+    """Tenant-scoped key/value settings for admin configuration extras."""
+
+    __tablename__ = "hospital_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_by = Column(String(255), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

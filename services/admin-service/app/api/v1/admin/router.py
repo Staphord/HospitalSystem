@@ -17,7 +17,10 @@ from app.dependencies import get_tenant_db_for_request
 from app.services import admin as admin_svc
 from app.services import audit_service
 from app.services import backup as backup_svc
+from app.services import login_history as login_history_svc
 from app.services import reports as reports_svc
+from app.services import sessions as sessions_svc
+from app.services import settings_service
 from app.services.keycloak_admin import (
     create_realm_role,
     get_realm_roles,
@@ -27,6 +30,7 @@ from app.events.publisher import publish_user_created, publish_user_deactivated
 from app.models.master import Tenant, TenantRole as TenantRoleModel
 
 from app.api.v1.admin.schemas import (
+    ActiveSessionOut,
     AuditLogListOut,
     AuditLogOut,
     BackupJobOut,
@@ -42,12 +46,15 @@ from app.api.v1.admin.schemas import (
     GlobalRoleOut,
     HospitalProfileOut,
     HospitalProfileUpdate,
+    HospitalSettingOut,
+    HospitalSettingsUpdate,
     HospitalUserCreate,
     HospitalUserOut,
     HospitalUserUpdate,
     InsuranceProviderCreate,
     InsuranceProviderOut,
     InsuranceProviderUpdate,
+    LoginHistoryOut,
     PermissionOut,
     PermissionUpdate,
     RoleCreate,
@@ -1096,3 +1103,106 @@ async def download_backup(
         filename=path.name,
         media_type="application/sql",
     )
+
+
+# ---------------------------------------------------------------------------
+# Active sessions
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions", response_model=list[ActiveSessionOut], tags=["Sessions"])
+@limiter.limit("30/minute")
+async def list_sessions(
+    request: Request,
+    master_db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db_for_request),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> list[ActiveSessionOut]:
+    if not ctx.tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No tenant association")
+    rows = sessions_svc.list_active_sessions(master_db, db, ctx.tenant_id)
+    return [ActiveSessionOut.model_validate(r) for r in rows]
+
+
+@router.delete("/sessions/{session_id}", status_code=204, tags=["Sessions"])
+@limiter.limit("30/minute")
+async def revoke_session(
+    request: Request,
+    session_id: str,
+    master_db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db_for_request),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> None:
+    if not ctx.tenant_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No tenant association")
+    realm = _get_tenant_realm(master_db, ctx.tenant_id)
+    await sessions_svc.revoke_session(
+        master_db,
+        db,
+        session_id=session_id,
+        tenant_id=ctx.tenant_id,
+        actor_sub=ctx.user_sub,
+        realm=realm,
+        ip=_client_ip(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Hospital settings (KV extras beyond hospital-profile)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/settings", response_model=list[HospitalSettingOut], tags=["Settings"])
+@limiter.limit("60/minute")
+async def get_settings(
+    request: Request,
+    db: Session = Depends(get_tenant_db_for_request),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> list[HospitalSettingOut]:
+    return [HospitalSettingOut.model_validate(s) for s in settings_service.list_settings(db)]
+
+
+@router.put("/settings", response_model=list[HospitalSettingOut], tags=["Settings"])
+@limiter.limit("30/minute")
+async def put_settings(
+    request: Request,
+    body: HospitalSettingsUpdate,
+    db: Session = Depends(get_tenant_db_for_request),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> list[HospitalSettingOut]:
+    rows = settings_service.upsert_settings(
+        db,
+        body.settings,
+        actor_sub=ctx.user_sub,
+        ip=_client_ip(request),
+    )
+    return [HospitalSettingOut.model_validate(s) for s in rows]
+
+
+# ---------------------------------------------------------------------------
+# Staff login history
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/users/{sub}/login-history",
+    response_model=list[LoginHistoryOut],
+    tags=["Users"],
+)
+@limiter.limit("30/minute")
+async def get_user_login_history(
+    request: Request,
+    sub: str,
+    days: int = Query(default=30, ge=1, le=365),
+    limit: int = Query(default=50, ge=1, le=200),
+    master_db: Session = Depends(get_db),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> list[LoginHistoryOut]:
+    rows = login_history_svc.list_login_history(
+        master_db,
+        user_sub=sub,
+        tenant_id=ctx.tenant_id,
+        days=days,
+        limit=limit,
+    )
+    return [LoginHistoryOut.model_validate(r) for r in rows]

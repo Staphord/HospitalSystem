@@ -1,5 +1,6 @@
 from app.models.user import User
 from app.models.master import Tenant, GlobalAuditLog, TenantRole
+from app.models.auth import RefreshToken
 from app.models.admin import (
     Department,
     FeeSchedule,
@@ -8,6 +9,7 @@ from app.models.admin import (
     AuditLog,
     BackupJob,
     RolePermission,
+    HospitalSetting,
 )
 
 __all__ = [
@@ -15,6 +17,7 @@ __all__ = [
     "Tenant",
     "GlobalAuditLog",
     "TenantRole",
+    "RefreshToken",
     "Department",
     "FeeSchedule",
     "InsuranceProvider",
@@ -22,4 +25,5 @@ __all__ = [
     "AuditLog",
     "BackupJob",
     "RolePermission",
+    "HospitalSetting",
 ]
