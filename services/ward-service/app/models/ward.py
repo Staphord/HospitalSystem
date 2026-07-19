@@ -17,7 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
 
@@ -115,3 +115,38 @@ class Consultation(Base):
     visit_id = Column(UUID(as_uuid=True), nullable=False)
     patient_id = Column(UUID(as_uuid=True), nullable=False)
     disposition = Column(String(50), nullable=True)
+
+
+class VisitorLog(Base):
+    __tablename__ = "visitor_logs"
+
+    visitor_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admission_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    patient_id = Column(UUID(as_uuid=True), nullable=True)
+    patient_name = Column(String(200), nullable=False)
+    bed_label = Column(String(50), nullable=False)
+    visitor_name = Column(String(200), nullable=False)
+    relationship = Column(String(100), nullable=False)
+    national_id = Column(String(100), nullable=True)
+    check_in_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    check_out_at = Column(DateTime(timezone=True), nullable=True)
+    approved_by = Column(String(255), nullable=False)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    denial_reason = Column(Text, nullable=True)
+    allowed_duration_minutes = Column(Integer, nullable=False, default=30)
+    ward_name = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class ShiftHandover(Base):
+    __tablename__ = "shift_handovers"
+
+    handover_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    shift_label = Column(String(50), nullable=False)
+    submitted_by = Column(String(255), nullable=False)
+    overall_summary = Column(Text, nullable=False)
+    incidents_summary = Column(String(100), nullable=True)
+    patient_count = Column(Integer, nullable=False, default=0)
+    patient_notes = Column(JSONB, nullable=True)
+    ward_name = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)

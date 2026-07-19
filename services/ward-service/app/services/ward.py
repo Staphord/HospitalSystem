@@ -12,7 +12,16 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.ward import Admission, Bed, Consultation, InpatientOrder, NursingNote, Visit
+from app.models.ward import (
+    Admission,
+    Bed,
+    Consultation,
+    InpatientOrder,
+    NursingNote,
+    ShiftHandover,
+    Visit,
+    VisitorLog,
+)
 
 logger = logging.getLogger("ward_service")
 
@@ -386,3 +395,131 @@ async def get_los(db: AsyncSession, admission_id: uuid.UUID) -> dict[str, Any]:
         "discharge_date": adm.discharge_date,
         "length_of_stay_days": float(days),
     }
+
+
+VISITOR_STATUSES = {"active", "departed", "denied", "overstay"}
+
+
+def _visitor_time_left(row: VisitorLog, now: datetime | None = None) -> int | None:
+    if row.status not in ("active", "overstay") or row.check_out_at is not None:
+        return None
+    now = now or _utcnow()
+    check_in = row.check_in_at
+    if check_in.tzinfo is None:
+        check_in = check_in.replace(tzinfo=timezone.utc)
+    elapsed = int((now - check_in).total_seconds())
+    allowed = int(row.allowed_duration_minutes or 30) * 60
+    return allowed - elapsed
+
+
+async def _refresh_overstays(db: AsyncSession) -> None:
+    now = _utcnow()
+    rows = list(
+        (
+            await db.execute(
+                select(VisitorLog).where(VisitorLog.status == "active", VisitorLog.check_out_at.is_(None))
+            )
+        ).scalars().all()
+    )
+    changed = False
+    for row in rows:
+        left = _visitor_time_left(row, now)
+        if left is not None and left <= 0:
+            row.status = "overstay"
+            changed = True
+    if changed:
+        await db.commit()
+
+
+async def list_visitors(
+    db: AsyncSession,
+    *,
+    status: str | None = None,
+    active_only: bool = False,
+    limit: int = 200,
+) -> list[VisitorLog]:
+    await _refresh_overstays(db)
+    q = select(VisitorLog)
+    if active_only:
+        q = q.where(VisitorLog.status.in_(("active", "overstay")), VisitorLog.check_out_at.is_(None))
+    elif status:
+        q = q.where(VisitorLog.status == status.lower())
+    q = q.order_by(VisitorLog.check_in_at.desc()).limit(limit)
+    return list((await db.execute(q)).scalars().all())
+
+
+async def create_visitor(
+    db: AsyncSession, data: dict[str, Any], *, approved_by: str
+) -> VisitorLog:
+    admission_id = data.get("admission_id")
+    patient_id = None
+    if admission_id:
+        adm = await get_admission(db, admission_id)
+        patient_id = adm.patient_id
+
+    approved = bool(data.get("approved", True))
+    status = "active" if approved else "denied"
+    row = VisitorLog(
+        visitor_id=uuid.uuid4(),
+        admission_id=admission_id,
+        patient_id=patient_id,
+        patient_name=data["patient_name"],
+        bed_label=data["bed_label"],
+        visitor_name=data["visitor_name"],
+        relationship=data["relationship"],
+        national_id=data.get("national_id"),
+        check_in_at=_utcnow(),
+        approved_by=approved_by,
+        status=status,
+        denial_reason=None if approved else (data.get("denial_reason") or "Denied"),
+        allowed_duration_minutes=int(data.get("allowed_duration_minutes") or 30),
+        ward_name=data.get("ward_name"),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def checkout_visitor(db: AsyncSession, visitor_id: uuid.UUID) -> VisitorLog:
+    row = (
+        await db.execute(select(VisitorLog).where(VisitorLog.visitor_id == visitor_id))
+    ).scalars().first()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Visitor not found")
+    if row.status == "departed":
+        return row
+    if row.status == "denied":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Denied visitors cannot be checked out")
+    row.status = "departed"
+    row.check_out_at = _utcnow()
+    await db.commit()
+    await db.refresh(row)
+    return row
+
+
+async def list_handovers(db: AsyncSession, *, limit: int = 50) -> list[ShiftHandover]:
+    q = select(ShiftHandover).order_by(ShiftHandover.created_at.desc()).limit(limit)
+    return list((await db.execute(q)).scalars().all())
+
+
+async def create_handover(
+    db: AsyncSession, data: dict[str, Any], *, submitted_by: str
+) -> ShiftHandover:
+    notes = data.get("patient_notes") or {}
+    row = ShiftHandover(
+        handover_id=uuid.uuid4(),
+        shift_label=data["shift_label"],
+        submitted_by=submitted_by,
+        overall_summary=data["overall_summary"],
+        incidents_summary=data.get("incidents_summary") or "0 Reported",
+        patient_count=len(notes) if notes else int(data.get("patient_count") or 0),
+        patient_notes=notes,
+        ward_name=data.get("ward_name"),
+    )
+    if row.patient_count == 0 and notes:
+        row.patient_count = len(notes)
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return row

@@ -18,12 +18,16 @@ from app.api.v1.schemas import (
     BedAssignRequest,
     BedOut,
     DischargeRequest,
+    HandoverCreate,
+    HandoverOut,
     LosOut,
     NursingNoteCreate,
     NursingNoteOut,
     OrderCreate,
     OrderOut,
     OrderUpdate,
+    VisitorCreate,
+    VisitorOut,
 )
 from app.dependencies import get_tenant_db, resolve_tenant_id
 from app.events.publisher import publish_patient_admitted, publish_patient_discharged
@@ -252,3 +256,80 @@ async def list_nursing_notes(
         NursingNoteOut.model_validate(r)
         for r in await ward_svc.list_nursing_notes(db, admission_id)
     ]
+
+
+def _visitor_out(row) -> VisitorOut:
+    data = VisitorOut.model_validate(row).model_dump()
+    data["time_left_seconds"] = ward_svc._visitor_time_left(row)
+    return VisitorOut.model_validate(data)
+
+
+# ── Visitors ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/visitors", response_model=list[VisitorOut], tags=["Visitors"])
+async def list_visitors(
+    status: str | None = None,
+    active_only: bool = False,
+    limit: int = Query(200, ge=1, le=500),
+    tenant_id: str = Depends(resolve_tenant_id),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> list[VisitorOut]:
+    rows = await ward_svc.list_visitors(
+        db, status=status, active_only=active_only, limit=limit
+    )
+    return [_visitor_out(r) for r in rows]
+
+
+@router.get("/visitors/active", response_model=list[VisitorOut], tags=["Visitors"])
+async def list_active_visitors(
+    limit: int = Query(200, ge=1, le=500),
+    tenant_id: str = Depends(resolve_tenant_id),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> list[VisitorOut]:
+    rows = await ward_svc.list_visitors(db, active_only=True, limit=limit)
+    return [_visitor_out(r) for r in rows]
+
+
+@router.post("/visitors", response_model=VisitorOut, status_code=201, tags=["Visitors"])
+async def create_visitor(
+    body: VisitorCreate,
+    tenant_id: str = Depends(resolve_tenant_id),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> VisitorOut:
+    row = await ward_svc.create_visitor(db, body.model_dump(), approved_by=_DEV_ACTOR)
+    return _visitor_out(row)
+
+
+@router.post("/visitors/{visitor_id}/checkout", response_model=VisitorOut, tags=["Visitors"])
+async def checkout_visitor(
+    visitor_id: UUID,
+    tenant_id: str = Depends(resolve_tenant_id),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> VisitorOut:
+    row = await ward_svc.checkout_visitor(db, visitor_id)
+    return _visitor_out(row)
+
+
+# ── Shift handovers ───────────────────────────────────────────────────────────
+
+
+@router.get("/handovers", response_model=list[HandoverOut], tags=["Handovers"])
+async def list_handovers(
+    limit: int = Query(50, ge=1, le=200),
+    tenant_id: str = Depends(resolve_tenant_id),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> list[HandoverOut]:
+    return [
+        HandoverOut.model_validate(r) for r in await ward_svc.list_handovers(db, limit=limit)
+    ]
+
+
+@router.post("/handovers", response_model=HandoverOut, status_code=201, tags=["Handovers"])
+async def create_handover(
+    body: HandoverCreate,
+    tenant_id: str = Depends(resolve_tenant_id),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> HandoverOut:
+    row = await ward_svc.create_handover(db, body.model_dump(), submitted_by=_DEV_ACTOR)
+    return HandoverOut.model_validate(row)

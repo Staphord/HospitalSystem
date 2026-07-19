@@ -122,3 +122,61 @@ class LosOut(BaseModel):
     admission_date: datetime
     discharge_date: datetime | None = None
     length_of_stay_days: float
+
+
+class VisitorCreate(BaseModel):
+    admission_id: UUID | None = None
+    patient_name: str = Field(..., min_length=1, max_length=200)
+    bed_label: str = Field(..., min_length=1, max_length=50)
+    visitor_name: str = Field(..., min_length=1, max_length=200)
+    relationship: str = Field(..., min_length=1, max_length=100)
+    national_id: str | None = None
+    approved: bool = True
+    denial_reason: str | None = None
+    allowed_duration_minutes: int = Field(default=30, ge=5, le=480)
+    ward_name: str | None = None
+
+
+class VisitorOut(BaseModel):
+    visitor_id: UUID
+    admission_id: UUID | None = None
+    patient_id: UUID | None = None
+    patient_name: str
+    bed_label: str
+    visitor_name: str
+    relationship: str
+    national_id: str | None = None
+    check_in_at: datetime
+    check_out_at: datetime | None = None
+    approved_by: str
+    status: str
+    denial_reason: str | None = None
+    allowed_duration_minutes: int
+    ward_name: str | None = None
+    time_left_seconds: int | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class HandoverCreate(BaseModel):
+    shift_label: str = Field(..., min_length=1, max_length=50)
+    overall_summary: str = Field(..., min_length=1)
+    incidents_summary: str | None = None
+    patient_notes: dict[str, str] = Field(default_factory=dict)
+    ward_name: str | None = None
+
+
+class HandoverOut(BaseModel):
+    handover_id: UUID
+    shift_label: str
+    submitted_by: str
+    overall_summary: str
+    incidents_summary: str | None = None
+    patient_count: int
+    patient_notes: dict[str, str] | None = None
+    ward_name: str | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
