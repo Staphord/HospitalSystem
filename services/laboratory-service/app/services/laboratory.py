@@ -312,6 +312,40 @@ async def get_specimens_for_request(db: AsyncSession, request_id: UUID) -> list[
     return items
 
 
+async def get_all_tracked_specimens(db: AsyncSession) -> list[dict]:
+    stmt = (
+        select(Specimen, InvestigationRequest, Patient)
+        .join(InvestigationRequest, Specimen.request_id == InvestigationRequest.id)
+        .join(Patient, Specimen.patient_id == Patient.id)
+        .order_by(Specimen.collected_at.desc())
+    )
+    res = await db.execute(stmt)
+    rows = res.all()
+
+    items = []
+    for spec, req, pat in rows:
+        collector_name = await _resolve_user_name(db, spec.collected_by)
+        items.append({
+            "specimen_id": spec.specimen_id,
+            "request_id": req.id,
+            "patient_id": pat.id,
+            "patient_name": pat.full_name,
+            "patient_number": pat.patient_number or "P-000",
+            "test_name": req.test_name,
+            "urgency": req.urgency or "routine",
+            "specimen_type": spec.specimen_type,
+            "collection_site": spec.collection_site,
+            "specimen_label": spec.specimen_label,
+            "collected_by_name": collector_name,
+            "collected_at": spec.collected_at,
+            "received_at": spec.received_at,
+            "status": spec.status,
+            "rejection_reason": spec.rejection_reason,
+        })
+    return items
+
+
+
 # ── Group 3: Results Entry ───────────────────────────────────────────────────
 
 async def create_lab_result(

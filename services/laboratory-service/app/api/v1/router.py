@@ -2,7 +2,7 @@ from datetime import date
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import (
@@ -13,6 +13,7 @@ from app.api.v1.schemas import (
     SpecimenStatusUpdateRequest,
     SpecimenUpdateResponse,
     SpecimenListResponse,
+    AllSpecimensResponse,
     ResultCreateRequest,
     ResultCreateResponse,
     ResultUpdateRequest,
@@ -23,7 +24,7 @@ from app.api.v1.schemas import (
     LabBillResponse,
     DoctorVisitResultsResponse,
 )
-from app.core.security import TokenPayload, require_role, get_current_active_user, _extract_roles
+from app.core.security import TokenPayload, require_role, get_current_active_user
 from app.core.tenant_auth import get_current_tenant
 from app.dependencies import get_tenant_db
 from app.services import laboratory as lab_service
@@ -33,18 +34,6 @@ router = APIRouter(
         Depends(get_current_tenant),
     ],
 )
-
-
-def require_any_role(allowed: list[str]):
-    async def _dependency(user: TokenPayload = Depends(get_current_active_user)) -> TokenPayload:
-        roles = _extract_roles(user)
-        if not (any(r in roles for r in allowed) or "super_admin" in roles):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions",
-            )
-        return user
-    return _dependency
 
 
 # ── Group 1 — Request Queue ───────────────────────────────────────────────────
@@ -58,11 +47,16 @@ def require_any_role(allowed: list[str]):
 async def list_lab_requests(
     status: Optional[str] = Query(None, description="Filter by status"),
     urgency: Optional[str] = Query(None, description="Filter by urgency"),
-    date_param: Optional[date] = Query(None, alias="date", description="Filter by requested_at date"),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> LabRequestsListResponse:
-    requests_list = await lab_service.get_lab_requests(db, status=status, urgency=urgency, date_filter=date_param)
-    return LabRequestsListResponse(requests=requests_list)
+    date: Optional[date] = Query(None, description="Filter by request date"),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    items = await lab_service.get_lab_requests(
+        session,
+        status=status,
+        urgency=urgency,
+        date_filter=date,
+    )
+    return LabRequestsListResponse(requests=items)
 
 
 @router.get(
@@ -71,45 +65,44 @@ async def list_lab_requests(
     tags=["Request Queue"],
     dependencies=[Depends(require_role("lab_technician"))],
 )
-async def get_lab_request_detail(
+async def get_lab_request(
     request_id: UUID,
-    db: AsyncSession = Depends(get_tenant_db),
-) -> LabRequestDetailResponse:
-    data = await lab_service.get_lab_request_detail(db, request_id)
-    return LabRequestDetailResponse(**data)
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.get_lab_request_detail(session, request_id)
 
 
-# ── Group 2 — Specimen Tracking ───────────────────────────────────────────────
+# ── Group 2 — Specimen Tracking ──────────────────────────────────────────────
 
 @router.post(
     "/requests/{request_id}/specimen",
     response_model=SpecimenCreateResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     tags=["Specimen Tracking"],
+    dependencies=[Depends(require_role("lab_technician"))],
 )
 async def collect_specimen(
     request_id: UUID,
-    body: SpecimenCreateRequest,
-    user: TokenPayload = Depends(require_role("lab_technician")),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> SpecimenCreateResponse:
-    specimen = await lab_service.collect_specimen(db, request_id, body, user)
-    return specimen
+    payload: SpecimenCreateRequest,
+    user: TokenPayload = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.collect_specimen(session, request_id, payload, user=user)
 
 
 @router.patch(
     "/requests/{request_id}/specimen",
     response_model=SpecimenUpdateResponse,
     tags=["Specimen Tracking"],
+    dependencies=[Depends(require_role("lab_technician"))],
 )
 async def update_specimen_status(
     request_id: UUID,
-    body: SpecimenStatusUpdateRequest,
-    user: TokenPayload = Depends(require_role("lab_technician")),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> SpecimenUpdateResponse:
-    data = await lab_service.update_specimen_status(db, request_id, body, user)
-    return SpecimenUpdateResponse(**data)
+    payload: SpecimenStatusUpdateRequest,
+    user: TokenPayload = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.update_specimen_status(session, request_id, payload, user=user)
 
 
 @router.get(
@@ -118,45 +111,59 @@ async def update_specimen_status(
     tags=["Specimen Tracking"],
     dependencies=[Depends(require_role("lab_technician"))],
 )
-async def get_request_specimens(
+async def list_request_specimens(
     request_id: UUID,
-    db: AsyncSession = Depends(get_tenant_db),
-) -> SpecimenListResponse:
-    specimens = await lab_service.get_specimens_for_request(db, request_id)
-    return SpecimenListResponse(specimens=specimens)
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    items = await lab_service.get_specimens_for_request(session, request_id)
+    return SpecimenListResponse(specimens=items)
 
 
-# ── Group 3 — Results Entry ───────────────────────────────────────────────────
+@router.get(
+    "/specimens",
+    response_model=AllSpecimensResponse,
+    tags=["Specimen Tracking"],
+    dependencies=[Depends(require_role("lab_technician"))],
+)
+async def list_all_specimens(
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    items = await lab_service.get_all_tracked_specimens(session)
+    return AllSpecimensResponse(specimens=items)
+
+
+
+# ── Group 3 — Results Entry ──────────────────────────────────────────────────
 
 @router.post(
     "/requests/{request_id}/result",
     response_model=ResultCreateResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     tags=["Results Entry"],
+    dependencies=[Depends(require_role("lab_technician"))],
 )
-async def create_lab_result(
+async def create_result(
     request_id: UUID,
-    body: ResultCreateRequest,
-    user: TokenPayload = Depends(require_role("lab_technician")),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> ResultCreateResponse:
-    result = await lab_service.create_lab_result(db, request_id, body, user)
-    return result
+    payload: ResultCreateRequest,
+    user: TokenPayload = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.create_lab_result(session, request_id, payload, user=user)
 
 
 @router.patch(
     "/requests/{request_id}/result",
     response_model=ResultUpdateResponse,
     tags=["Results Entry"],
+    dependencies=[Depends(require_role("lab_technician"))],
 )
-async def update_lab_result(
+async def update_result(
     request_id: UUID,
-    body: ResultUpdateRequest,
-    user: TokenPayload = Depends(require_role("lab_technician")),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> ResultUpdateResponse:
-    data = await lab_service.update_lab_result(db, request_id, body, user)
-    return ResultUpdateResponse(**data)
+    payload: ResultUpdateRequest,
+    user: TokenPayload = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.update_lab_result(session, request_id, payload, user=user)
 
 
 @router.get(
@@ -165,28 +172,27 @@ async def update_lab_result(
     tags=["Results Entry"],
     dependencies=[Depends(require_role("lab_technician"))],
 )
-async def get_lab_result_by_request(
+async def get_result(
     request_id: UUID,
-    db: AsyncSession = Depends(get_tenant_db),
-) -> ResultDetailResponse:
-    data = await lab_service.get_lab_result_by_request(db, request_id)
-    return ResultDetailResponse(**data)
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.get_lab_result_by_request(session, request_id)
 
 
-# ── Group 4 — Result Verification ─────────────────────────────────────────────
+# ── Group 4 — Result Verification ────────────────────────────────────────────
 
 @router.post(
     "/results/{result_id}/verify",
     response_model=ResultVerifyResponse,
     tags=["Result Verification"],
+    dependencies=[Depends(require_role("lab_technician"))],
 )
-async def verify_lab_result(
+async def verify_result(
     result_id: UUID,
-    user: TokenPayload = Depends(require_role("lab_technician")),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> ResultVerifyResponse:
-    data = await lab_service.verify_lab_result(db, result_id, user)
-    return ResultVerifyResponse(**data)
+    user: TokenPayload = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.verify_lab_result(session, result_id, user=user)
 
 
 # ── Group 5 — Billing ─────────────────────────────────────────────────────────
@@ -194,30 +200,29 @@ async def verify_lab_result(
 @router.post(
     "/requests/{request_id}/bill",
     response_model=LabBillResponse,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     tags=["Billing"],
+    dependencies=[Depends(require_role("lab_technician"))],
 )
 async def create_lab_bill(
     request_id: UUID,
-    body: LabBillCreateRequest,
-    user: TokenPayload = Depends(require_role("lab_technician")),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> LabBillResponse:
-    data = await lab_service.create_lab_bill(db, request_id, body, user)
-    return LabBillResponse(**data)
+    payload: LabBillCreateRequest,
+    user: TokenPayload = Depends(get_current_active_user),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.create_lab_bill(session, request_id, payload, user=user)
 
 
-# ── Group 6 — Doctor-Facing Result Read ───────────────────────────────────────
+# ── Group 6 — Doctor View ────────────────────────────────────────────────────
 
 @router.get(
     "/visits/{visit_id}/results",
     response_model=DoctorVisitResultsResponse,
     tags=["Doctor View"],
+    dependencies=[Depends(require_role("doctor"))],
 )
 async def get_visit_verified_results(
     visit_id: UUID,
-    user: TokenPayload = Depends(require_any_role(["doctor", "lab_technician"])),
-    db: AsyncSession = Depends(get_tenant_db),
-) -> DoctorVisitResultsResponse:
-    data = await lab_service.get_visit_verified_results(db, visit_id)
-    return DoctorVisitResultsResponse(**data)
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.get_visit_verified_results(session, visit_id)

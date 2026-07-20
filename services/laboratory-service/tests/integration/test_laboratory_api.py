@@ -104,6 +104,19 @@ def test_specimen_lifecycle(lab_tech_client):
     assert len(resp_audit2.json()["specimens"]) == 2
 
 
+def test_list_all_specimens(lab_tech_client):
+    response = lab_tech_client.get("/api/v1/laboratory/specimens")
+    assert response.status_code == 200
+    data = response.json()
+    assert "specimens" in data
+    assert len(data["specimens"]) >= 1
+    spec = data["specimens"][0]
+    assert "specimen_id" in spec
+    assert "patient_name" in spec
+    assert "test_name" in spec
+
+
+
 def test_results_lifecycle_and_verification(lab_tech_client):
     # 1. Enter Results
     payload = {

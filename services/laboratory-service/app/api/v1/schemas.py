@@ -128,6 +128,31 @@ class SpecimenListResponse(BaseModel):
     specimens: list[SpecimenAuditItem]
 
 
+class TrackedSpecimenItem(BaseModel):
+    specimen_id: UUID
+    request_id: UUID
+    patient_id: UUID
+    patient_name: str
+    patient_number: str
+    test_name: str
+    urgency: str
+    specimen_type: str
+    collection_site: Optional[str] = None
+    specimen_label: Optional[str] = None
+    collected_by_name: Optional[str] = None
+    collected_at: datetime
+    received_at: Optional[datetime] = None
+    status: str
+    rejection_reason: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AllSpecimensResponse(BaseModel):
+    specimens: list[TrackedSpecimenItem]
+
+
+
 # ── Group 3: Results Entry ───────────────────────────────────────────────────
 
 class ResultCreateRequest(BaseModel):
