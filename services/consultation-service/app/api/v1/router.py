@@ -128,7 +128,8 @@ async def get_doctor_queue(
     db: AsyncSession = Depends(get_tenant_db),
     current_user: TokenPayload = Depends(require_role("doctor")),
 ):
-    """Retrieve active doctor queue today ordered by triage priority and arrival time."""
+    now = datetime.datetime.utcnow()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today = datetime.date.today()
     status_list = [s.strip() for s in status.split(",") if s.strip()] if status else ["waiting"]
     priority_case = case(
@@ -138,15 +139,32 @@ async def get_doctor_queue(
         (Queue.priority == "non_urgent", 4),
         else_=5
     )
+
+    where_conditions = [Queue.queue_type == "doctor"]
+    if "completed" in status_list:
+        other_statuses = [s for s in status_list if s != "completed"]
+        if other_statuses:
+            where_conditions.append(
+                or_(
+                    Queue.status.in_(other_statuses),
+                    and_(
+                        Queue.status == "completed",
+                        func.coalesce(Queue.completed_at, Queue.created_at) >= today_start
+                    )
+                )
+            )
+        else:
+            where_conditions.append(Queue.status == "completed")
+            where_conditions.append(func.coalesce(Queue.completed_at, Queue.created_at) >= today_start)
+    else:
+        where_conditions.append(Queue.status.in_(status_list))
+
     stmt = (
         select(Queue, Visit, Patient, TriageAssessment)
         .join(Visit, Queue.visit_id == Visit.visit_id)
         .join(Patient, Patient.id == cast(Queue.patient_id, pgUUID))
         .outerjoin(TriageAssessment, Queue.visit_id == TriageAssessment.visit_id)
-        .where(
-            Queue.queue_type == "doctor",
-            Queue.status.in_(status_list)
-        )
+        .where(*where_conditions)
         .order_by(priority_case, Queue.created_at.asc())
     )
     res = await db.execute(stmt)
@@ -2390,18 +2408,37 @@ async def get_doctor_dashboard_stats(
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
     # ── 1. Calculate Stat Cards ───────────────────────────────────────────────
-    w_stmt = select(func.count(Queue.queue_id)).where(Queue.queue_type == "doctor", Queue.status == "waiting")
+    w_stmt = (
+        select(func.count(Queue.queue_id))
+        .join(Visit, Queue.visit_id == Visit.visit_id)
+        .where(
+            Queue.queue_type == "doctor",
+            Queue.status == "waiting",
+            Visit.status.not_in(["in_consultation", "awaiting_results", "completed", "cancelled"])
+        )
+    )
     w_res = await db.execute(w_stmt)
     waiting_patients = w_res.scalar() or 0
 
-    ip_stmt = select(func.count(Queue.queue_id)).where(Queue.queue_type == "doctor", Queue.status == "in_progress")
+    ip_stmt = (
+        select(func.count(Queue.queue_id))
+        .join(Visit, Queue.visit_id == Visit.visit_id)
+        .where(
+            Queue.queue_type == "doctor",
+            or_(
+                Queue.status == "in_progress",
+                Visit.status.in_(["in_consultation", "awaiting_results"])
+            ),
+            Visit.status != "completed"
+        )
+    )
     ip_res = await db.execute(ip_stmt)
     in_progress = ip_res.scalar() or 0
 
     c_stmt = select(func.count(Queue.queue_id)).where(
         Queue.queue_type == "doctor", 
         Queue.status == "completed",
-        Queue.completed_at >= today_start
+        func.coalesce(Queue.completed_at, Queue.created_at) >= today_start
     )
     c_res = await db.execute(c_stmt)
     completed_today = c_res.scalar() or 0
@@ -2427,7 +2464,11 @@ async def get_doctor_dashboard_stats(
         .outerjoin(TriageAssessment, Queue.visit_id == TriageAssessment.visit_id)
         .where(
             Queue.queue_type == "doctor",
-            Queue.status.in_(["waiting", "in_progress"])
+            or_(
+                Queue.status.in_(["waiting", "in_progress"]),
+                Visit.status.in_(["in_consultation", "awaiting_results"])
+            ),
+            Visit.status != "completed"
         )
         .order_by(priority_case, Queue.created_at.asc())
         .limit(4)
