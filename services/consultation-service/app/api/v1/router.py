@@ -762,16 +762,16 @@ async def raise_investigation(
     visit_res = await db.execute(visit_stmt)
     visit = visit_res.scalars().first()
 
-    # Enforce: Provisional diagnosis must exist before investigations are raised
+    # Enforce: At least one diagnosis must exist before investigations are raised
+    # Accepts provisional, differential, or final — any clinical opinion qualifies.
     diag_stmt = select(Diagnosis).where(
         Diagnosis.consultation_id == consultation_id,
-        Diagnosis.diagnosis_type == "provisional",
     )
     diag_res = await db.execute(diag_stmt)
     if not diag_res.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A provisional diagnosis must be recorded before requesting investigations."
+            detail="A diagnosis must be recorded before requesting investigations."
         )
 
     # Insert request
