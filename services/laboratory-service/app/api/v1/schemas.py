@@ -4,147 +4,241 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# ── Queue & Worklist ────────────────────────────────────────────────────────────
+# ── Group 1: Request Queue ───────────────────────────────────────────────────
 
-class LabQueueItem(BaseModel):
-    queue_id: UUID
+class LabRequestListItem(BaseModel):
     request_id: UUID
+    visit_id: UUID
     patient_id: UUID
     patient_name: str
+    patient_number: str
     test_name: str
+    test_code: Optional[str] = None
+    clinical_indication: Optional[str] = None
     urgency: str
     status: str
+    requested_by_name: Optional[str] = None
     requested_at: datetime
-    called_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class LabQueueResponse(BaseModel):
-    date: date
-    queue: list[LabQueueItem]
-
-    model_config = ConfigDict(from_attributes=True)
+class LabRequestsListResponse(BaseModel):
+    requests: list[LabRequestListItem]
 
 
-# ── Request Detail ─────────────────────────────────────────────────────────────
-
-class PatientDemographics(BaseModel):
+class PatientSummary(BaseModel):
     patient_id: UUID
     patient_number: str
     full_name: str
     date_of_birth: date
     gender: str
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
-    allergies: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class VisitContext(BaseModel):
-    visit_id: UUID
-    visit_number: str
-    visit_date: date
-    visit_type: str
-    payment_type: str
+class SpecimenSummary(BaseModel):
+    specimen_id: UUID
+    status: str
+    specimen_type: str
+    collected_at: datetime
+    received_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResultSummary(BaseModel):
+    result_id: UUID
+    status: str
+    result_value: str
+    unit: Optional[str] = None
+    reference_range: Optional[str] = None
+    is_critical: bool
+    resulted_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class LabRequestDetailResponse(BaseModel):
     request_id: UUID
+    visit_id: UUID
+    patient: PatientSummary
     test_name: str
-    request_type: str
+    test_code: Optional[str] = None
     clinical_indication: Optional[str] = None
     urgency: str
-    requested_by: Optional[str] = None
-    requested_at: datetime
     status: str
-    patient: PatientDemographics
-    visit: VisitContext
+    requested_by_name: Optional[str] = None
+    requested_at: datetime
+    specimen: Optional[SpecimenSummary] = None
+    result: Optional[ResultSummary] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
-# ── Specimen Management ────────────────────────────────────────────────────────
+# ── Group 2: Specimen Tracking ───────────────────────────────────────────────
 
 class SpecimenCreateRequest(BaseModel):
     specimen_type: str = Field(..., min_length=1, max_length=100)
     collection_site: Optional[str] = Field(None, max_length=100)
+    specimen_label: Optional[str] = Field(None, max_length=50)
+    collected_at: datetime
 
 
-class SpecimenResponse(BaseModel):
+class SpecimenCreateResponse(BaseModel):
     specimen_id: UUID
     request_id: UUID
-    patient_id: UUID
-    specimen_type: str
-    collection_site: Optional[str]
-    collected_by: str
-    collected_at: datetime
-    received_at: Optional[datetime]
     status: str
-    rejection_reason: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    collected_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class SpecimenStatusRequest(BaseModel):
-    status: Literal["processing", "completed"]
+class SpecimenStatusUpdateRequest(BaseModel):
+    status: Literal["received", "processing", "completed", "rejected"]
+    received_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
 
 
-class SpecimenRejectRequest(BaseModel):
-    rejection_reason: str = Field(..., min_length=3)
+class SpecimenUpdateResponse(BaseModel):
+    specimen_id: UUID
+    status: str
+    rejection_reason: Optional[str] = None
+    request_status: str
+
+    model_config = ConfigDict(from_attributes=True)
 
 
-# ── Results Entry ──────────────────────────────────────────────────────────────
+class SpecimenAuditItem(BaseModel):
+    specimen_id: UUID
+    specimen_type: str
+    collection_site: Optional[str] = None
+    specimen_label: Optional[str] = None
+    collected_by_name: Optional[str] = None
+    collected_at: datetime
+    received_at: Optional[datetime] = None
+    status: str
+    rejection_reason: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SpecimenListResponse(BaseModel):
+    specimens: list[SpecimenAuditItem]
+
+
+# ── Group 3: Results Entry ───────────────────────────────────────────────────
 
 class ResultCreateRequest(BaseModel):
-    specimen_type: str = Field(..., min_length=1, max_length=100)
-    result_value: str = Field(...)
+    result_value: str = Field(..., min_length=1)
     unit: Optional[str] = Field(None, max_length=50)
     reference_range: Optional[str] = Field(None, max_length=100)
     is_critical: bool = Field(False)
     result_notes: Optional[str] = None
+    specimen_type: Optional[str] = Field(None, max_length=100)
+    specimen_label: Optional[str] = Field(None, max_length=50)
+
+
+class ResultCreateResponse(BaseModel):
+    result_id: UUID
+    request_id: UUID
+    result_value: str
+    unit: Optional[str] = None
+    reference_range: Optional[str] = None
+    is_critical: bool
+    critical_notified_at: Optional[datetime] = None
+    status: str
+    resulted_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ResultUpdateRequest(BaseModel):
-    result_value: str = Field(...)
+    result_value: Optional[str] = None
     unit: Optional[str] = Field(None, max_length=50)
     reference_range: Optional[str] = Field(None, max_length=100)
-    is_critical: bool = Field(False)
+    is_critical: Optional[bool] = None
     result_notes: Optional[str] = None
 
 
-class ResultResponse(BaseModel):
+class ResultUpdateResponse(BaseModel):
+    result_id: UUID
+    result_value: str
+    is_critical: bool
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ResultDetailResponse(BaseModel):
     result_id: UUID
     request_id: UUID
-    visit_id: UUID
-    patient_id: UUID
     specimen_type: str
+    specimen_label: Optional[str] = None
     result_value: str
-    unit: Optional[str]
-    reference_range: Optional[str]
+    unit: Optional[str] = None
+    reference_range: Optional[str] = None
     is_critical: bool
-    result_notes: Optional[str]
-    performed_by: str
-    verified_by: Optional[str]
+    critical_notified_at: Optional[datetime] = None
+    result_notes: Optional[str] = None
+    performed_by_name: Optional[str] = None
+    verified_by_name: Optional[str] = None
     status: str
     resulted_at: datetime
-    critical_notified_at: Optional[datetime]
-    verified_at: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class PatientResultsResponse(BaseModel):
-    patient_id: UUID
-    results: list[ResultResponse]
+# ── Group 4: Result Verification ─────────────────────────────────────────────
+
+class ResultVerifyResponse(BaseModel):
+    result_id: UUID
+    status: str
+    verified_by: str
+    request_status: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ── Group 5: Billing ─────────────────────────────────────────────────────────
+
+class LabBillCreateRequest(BaseModel):
+    unit_price: float = Field(..., gt=0)
+    description: str = Field(..., min_length=1, max_length=255)
+
+
+class LabBillResponse(BaseModel):
+    item_id: UUID
+    bill_id: UUID
+    item_type: str
+    description: str
+    unit_price: float
+    total_price: float
+    reference_id: UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Group 6: Doctor-Facing Result Read ───────────────────────────────────────
+
+class DoctorVisitResultItem(BaseModel):
+    request_id: UUID
+    test_name: str
+    test_code: Optional[str] = None
+    urgency: str
+    result_id: UUID
+    result_value: str
+    unit: Optional[str] = None
+    reference_range: Optional[str] = None
+    is_critical: bool
+    result_notes: Optional[str] = None
+    performed_by_name: Optional[str] = None
+    resulted_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DoctorVisitResultsResponse(BaseModel):
+    visit_id: UUID
+    results: list[DoctorVisitResultItem]

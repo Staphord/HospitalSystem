@@ -1,27 +1,30 @@
 import logging
 from datetime import datetime, timezone, date
 from uuid import UUID
-from typing import Any, Optional
+from typing import Optional, Any
 
-from sqlalchemy import select, case, and_
+from sqlalchemy import select, case, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.v1.schemas import (
+    SpecimenCreateRequest,
+    SpecimenStatusUpdateRequest,
     ResultCreateRequest,
     ResultUpdateRequest,
-    SpecimenCreateRequest,
+    LabBillCreateRequest,
 )
 from app.core.security import TokenPayload
-from app.exceptions import ConflictError, NotFoundError
+from app.exceptions import ConflictError, NotFoundError, UnprocessableEntityError
 from app.models.laboratory import (
     Specimen,
     LabResult,
     InvestigationRequest,
-    Queue,
     Patient,
     Visit,
+    Bill,
+    BillItem,
 )
+from app.models.user import User
 
 logger = logging.getLogger("service.laboratory")
 
@@ -30,173 +33,164 @@ def _user_identifier(user: TokenPayload) -> str:
     return user.preferred_username or user.email or str(user.sub)
 
 
-# ── Queue & Worklist ────────────────────────────────────────────────────────────
+async def _resolve_user_name(db: AsyncSession, identifier: Optional[str]) -> Optional[str]:
+    if not identifier:
+        return None
+    # Try querying users table by keycloak_sub or username
+    stmt = select(User).where(
+        (User.keycloak_sub == identifier) | (User.username == identifier)
+    )
+    res = await db.execute(stmt)
+    u = res.scalar_one_or_none()
+    if u and u.full_name:
+        return u.full_name
+    return identifier
 
-async def get_lab_queue(
+
+# ── Group 1: Request Queue ───────────────────────────────────────────────────
+
+async def get_lab_requests(
     db: AsyncSession,
-    status: str,
-    queue_date: date,
+    status: Optional[str] = None,
+    urgency: Optional[str] = None,
+    date_filter: Optional[date] = None,
 ) -> list[dict]:
-    # Urgency sorting weight: stat (1) -> urgent (2) -> routine (3) -> other (4)
     urgency_case = case(
         (InvestigationRequest.urgency == "stat", 1),
         (InvestigationRequest.urgency == "urgent", 2),
-        (InvestigationRequest.urgency == "routine", 3),
-        else_=4
+        else_=3
     )
 
-    # Note: queues table may use string or date type for created_at. We filter by status
-    stmt = (
-        select(Queue, InvestigationRequest, Patient)
-        .join(
-            InvestigationRequest,
-            and_(
-                Queue.visit_id == InvestigationRequest.visit_id,
-                InvestigationRequest.request_type == "laboratory",
-                InvestigationRequest.status != "completed",
-                InvestigationRequest.status != "cancelled"
-            )
-        )
-        .join(Patient, Queue.patient_id == Patient.id)
-        .where(
-            and_(
-                Queue.queue_type == "lab",
-                Queue.status == status
-            )
-        )
-        .order_by(urgency_case, Queue.created_at.asc())
+    query = (
+        select(InvestigationRequest, Patient, User)
+        .join(Patient, InvestigationRequest.patient_id == Patient.id)
+        .outerjoin(User, InvestigationRequest.requested_by == User.keycloak_sub)
+        .where(InvestigationRequest.request_type.in_(["lab", "laboratory"]))
     )
 
-    result = await db.execute(stmt)
-    rows = result.all()
+    if status:
+        query = query.where(InvestigationRequest.status == status)
 
-    items = []
-    for queue_item, req, pat in rows:
-        items.append({
-            "queue_id": queue_item.queue_id,
+    if urgency:
+        query = query.where(InvestigationRequest.urgency == urgency)
+
+    if date_filter:
+        query = query.where(
+            func.date(InvestigationRequest.requested_at) == date_filter
+        )
+
+    query = query.order_by(urgency_case, InvestigationRequest.requested_at.asc())
+
+    res = await db.execute(query)
+    rows = res.all()
+
+    requests_list = []
+    for req, pat, u in rows:
+        requested_by_name = u.full_name if u else (req.requested_by or req.created_by)
+        requests_list.append({
             "request_id": req.id,
+            "visit_id": req.visit_id,
             "patient_id": pat.id,
             "patient_name": pat.full_name,
+            "patient_number": pat.patient_number or "P-000",
             "test_name": req.test_name,
+            "test_code": req.test_code,
+            "clinical_indication": req.clinical_history,
             "urgency": req.urgency or "routine",
-            "status": queue_item.status,
-            "requested_at": req.created_at,
-            "called_at": queue_item.called_at,
-            "completed_at": queue_item.completed_at,
+            "status": req.status,
+            "requested_by_name": requested_by_name,
+            "requested_at": req.requested_at or req.created_at,
         })
-    return items
 
-async def get_queue_item_by_id(db: AsyncSession, queue_id: UUID) -> Optional[dict]:
+    return requests_list
+
+
+async def get_lab_request_detail(db: AsyncSession, request_id: UUID) -> dict:
     stmt = (
-        select(Queue, InvestigationRequest, Patient)
-        .join(
-            InvestigationRequest,
+        select(InvestigationRequest, Patient)
+        .join(Patient, InvestigationRequest.patient_id == Patient.id)
+        .where(
             and_(
-                Queue.visit_id == InvestigationRequest.visit_id,
-                InvestigationRequest.request_type == "laboratory"
+                InvestigationRequest.id == request_id,
+                InvestigationRequest.request_type.in_(["lab", "laboratory"])
             )
         )
-        .join(Patient, Queue.patient_id == Patient.id)
-        .where(Queue.queue_id == queue_id)
-    )
-    res = await db.execute(stmt)
-    row = res.first()
-    if not row:
-        return None
-    q, req, pat = row
-    return {
-        "queue_id": q.queue_id,
-        "request_id": req.id,
-        "patient_id": pat.id,
-        "patient_name": pat.full_name,
-        "test_name": req.test_name,
-        "urgency": req.urgency or "routine",
-        "status": q.status,
-        "requested_at": req.created_at,
-        "called_at": q.called_at,
-        "completed_at": q.completed_at,
-    }
-
-
-async def call_queue_patient(db: AsyncSession, queue_id: UUID, user: TokenPayload) -> Queue:
-    stmt = select(Queue).where(Queue.queue_id == queue_id)
-    res = await db.execute(stmt)
-    item = res.scalar_one_or_none()
-    if not item:
-        raise NotFoundError("Queue entry not found")
-    if item.status != "waiting":
-        raise ConflictError("Queue entry is already in progress or completed")
-
-    item.status = "in_progress"
-    item.called_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def skip_queue_patient(db: AsyncSession, queue_id: UUID, user: TokenPayload) -> Queue:
-    stmt = select(Queue).where(Queue.queue_id == queue_id)
-    res = await db.execute(stmt)
-    item = res.scalar_one_or_none()
-    if not item:
-        raise NotFoundError("Queue entry not found")
-
-    item.status = "skipped"
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-# ── Request Details ─────────────────────────────────────────────────────────────
-
-async def get_request_detail(db: AsyncSession, request_id: UUID) -> dict:
-    # Query investigation request and join visit and patient
-    stmt = (
-        select(InvestigationRequest, Patient, Visit)
-        .join(Patient, InvestigationRequest.patient_id == Patient.id)
-        .join(Visit, InvestigationRequest.visit_id == Visit.visit_id)
-        .where(InvestigationRequest.id == request_id)
     )
     res = await db.execute(stmt)
     row = res.one_or_none()
     if not row:
-        raise NotFoundError("Investigation request not found")
+        raise NotFoundError("Investigation request not found or not a lab request")
 
-    req, pat, vis = row
-    if req.request_type != "laboratory":
-        raise ConflictError("Requested investigation is not a laboratory test")
+    req, pat = row
+
+    # Resolve requested_by_name
+    requested_by_name = await _resolve_user_name(db, req.requested_by or req.created_by)
+
+    # Active specimen (non-rejected)
+    spec_stmt = (
+        select(Specimen)
+        .where(
+            and_(
+                Specimen.request_id == request_id,
+                Specimen.status != "rejected"
+            )
+        )
+        .order_by(Specimen.collected_at.desc())
+    )
+    spec_res = await db.execute(spec_stmt)
+    spec = spec_res.scalars().first()
+
+    specimen_data = None
+    if spec:
+        specimen_data = {
+            "specimen_id": spec.specimen_id,
+            "status": spec.status,
+            "specimen_type": spec.specimen_type,
+            "collected_at": spec.collected_at,
+            "received_at": spec.received_at,
+            "rejection_reason": spec.rejection_reason,
+        }
+
+    # Result
+    res_stmt = select(LabResult).where(LabResult.request_id == request_id)
+    res_res = await db.execute(res_stmt)
+    lr = res_res.scalar_one_or_none()
+
+    result_data = None
+    if lr:
+        result_data = {
+            "result_id": lr.result_id,
+            "status": lr.status,
+            "result_value": lr.result_value,
+            "unit": lr.unit,
+            "reference_range": lr.reference_range,
+            "is_critical": lr.is_critical,
+            "resulted_at": lr.resulted_at,
+        }
 
     return {
         "request_id": req.id,
-        "test_name": req.test_name,
-        "request_type": req.request_type,
-        "clinical_indication": req.clinical_history,
-        "urgency": req.urgency or "routine",
-        "requested_by": req.created_by,
-        "requested_at": req.created_at,
-        "status": req.status,
+        "visit_id": req.visit_id,
         "patient": {
             "patient_id": pat.id,
             "patient_number": pat.patient_number or "P-000",
             "full_name": pat.full_name,
             "date_of_birth": pat.date_of_birth,
             "gender": pat.gender,
-            "phone": pat.phone_primary,
-            "email": pat.email,
-            "address": pat.address,
-            "allergies": pat.allergies,
         },
-        "visit": {
-            "visit_id": vis.visit_id,
-            "visit_number": vis.visit_number,
-            "visit_date": vis.visit_date or date.today(),
-            "visit_type": vis.visit_type or "outpatient",
-            "payment_type": vis.payment_type or "cash",
-        },
+        "test_name": req.test_name,
+        "test_code": req.test_code,
+        "clinical_indication": req.clinical_history,
+        "urgency": req.urgency or "routine",
+        "status": req.status,
+        "requested_by_name": requested_by_name,
+        "requested_at": req.requested_at or req.created_at,
+        "specimen": specimen_data,
+        "result": result_data,
     }
 
 
-# ── Specimen Management ────────────────────────────────────────────────────────
+# ── Group 2: Specimen Tracking ───────────────────────────────────────────────
 
 async def collect_specimen(
     db: AsyncSession,
@@ -204,44 +198,39 @@ async def collect_specimen(
     body: SpecimenCreateRequest,
     user: TokenPayload,
 ) -> Specimen:
-    # 1. Verify investigation request
     stmt = select(InvestigationRequest).where(InvestigationRequest.id == request_id)
     res = await db.execute(stmt)
     req = res.scalar_one_or_none()
     if not req:
         raise NotFoundError("Investigation request not found")
-    if req.status != "pending":
-        raise ConflictError(f"Cannot collect specimen for request in status '{req.status}'")
 
-    # 2. Create Specimen record
+    if req.status != "pending":
+        raise UnprocessableEntityError(f"Cannot collect specimen for request in status '{req.status}'. Must be 'pending'.")
+
+    # Check active specimen existence
+    spec_check = select(Specimen).where(
+        and_(
+            Specimen.request_id == request_id,
+            Specimen.status != "rejected"
+        )
+    )
+    existing_spec = (await db.execute(spec_check)).scalar_one_or_none()
+    if existing_spec:
+        raise ConflictError("An active specimen already exists for this request")
+
     specimen = Specimen(
         request_id=request_id,
         patient_id=req.patient_id,
         specimen_type=body.specimen_type,
         collection_site=body.collection_site,
+        specimen_label=body.specimen_label,
         collected_by=_user_identifier(user),
-        collected_at=datetime.now(timezone.utc),
+        collected_at=body.collected_at,
         status="collected",
     )
     db.add(specimen)
 
-    # 3. Update parent request status
     req.status = "specimen_collected"
-    await db.commit()
-    await db.refresh(specimen)
-    return specimen
-
-
-async def receive_specimen(db: AsyncSession, specimen_id: UUID, user: TokenPayload) -> Specimen:
-    stmt = select(Specimen).where(Specimen.specimen_id == specimen_id)
-    res = await db.execute(stmt)
-    specimen = res.scalar_one_or_none()
-    if not specimen:
-        raise NotFoundError("Specimen record not found")
-
-    specimen.status = "received"
-    specimen.received_at = datetime.now(timezone.utc)
-    specimen.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(specimen)
     return specimen
@@ -249,53 +238,81 @@ async def receive_specimen(db: AsyncSession, specimen_id: UUID, user: TokenPaylo
 
 async def update_specimen_status(
     db: AsyncSession,
-    specimen_id: UUID,
-    status: str,
+    request_id: UUID,
+    body: SpecimenStatusUpdateRequest,
     user: TokenPayload,
-) -> Specimen:
-    stmt = select(Specimen).where(Specimen.specimen_id == specimen_id)
+) -> dict:
+    stmt = select(Specimen).where(
+        and_(
+            Specimen.request_id == request_id,
+            Specimen.status != "rejected"
+        )
+    )
     res = await db.execute(stmt)
     specimen = res.scalar_one_or_none()
     if not specimen:
-        raise NotFoundError("Specimen record not found")
+        raise NotFoundError("No active specimen found for this request")
 
-    specimen.status = status
-    specimen.updated_at = datetime.now(timezone.utc)
+    req_stmt = select(InvestigationRequest).where(InvestigationRequest.id == request_id)
+    req = (await db.execute(req_stmt)).scalar_one_or_none()
 
-    # Side effect: when set to processing, update parent request status
-    if status == "processing":
-        stmt_req = select(InvestigationRequest).where(InvestigationRequest.id == specimen.request_id)
-        res_req = await db.execute(stmt_req)
-        req = res_req.scalar_one_or_none()
+    new_status = body.status
+
+    if new_status == "received":
+        specimen.status = "received"
+        specimen.received_at = body.received_at or datetime.now(timezone.utc)
+    elif new_status == "processing":
+        specimen.status = "processing"
+    elif new_status == "completed":
+        specimen.status = "completed"
+    elif new_status == "rejected":
+        if not body.rejection_reason or not body.rejection_reason.strip():
+            raise UnprocessableEntityError("rejection_reason is required when rejecting a specimen")
+        specimen.status = "rejected"
+        specimen.rejection_reason = body.rejection_reason
         if req:
-            req.status = "in_progress"
+            req.status = "pending"
 
-    await db.commit()
-    await db.refresh(specimen)
-    return specimen
-
-
-async def reject_specimen(
-    db: AsyncSession,
-    specimen_id: UUID,
-    rejection_reason: str,
-    user: TokenPayload,
-) -> Specimen:
-    stmt = select(Specimen).where(Specimen.specimen_id == specimen_id)
-    res = await db.execute(stmt)
-    specimen = res.scalar_one_or_none()
-    if not specimen:
-        raise NotFoundError("Specimen record not found")
-
-    specimen.status = "rejected"
-    specimen.rejection_reason = rejection_reason
     specimen.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(specimen)
-    return specimen
+
+    request_status = req.status if req else "pending"
+    return {
+        "specimen_id": specimen.specimen_id,
+        "status": specimen.status,
+        "rejection_reason": specimen.rejection_reason,
+        "request_status": request_status,
+    }
 
 
-# ── Results Entry & Verification ───────────────────────────────────────────────
+async def get_specimens_for_request(db: AsyncSession, request_id: UUID) -> list[dict]:
+    stmt = (
+        select(Specimen)
+        .where(Specimen.request_id == request_id)
+        .order_by(Specimen.collected_at.asc())
+    )
+    res = await db.execute(stmt)
+    specimens = res.scalars().all()
+
+    items = []
+    for s in specimens:
+        collector_name = await _resolve_user_name(db, s.collected_by)
+        items.append({
+            "specimen_id": s.specimen_id,
+            "specimen_type": s.specimen_type,
+            "collection_site": s.collection_site,
+            "specimen_label": s.specimen_label,
+            "collected_by_name": collector_name,
+            "collected_at": s.collected_at,
+            "received_at": s.received_at,
+            "status": s.status,
+            "rejection_reason": s.rejection_reason,
+        })
+    return items
+
+
+# ── Group 3: Results Entry ───────────────────────────────────────────────────
 
 async def create_lab_result(
     db: AsyncSession,
@@ -303,27 +320,29 @@ async def create_lab_result(
     body: ResultCreateRequest,
     user: TokenPayload,
 ) -> LabResult:
-    # 1. Fetch InvestigationRequest details
     stmt = select(InvestigationRequest).where(InvestigationRequest.id == request_id)
-    res = await db.execute(stmt)
-    req = res.scalar_one_or_none()
+    req = (await db.execute(stmt)).scalar_one_or_none()
     if not req:
         raise NotFoundError("Investigation request not found")
 
-    # 2. Check if a result already exists to avoid duplicates
-    stmt_check = select(LabResult).where(LabResult.request_id == request_id)
-    res_check = await db.execute(stmt_check)
-    existing_result = res_check.scalar_one_or_none()
-    if existing_result:
+    if req.status not in ["specimen_collected", "in_progress"]:
+        raise UnprocessableEntityError(f"Cannot enter result for request in status '{req.status}'. Must be 'specimen_collected' or 'in_progress'.")
+
+    # Check if result already exists
+    res_check = select(LabResult).where(LabResult.request_id == request_id)
+    existing_res = (await db.execute(res_check)).scalar_one_or_none()
+    if existing_res:
         raise ConflictError("A result already exists for this investigation request")
 
-    # 3. Create LabResult
     now_dt = datetime.now(timezone.utc)
+    critical_notified = now_dt if body.is_critical else None
+
     result = LabResult(
         request_id=request_id,
         visit_id=req.visit_id,
         patient_id=req.patient_id,
-        specimen_type=body.specimen_type,
+        specimen_type=body.specimen_type or "unspecified",
+        specimen_label=body.specimen_label,
         result_value=body.result_value,
         unit=body.unit,
         reference_range=body.reference_range,
@@ -332,33 +351,16 @@ async def create_lab_result(
         performed_by=_user_identifier(user),
         status="resulted",
         resulted_at=now_dt,
+        critical_notified_at=critical_notified,
     )
 
-    # 4. Sync status changes (fire side effects)
-    req.status = "completed"
+    req.status = "in_progress"
 
-    # Resolve queue item and complete it
-    stmt_queue = select(Queue).where(
-        and_(
-            Queue.visit_id == req.visit_id,
-            Queue.queue_type == "lab"
-        )
-    )
-    res_queue = await db.execute(stmt_queue)
-    queue_item = res_queue.scalar_one_or_none()
-    if queue_item:
-        queue_item.status = "completed"
-        queue_item.completed_at = now_dt
-
-    # Handle Critical Alert Side Effect (FR-25)
     if body.is_critical:
-        # Stage/mock the notifications table write (since notifications table does not exist)
         logger.warning(
-            "CRITICAL RESULT ALERT: Notification generated for doctor '%s'. "
-            "Critical lab result ID: %s. Patient ID: %s. Value: %s",
-            req.created_by, result.result_id, req.patient_id, body.result_value
+            "CRITICAL RESULT ALERT: Doctor '%s' notified for test '%s'. Result: %s %s",
+            req.requested_by or req.created_by, req.test_name, body.result_value, body.unit or ""
         )
-        result.critical_notified_at = now_dt
 
     db.add(result)
     await db.commit()
@@ -368,77 +370,226 @@ async def create_lab_result(
 
 async def update_lab_result(
     db: AsyncSession,
-    result_id: UUID,
+    request_id: UUID,
     body: ResultUpdateRequest,
     user: TokenPayload,
-) -> LabResult:
-    stmt = select(LabResult).where(LabResult.result_id == result_id)
-    res = await db.execute(stmt)
-    result = res.scalar_one_or_none()
+) -> dict:
+    stmt = select(LabResult).where(LabResult.request_id == request_id)
+    result = (await db.execute(stmt)).scalar_one_or_none()
     if not result:
-        raise NotFoundError("Lab result record not found")
+        raise NotFoundError("No lab result found for this request")
 
     if result.status == "verified":
-        raise ConflictError("Cannot modify a verified lab result")
+        raise UnprocessableEntityError("Cannot modify a verified lab result")
 
-    result.result_value = body.result_value
-    result.unit = body.unit
-    result.reference_range = body.reference_range
-    result.result_notes = body.result_notes
+    if body.result_value is not None:
+        result.result_value = body.result_value
+    if body.unit is not None:
+        result.unit = body.unit
+    if body.reference_range is not None:
+        result.reference_range = body.reference_range
+    if body.result_notes is not None:
+        result.result_notes = body.result_notes
+
+    if body.is_critical is not None:
+        if body.is_critical and not result.is_critical:
+            result.is_critical = True
+            if not result.critical_notified_at:
+                result.critical_notified_at = datetime.now(timezone.utc)
+                logger.warning("CRITICAL RESULT ALERT (AMENDED): Result ID %s marked critical", result.result_id)
+        elif not body.is_critical:
+            result.is_critical = False
+
     result.updated_at = datetime.now(timezone.utc)
-
-    # Re-run critical alert logic on transition from normal to critical
-    if body.is_critical and not result.is_critical:
-        result.is_critical = True
-        if not result.critical_notified_at:
-            logger.warning(
-                "CRITICAL RESULT ALERT (EDITED): Critical lab result ID: %s. Value: %s",
-                result.result_id, body.result_value
-            )
-            result.critical_notified_at = datetime.now(timezone.utc)
-    elif not body.is_critical:
-        result.is_critical = False
-
     await db.commit()
     await db.refresh(result)
-    return result
+
+    return {
+        "result_id": result.result_id,
+        "result_value": result.result_value,
+        "is_critical": result.is_critical,
+        "status": result.status,
+    }
 
 
-async def get_lab_result(db: AsyncSession, result_id: UUID) -> LabResult:
-    stmt = select(LabResult).where(LabResult.result_id == result_id)
-    res = await db.execute(stmt)
-    result = res.scalar_one_or_none()
+async def get_lab_result_by_request(db: AsyncSession, request_id: UUID) -> dict:
+    stmt = select(LabResult).where(LabResult.request_id == request_id)
+    result = (await db.execute(stmt)).scalar_one_or_none()
     if not result:
-        raise NotFoundError("Lab result not found")
-    return result
+        raise NotFoundError("No lab result found for this request")
+
+    performed_by_name = await _resolve_user_name(db, result.performed_by)
+    verified_by_name = await _resolve_user_name(db, result.verified_by)
+
+    return {
+        "result_id": result.result_id,
+        "request_id": result.request_id,
+        "specimen_type": result.specimen_type,
+        "specimen_label": result.specimen_label,
+        "result_value": result.result_value,
+        "unit": result.unit,
+        "reference_range": result.reference_range,
+        "is_critical": result.is_critical,
+        "critical_notified_at": result.critical_notified_at,
+        "result_notes": result.result_notes,
+        "performed_by_name": performed_by_name,
+        "verified_by_name": verified_by_name,
+        "status": result.status,
+        "resulted_at": result.resulted_at,
+    }
 
 
-async def verify_lab_result(db: AsyncSession, result_id: UUID, user: TokenPayload) -> LabResult:
+# ── Group 4: Result Verification ─────────────────────────────────────────────
+
+async def verify_lab_result(db: AsyncSession, result_id: UUID, user: TokenPayload) -> dict:
     stmt = select(LabResult).where(LabResult.result_id == result_id)
-    res = await db.execute(stmt)
-    result = res.scalar_one_or_none()
+    result = (await db.execute(stmt)).scalar_one_or_none()
     if not result:
         raise NotFoundError("Lab result record not found")
 
     if result.status != "resulted":
-        raise ConflictError(f"Cannot verify result in status '{result.status}'")
+        raise UnprocessableEntityError(f"Cannot verify result in status '{result.status}'. Must be 'resulted'.")
+
+    user_id_str = _user_identifier(user)
+    now_dt = datetime.now(timezone.utc)
 
     result.status = "verified"
-    result.verified_by = _user_identifier(user)
-    result.verified_at = datetime.now(timezone.utc)
-    result.updated_at = datetime.now(timezone.utc)
+    result.verified_by = user_id_str
+    result.verified_at = now_dt
+    result.updated_at = now_dt
+
+    # Update parent investigation request
+    req_stmt = select(InvestigationRequest).where(InvestigationRequest.id == result.request_id)
+    req = (await db.execute(req_stmt)).scalar_one_or_none()
+    if req:
+        req.status = "completed"
+
+    # Update active specimen
+    spec_stmt = select(Specimen).where(
+        and_(
+            Specimen.request_id == result.request_id,
+            Specimen.status != "rejected"
+        )
+    )
+    spec = (await db.execute(spec_stmt)).scalar_one_or_none()
+    if spec:
+        spec.status = "completed"
+        spec.updated_at = now_dt
+
     await db.commit()
     await db.refresh(result)
-    return result
+
+    return {
+        "result_id": result.result_id,
+        "status": "verified",
+        "verified_by": user_id_str,
+        "request_status": "completed",
+    }
 
 
-# ── Patient Results History ───────────────────────────────────────────────────
+# ── Group 5: Billing ─────────────────────────────────────────────────────────
 
-async def get_patient_results(db: AsyncSession, patient_id: UUID) -> list[LabResult]:
+async def create_lab_bill(
+    db: AsyncSession,
+    request_id: UUID,
+    body: LabBillCreateRequest,
+    user: TokenPayload,
+) -> dict:
+    stmt = select(InvestigationRequest).where(InvestigationRequest.id == request_id)
+    req = (await db.execute(stmt)).scalar_one_or_none()
+    if not req:
+        raise NotFoundError("Investigation request not found")
+
+    if req.status != "completed":
+        raise UnprocessableEntityError(f"Cannot bill for request in status '{req.status}'. Must be 'completed'.")
+
+    # Check for existing bill item for this request
+    check_item = select(BillItem).where(
+        and_(
+            BillItem.reference_id == request_id,
+            BillItem.item_type == "lab"
+        )
+    )
+    existing_item = (await db.execute(check_item)).scalar_one_or_none()
+    if existing_item:
+        raise ConflictError("Bill item already exists for this investigation request")
+
+    # Lookup open bill for visit
+    bill_stmt = select(Bill).where(
+        and_(
+            Bill.visit_id == req.visit_id,
+            Bill.status == "open"
+        )
+    )
+    bill = (await db.execute(bill_stmt)).scalar_one_or_none()
+    if not bill:
+        raise NotFoundError("No open bill found for this visit")
+
+    bill_item = BillItem(
+        bill_id=bill.bill_id,
+        item_type="lab",
+        description=body.description,
+        quantity=1,
+        unit_price=body.unit_price,
+        total_price=body.unit_price,
+        reference_id=request_id,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(bill_item)
+
+    bill.total_amount += body.unit_price
+
+    await db.commit()
+    await db.refresh(bill_item)
+
+    return {
+        "item_id": bill_item.bill_item_id,
+        "bill_id": bill.bill_id,
+        "item_type": bill_item.item_type,
+        "description": bill_item.description,
+        "unit_price": bill_item.unit_price,
+        "total_price": bill_item.total_price,
+        "reference_id": bill_item.reference_id,
+    }
+
+
+# ── Group 6: Doctor-Facing Result Read ───────────────────────────────────────
+
+async def get_visit_verified_results(db: AsyncSession, visit_id: UUID) -> dict:
     stmt = (
-        select(LabResult)
-        .where(LabResult.patient_id == patient_id)
-        .order_by(LabResult.resulted_at.desc())
+        select(InvestigationRequest, LabResult)
+        .join(LabResult, LabResult.request_id == InvestigationRequest.id)
+        .where(
+            and_(
+                InvestigationRequest.visit_id == visit_id,
+                InvestigationRequest.request_type.in_(["lab", "laboratory"]),
+                LabResult.status == "verified"
+            )
+        )
+        .order_by(LabResult.resulted_at.asc())
     )
     res = await db.execute(stmt)
-    return list(res.scalars().all())
+    rows = res.all()
+
+    results_list = []
+    for req, lr in rows:
+        performed_by_name = await _resolve_user_name(db, lr.performed_by)
+        results_list.append({
+            "request_id": req.id,
+            "test_name": req.test_name,
+            "test_code": req.test_code,
+            "urgency": req.urgency or "routine",
+            "result_id": lr.result_id,
+            "result_value": lr.result_value,
+            "unit": lr.unit,
+            "reference_range": lr.reference_range,
+            "is_critical": lr.is_critical,
+            "result_notes": lr.result_notes,
+            "performed_by_name": performed_by_name,
+            "resulted_at": lr.resulted_at,
+        })
+
+    return {
+        "visit_id": visit_id,
+        "results": results_list,
+    }

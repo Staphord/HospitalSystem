@@ -34,6 +34,14 @@ class ConflictError(HTTPException):
         )
 
 
+class UnprocessableEntityError(HTTPException):
+    def __init__(self, detail: str = "Unprocessable entity") -> None:
+        super().__init__(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=detail,
+        )
+
+
 class BadRequestError(HTTPException):
     def __init__(self, detail: str = "Bad request") -> None:
         super().__init__(
