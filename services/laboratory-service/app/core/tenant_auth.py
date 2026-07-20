@@ -138,7 +138,11 @@ async def get_current_tenant(
 
     raw_roles = payload.get("realm_access", {}).get("roles", [])
     is_super = payload.get("is_super_admin", False) or "super_admin" in raw_roles
-    tenant_id: str | None = payload.get("tenant_id", None)
+    tenant_id: str | None = (
+        payload.get("tenant_id")
+        or payload.get("hospital_id")
+        or (settings.default_hospital_id if settings.environment == "dev" else None)
+    )
     raw_scope: str = payload.get("scope", "full")
     scope = "readonly" if raw_scope == "readonly" else "full"
 

@@ -60,121 +60,106 @@ async def _fetch_jwks(realm: str | None = None) -> Dict[str, Any]:
 def _build_rsa_key(jwks: Dict[str, Any], kid: str) -> Dict[str, Any]:
     for key in jwks.get("keys", []):
         if key.get("kid") == kid:
-            return key
+            return {
+                "kty": key["kty"],
+                "kid": key["kid"],
+                "use": key.get("use", "sig"),
+                "n": key["n"],
+                "e": key["e"],
+            }
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid token",
-        headers={"WWW-Authenticate": "Bearer"},
+        detail="Unable to find matching RSA key for token signature verification.",
     )
 
 
-async def _decode_token(token: str) -> Dict[str, Any]:
+def _decode_unverified_header(token: str) -> Dict[str, Any]:
     try:
-        headers = jwt.get_unverified_header(token)
+        return jwt.get_unverified_header(token)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
-    kid = headers.get("kid")
-
-    # Local superadmin tokens are HS256 signed with SECRET_KEY and have no kid
-    if not kid:
-        try:
-            payload = jwt.decode(
-                token,
-                settings.secret_key,
-                algorithms=["HS256"],
-                options={"verify_exp": True, "verify_aud": False},
-            )
-            return payload
-        except jwt.ExpiredSignatureError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has expired",
-                headers={"WWW-Authenticate": "Bearer"},
-            ) from exc
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-                headers={"WWW-Authenticate": "Bearer"},
-            ) from exc
-
-    # Multi-realm: derive realm from the token's issuer claim
-    token_realm = _extract_realm_from_iss(token)
-    jwks = await _fetch_jwks(token_realm)
-    rsa_key = _build_rsa_key(jwks, kid)
-
-    try:
-        payload = jwt.decode(
-            token,
-            rsa_key,
-            algorithms=["RS256"],
-            issuer=_issuer(token_realm),
-            options={"verify_exp": True, "verify_aud": False},
-        )
-        return payload
-    except jwt.ExpiredSignatureError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail=f"Invalid token header format: {str(exc)}",
         ) from exc
 
 
-async def _introspect_token(token: str) -> None:
+async def _introspect_token(token: str) -> bool:
     if token in _introspection_cache:
-        if not _introspection_cache[token]:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Inactive token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return
+        if _introspection_cache[token]:
+            return True
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token introspection marked token as inactive.",
+        )
 
-    token_realm = _extract_realm_from_iss(token)
-    url = f"{_issuer(token_realm)}/protocol/openid-connect/token/introspect"
+    introspect_url = f"{_issuer()}/protocol/openid-connect/token/introspect"
     data = {
-        "token": token,
         "client_id": settings.keycloak_client_id,
         "client_secret": settings.keycloak_client_secret,
+        "token": token,
     }
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.post(url, data=data)
-        response.raise_for_status()
-        payload = response.json()
-        active = bool(payload.get("active"))
-        _introspection_cache[token] = active
-        if not active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Inactive token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(introspect_url, data=data)
+            resp.raise_for_status()
+            res_data = resp.json()
+            is_active = res_data.get("active", False)
+            _introspection_cache[token] = is_active
+            if not is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked or expired.",
+                )
+            return True
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Keycloak introspection failed: {str(exc)}",
+        ) from exc
 
 
 async def get_current_active_user(
         request: Request,
-        credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
 ) -> TokenPayload:
-    if credentials is None or not credentials.scheme.lower() == "bearer":
+    if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Missing Authorization header",
         )
 
     token = credentials.credentials
-    payload = await _decode_token(token)
+    realm = _extract_realm_from_iss(token)
+
+    try:
+        header = _decode_unverified_header(token)
+        kid = header.get("kid")
+        if not kid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token missing kid in header",
+            )
+
+        jwks = await _fetch_jwks(realm)
+        rsa_key = _build_rsa_key(jwks, kid)
+
+        issuer_url = _issuer(realm)
+        payload = jwt.decode(
+            token,
+            rsa_key,
+            algorithms=["RS256"],
+            audience=settings.keycloak_client_id,
+            issuer=issuer_url,
+            options={"verify_aud": False},
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token verification failed: {str(exc)}",
+        ) from exc
 
     if settings.keycloak_introspect:
         await _introspect_token(token)
@@ -201,7 +186,15 @@ def _extract_roles(user: TokenPayload) -> list[str]:
 def require_role(role: str):
     async def _role_dependency(user: TokenPayload = Depends(get_current_active_user)) -> TokenPayload:
         roles = _extract_roles(user)
-        allowed = role in roles or "super_admin" in roles
+
+        # Allow role aliases so "tech", "lab_technician", "admin", "super_admin", and "doctor" (for views) pass cleanly
+        allowed_roles = {role}
+        if role == "lab_technician":
+            allowed_roles.update(["tech", "lab_technician", "admin", "super_admin"])
+        elif role == "doctor":
+            allowed_roles.update(["doctor", "lab_technician", "tech", "admin", "super_admin"])
+
+        allowed = any(r in roles for r in allowed_roles) or "super_admin" in roles or "admin" in roles
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

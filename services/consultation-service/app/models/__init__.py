@@ -7,4 +7,6 @@ from app.models.consultation import (
     Consultation,
     Diagnosis,
     InvestigationRequest,
+    InpatientAdmission,
+    InpatientOrder,
 )

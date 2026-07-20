@@ -22,14 +22,14 @@ from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.db.base import Base
 from app.dependencies import get_tenant_db
 from app.main import app
-from app.models.laboratory import Patient, Visit, InvestigationRequest, Queue
+from app.models.laboratory import Patient, Visit, InvestigationRequest, Bill
 
 # Stable UUIDs for tests
 TEST_PATIENT_ID = UUID("c3000003-0003-4003-8003-000000000003")
 TEST_VISIT_ID = UUID("b2000002-0002-4002-8002-000000000002")
 TEST_REQUEST_PENDING_ID = UUID("d4000004-0004-4004-8004-000000000004")
 TEST_REQUEST_COMPLETED_ID = UUID("d4000004-0004-4004-8004-000000000005")
-TEST_QUEUE_ID = UUID("a1000001-0001-4001-8001-000000000001")
+TEST_BILL_ID = UUID("f6000006-0006-4006-8006-000000000006")
 
 LAB_TECH_USER = TokenPayload(
     sub="test-lab-tech-sub",
@@ -95,10 +95,11 @@ def test_engine():
                 consultation_id=UUID("e5000005-0005-4005-8005-000000000005"),
                 visit_id=TEST_VISIT_ID,
                 patient_id=TEST_PATIENT_ID,
-                request_type="laboratory",
+                request_type="lab",
                 test_name="Full Blood Count",
                 clinical_history="Fever and malaise",
                 status="pending",
+                urgency="urgent",
                 created_by="Dr. Nguyen",
             )
             req2 = InvestigationRequest(
@@ -106,24 +107,23 @@ def test_engine():
                 consultation_id=UUID("e5000005-0005-4005-8005-000000000005"),
                 visit_id=TEST_VISIT_ID,
                 patient_id=TEST_PATIENT_ID,
-                request_type="laboratory",
+                request_type="lab",
                 test_name="Malaria BS",
                 clinical_history="High grade fever",
                 status="completed",
+                urgency="routine",
                 created_by="Dr. Nguyen",
             )
-            # Add seed Queue
-            q = Queue(
-                queue_id=TEST_QUEUE_ID,
+            # Add seed Bill
+            bill = Bill(
+                bill_id=TEST_BILL_ID,
                 visit_id=TEST_VISIT_ID,
                 patient_id=TEST_PATIENT_ID,
-                queue_type="lab",
-                queue_number="PH-007",
-                priority="urgent",
-                status="waiting",
+                total_amount=0.0,
+                status="open",
             )
 
-            session.add_all([pat, vis, req1, req2, q])
+            session.add_all([pat, vis, req1, req2, bill])
             await session.commit()
 
         return engine

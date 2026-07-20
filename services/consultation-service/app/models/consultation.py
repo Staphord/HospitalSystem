@@ -39,19 +39,23 @@ class Visit(Base):
 
 class TriageAssessment(Base):
     __tablename__ = "triage_assessments"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    triage_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=False, unique=True)
-    patient_id = Column(String(50), nullable=False)
-    blood_pressure = Column(String(20), nullable=True)
+    patient_id = Column(UUID(as_uuid=True), nullable=False)
+    triage_nurse_id = Column(UUID(as_uuid=True), nullable=True)
+    blood_pressure_systolic = Column(Integer, nullable=True)
+    blood_pressure_diastolic = Column(Integer, nullable=True)
     temperature = Column(Float, nullable=True)
-    pulse = Column(Integer, nullable=True)
+    pulse_rate = Column(Integer, nullable=True)
     oxygen_saturation = Column(Float, nullable=True)
     respiratory_rate = Column(Integer, nullable=True)
-    weight = Column(Float, nullable=True)
-    presenting_complaint = Column(Text, nullable=True)
+    weight_kg = Column(Float, nullable=True)
+    chief_complaint = Column(Text, nullable=False)
+    complaint_code = Column(String(20), nullable=True)
     triage_category = Column(String(50), nullable=False)
-    notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    triage_notes = Column(Text, nullable=True)
+    assessed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 class Consultation(Base):
     __tablename__ = "consultations"
@@ -61,22 +65,35 @@ class Consultation(Base):
     history_of_presenting_illness = Column(Text, nullable=True)
     examination_findings = Column(Text, nullable=True)
     clinical_impression = Column(Text, nullable=True)
+    consultation_status = Column(String(50), nullable=False, default="in_progress")
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
     disposition = Column(String(50), nullable=True)
-    disposition_notes = Column(Text, nullable=True)
+    referral_type = Column(String(50), nullable=True)
+    referral_notes = Column(Text, nullable=True)
+    admission_reason = Column(Text, nullable=True)
+    discharge_instructions = Column(Text, nullable=True)
+    follow_up_date = Column(Date, nullable=True)
+    return_date = Column(Date, nullable=True)
+    return_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     created_by = Column(String(255), nullable=True)
 
     diagnoses = relationship("Diagnosis", back_populates="consultation", cascade="all, delete-orphan", lazy="selectin")
     investigation_requests = relationship("InvestigationRequest", back_populates="consultation", cascade="all, delete-orphan", lazy="selectin")
+    prescriptions = relationship("Prescription", back_populates="consultation", cascade="all, delete-orphan", lazy="selectin")
 
 class Diagnosis(Base):
     __tablename__ = "diagnoses"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     consultation_id = Column(UUID(as_uuid=True), ForeignKey("consultations.id", ondelete="CASCADE"), nullable=False)
-    diagnosis_type = Column(String(50), nullable=False)  # "provisional" or "differential"
+    diagnosis_type = Column(String(50), nullable=False)
     code = Column(String(20), nullable=True)
     description = Column(Text, nullable=False)
+    sequence_order = Column(Integer, nullable=True)
+    recorded_by = Column(String(255), nullable=True)
+    recorded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     consultation = relationship("Consultation", back_populates="diagnoses")
@@ -87,12 +104,176 @@ class InvestigationRequest(Base):
     consultation_id = Column(UUID(as_uuid=True), ForeignKey("consultations.id", ondelete="CASCADE"), nullable=False)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="CASCADE"), nullable=False)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
-    request_type = Column(String(50), nullable=False)  # "laboratory" or "radiology"
+    request_type = Column(String(50), nullable=False)
     test_name = Column(String(255), nullable=False)
+    test_code = Column(String(50), nullable=True)
     clinical_history = Column(Text, nullable=True)
-    status = Column(String(50), nullable=False, default="pending")  # "pending", "completed", "cancelled"
+    status = Column(String(50), nullable=False, default="pending")
     urgency = Column(String(50), nullable=False, default="routine")
+    requested_by = Column(String(255), nullable=True)
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(String(255), nullable=True)
 
     consultation = relationship("Consultation", back_populates="investigation_requests")
+
+class Prescription(Base):
+    __tablename__ = "prescriptions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="CASCADE"), nullable=False)
+    consultation_id = Column(UUID(as_uuid=True), ForeignKey("consultations.id", ondelete="CASCADE"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    drug_name = Column(String(200), nullable=False)
+    dose = Column(String(50), nullable=False)
+    frequency = Column(String(50), nullable=False)
+    duration = Column(String(50), nullable=False)
+    route = Column(String(50), nullable=False)
+    instructions = Column(Text, nullable=True)
+    prescribed_by = Column(String(255), nullable=True)
+    status = Column(String(50), nullable=False, default="pending")
+    prescribed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    consultation = relationship("Consultation", back_populates="prescriptions")
+
+class Queue(Base):
+    __tablename__ = "queues"
+    queue_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="CASCADE"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), nullable=False)
+    queue_type = Column(String(50), nullable=False)
+    queue_number = Column(String(10), nullable=False)
+    priority = Column(String(50), nullable=False, default="non_urgent")
+    status = Column(String(50), nullable=False, default="waiting")
+    called_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+class FeeSchedule(Base):
+    __tablename__ = "fee_schedules"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    item_code = Column(String(50), nullable=True)
+    item_name = Column(String(200), nullable=False)
+    item_type = Column(String(50), nullable=False)
+    standard_price = Column(Float, nullable=False, default=0.0)
+    insurance_price = Column(Float, nullable=False, default=0.0)
+    is_active = Column(Boolean, default=True, nullable=False)
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date, nullable=True)
+
+class Bill(Base):
+    __tablename__ = "bills"
+    bill_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="CASCADE"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    total_amount = Column(Float, nullable=False, default=0.0)
+    status = Column(String(50), nullable=False, default="open")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+class BillItem(Base):
+    __tablename__ = "bill_items"
+    bill_item_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bill_id = Column(UUID(as_uuid=True), ForeignKey("bills.bill_id", ondelete="CASCADE"), nullable=False)
+    item_type = Column(String(50), nullable=False)
+    description = Column(String(200), nullable=False)
+    quantity = Column(Integer, nullable=False, default=1)
+    unit_price = Column(Float, nullable=False, default=0.0)
+    total_price = Column(Float, nullable=False, default=0.0)
+    reference_id = Column(UUID(as_uuid=True), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+class LabResult(Base):
+    __tablename__ = "lab_results"
+    result_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    request_id = Column(UUID(as_uuid=True), ForeignKey("investigation_requests.id", ondelete="CASCADE"), nullable=False)
+    visit_id = Column(UUID(as_uuid=True), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), nullable=False)
+    specimen_type = Column(String(100), nullable=False)
+    result_value = Column(Text, nullable=False)
+    unit = Column(String(50), nullable=True)
+    reference_range = Column(String(100), nullable=True)
+    is_critical = Column(Boolean, default=False, nullable=False)
+    result_notes = Column(Text, nullable=True)
+    performed_by = Column(String(255), nullable=False)
+    verified_by = Column(String(255), nullable=True)
+    status = Column(String(50), nullable=False, default="resulted")
+    resulted_at = Column(DateTime, nullable=False)
+    verified_at = Column(DateTime, nullable=True)
+
+class RadiologyReport(Base):
+    __tablename__ = "radiology_reports"
+    report_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    request_id = Column(UUID(as_uuid=True), ForeignKey("investigation_requests.id", ondelete="CASCADE"), nullable=True)
+    visit_id = Column(UUID(as_uuid=True), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), nullable=False)
+    modality = Column(String(50), nullable=False)
+    body_part = Column(String(100), nullable=True)
+    findings = Column(Text, nullable=True)
+    impression = Column(Text, nullable=True)
+    status = Column(String(50), nullable=False, default="scheduled")
+    reported_by = Column(UUID(as_uuid=True), nullable=True)
+    reported_at = Column(DateTime, nullable=True)
+
+class InpatientAdmission(Base):
+    __tablename__ = "inpatient_admissions"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="CASCADE"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    ward = Column(String(100), nullable=True)
+    bed = Column(String(50), nullable=True)
+    status = Column(String(50), nullable=False, default="admitted") # admitted, discharge-ready, discharged
+    condition = Column(String(50), nullable=False, default="monitoring") # critical, stable, monitoring
+    admitting_diagnosis = Column(Text, nullable=True)
+    discharge_diagnosis = Column(Text, nullable=True)
+    care_summary = Column(Text, nullable=True)
+    discharge_instructions = Column(Text, nullable=True)
+    follow_up_date = Column(Date, nullable=True)
+    admission_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    discharged_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    patient = relationship("Patient", lazy="selectin")
+    visit = relationship("Visit", lazy="selectin")
+    orders = relationship("InpatientOrder", back_populates="admission", cascade="all, delete-orphan", lazy="selectin")
+
+class InpatientOrder(Base):
+    __tablename__ = "inpatient_orders"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    admission_id = Column(UUID(as_uuid=True), ForeignKey("inpatient_admissions.id", ondelete="CASCADE"), nullable=False)
+    order_type = Column(String(50), nullable=False) # medication, nursing, diet, investigation
+    description = Column(Text, nullable=False)
+    sub_description = Column(Text, nullable=True)
+    issued_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    issued_by = Column(String(255), nullable=True)
+    due_label = Column(String(100), nullable=True)
+    status = Column(String(50), nullable=False, default="pending") # pending, done, discontinued
+    completed_at = Column(DateTime, nullable=True)
+    completed_by = Column(String(255), nullable=True)
+
+    admission = relationship("InpatientAdmission", back_populates="orders")
+
+
+class Referral(Base):
+    __tablename__ = "referrals"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="SET NULL"), nullable=True)
+    referred_to = Column(String(255), nullable=False)
+    type = Column(String(50), nullable=False)  # internal, external
+    reason = Column(Text, nullable=False)
+    status = Column(String(50), nullable=False, default="pending")  # pending, accepted, declined, completed, cancelled
+    urgency = Column(String(50), nullable=False, default="routine")  # routine, urgent, emergency
+    category = Column(String(50), nullable=False, default="general")  # general, follow-up, second-opinion, lab-imaging
+    department = Column(String(100), nullable=True)
+    preferred_doctor = Column(String(255), nullable=True)
+    hospital_name = Column(String(255), nullable=True)
+    external_doctor = Column(String(255), nullable=True)
+    contact_number = Column(String(50), nullable=True)
+    decline_reason = Column(Text, nullable=True)
+    referred_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    responded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    patient = relationship("Patient", lazy="selectin")
+    visit = relationship("Visit", lazy="selectin")

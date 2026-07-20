@@ -212,6 +212,20 @@ def require_role(role: str):
     return _role_dependency
 
 
+def require_any_role(allowed_roles: list[str]):
+    async def _role_dependency(user: TokenPayload = Depends(get_current_active_user)) -> TokenPayload:
+        roles = _extract_roles(user)
+        allowed = any(r in roles for r in allowed_roles) or "super_admin" in roles
+        if not allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return user
+
+    return _role_dependency
+
+
 async def get_current_hospital_id(
         user: TokenPayload = Depends(get_current_active_user),
         db=Depends(get_db),

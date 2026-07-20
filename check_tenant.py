@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, text
-engine = create_engine('postgresql://postgres:postgres@localhost:5432/hospital_master')
+engine = create_engine('postgresql://postgres:12345678@localhost:5432/hospital_master')
 with engine.connect() as conn:
     cols = conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'tenants' ORDER BY ordinal_position")).all()
     print('Columns:', [c[0] for c in cols])
