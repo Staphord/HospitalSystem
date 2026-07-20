@@ -221,3 +221,35 @@ def get_tenant_db_session(tenant_id: str) -> Session:
     _tenant_engine_cache[tenant_id] = (engine, SessionLocal)
     return SessionLocal()
 
+
+def drop_tenant_database(tenant_id: str) -> None:
+    """Drop the PostgreSQL database for the tenant."""
+    db_name = f"tenant_{tenant_id}"
+    admin_engine = _get_admin_engine()
+
+    logger.info("Dropping tenant database '%s' for tenant %s", db_name, tenant_id)
+
+    with admin_engine.connect() as conn:
+        try:
+            # Terminate active connections
+            conn.execute(
+                text(
+                    "SELECT pg_terminate_backend(pg_stat_activity.pid) "
+                    "FROM pg_stat_activity "
+                    "WHERE pg_stat_activity.datname = :db_name "
+                    "AND pid <> pg_backend_pid()"
+                ),
+                {"db_name": db_name},
+            )
+        except Exception as e:
+            logger.warning("Failed to terminate connections to '%s': %s", db_name, e)
+
+        try:
+            # Drop database
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{db_name}"'))
+            logger.info("Database '%s' dropped successfully", db_name)
+        except Exception as e:
+            logger.error("Failed to drop database '%s': %s", db_name, e)
+
+    admin_engine.dispose()
+

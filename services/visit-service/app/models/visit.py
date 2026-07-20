@@ -76,8 +76,9 @@ class Visit(Base):
     status = Column(
         Enum(
             "registered", "triaged", "in_consultation", "in_lab",
-            "in_pharmacy", "completed", "cancelled",
+            "in_pharmacy", "admitted", "discharged", "completed", "cancelled",
             name="visit_status_enum",
+            create_constraint=False,
         ),
         nullable=False, default="registered",
     )

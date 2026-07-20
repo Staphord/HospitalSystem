@@ -70,7 +70,7 @@ async def me(
             from app.models.master import Tenant as TenantModel
             tenant_record = db.query(TenantModel).filter(TenantModel.tenant_id == ctx.tenant_id).first()
             if tenant_record:
-                hospital_name = tenant_record.name
+                hospital_name = tenant_record.hospital_name
         return {
             "sub": ctx.user_sub,
             "username": ctx.preferred_username or "superadmin",

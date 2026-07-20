@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -26,6 +27,15 @@ from app.api.v1.superadmin.schemas import (
     SubscriptionPlanChangeRequest,
     SubscriptionRenewRequest,
     SubscriptionSubscribeRequest,
+    PlanChangeRequestCreate,
+    CancellationRequestCreate,
+    SubscriptionRequestOut,
+    ToggleAutoRenewRequest,
+)
+from app.services.subscription_request_service import (
+    create_plan_change_request,
+    create_cancellation_request,
+    get_pending_request,
 )
 
 router = APIRouter()
@@ -56,6 +66,48 @@ async def get_my_subscription(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Tenant not found",
         )
+    return SubscriptionStateOut.model_validate(get_subscription_state(tenant))
+
+
+@router.patch("/subscription/auto-renew", response_model=SubscriptionStateOut)
+@limiter.limit("10/minute")
+async def toggle_my_auto_renew(
+    request: Request,
+    body: ToggleAutoRenewRequest,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+):
+    """Toggle auto-renewal for the current tenant's subscription."""
+    tenant_id = _get_tenant_id(user)
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    from app.models.saas import Subscription as SubscriptionModel
+    sub = db.query(SubscriptionModel).filter(
+        SubscriptionModel.tenant_id == tenant_id,
+        SubscriptionModel.status != "superseded",
+        SubscriptionModel.status != "expired",
+    ).order_by(SubscriptionModel.created_at.desc()).first()
+
+    if not sub:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Active subscription not found")
+
+    tenant.auto_renew = body.auto_renew
+    sub.auto_renew = body.auto_renew
+    db.commit()
+
+    from app.services.subscription_request_service import log_action
+    log_action(
+        db=db,
+        tenant_id=tenant_id,
+        action="subscription.auto_renew_toggled",
+        detail={"auto_renew": body.auto_renew},
+        user_sub=user.sub,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+
     return SubscriptionStateOut.model_validate(get_subscription_state(tenant))
 
 
@@ -124,6 +176,7 @@ async def upgrade_my_subscription(
         tenant_id=tenant_id,
         new_plan=new_plan,
         billing_cycle=billing_cycle,
+        effective_at_end=body.effective_at_end if body.effective_at_end is not None else False,
         user_sub=user.sub,
         ip_address=request.client.host if request.client else None,
     )
@@ -166,7 +219,7 @@ async def downgrade_my_subscription(
         tenant_id=tenant_id,
         new_plan=new_plan,
         billing_cycle=billing_cycle,
-        effective_at_end=body.effective_at_end,
+        effective_at_end=body.effective_at_end if body.effective_at_end is not None else True,
         user_sub=user.sub,
         ip_address=request.client.host if request.client else None,
     )
@@ -218,17 +271,235 @@ async def renew_my_subscription(
     )
 
 
-@router.get("/plans", response_model=list[PlanCatalogOut])
+@router.post("/subscription/request-plan-change", response_model=SubscriptionRequestOut)
+@limiter.limit("5/minute")
+async def request_plan_change(
+    request: Request,
+    body: PlanChangeRequestCreate,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+):
+    """Submit a plan upgrade or downgrade request for super admin approval."""
+    tenant_id = _get_tenant_id(user)
+
+    current_plan = SubscriptionPlan(body.plan)
+    action = "upgrade"
+
+    try:
+        from app.services.subscription_plans import plan_rank
+        current = SubscriptionPlan(
+            db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first().subscription_plan
+        )
+        if plan_rank(current) >= plan_rank(current_plan):
+            action = "downgrade"
+    except Exception:
+        pass
+
+    tenant = create_plan_change_request(
+        db=db,
+        tenant_id=tenant_id,
+        action=action,
+        requested_plan=body.plan,
+        reason=body.reason,
+        requested_billing_cycle=body.billing_cycle,
+        requested_effective_at_end=body.effective_at_end,
+        user_sub=user.sub,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    return SubscriptionRequestOut.model_validate(
+        {"tenant_id": tenant.tenant_id, "hospital_name": tenant.hospital_name, **get_pending_request(tenant)}
+    )
+
+
+@router.post("/subscription/request-cancellation", response_model=SubscriptionRequestOut)
+@limiter.limit("5/minute")
+async def request_cancellation(
+    request: Request,
+    body: CancellationRequestCreate,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+):
+    """Submit a cancellation request for super admin approval."""
+    tenant_id = _get_tenant_id(user)
+    tenant = create_cancellation_request(
+        db=db,
+        tenant_id=tenant_id,
+        reason=body.reason,
+        user_sub=user.sub,
+        ip_address=request.client.host if request.client else None,
+    )
+    db.commit()
+    return SubscriptionRequestOut.model_validate(
+        {"tenant_id": tenant.tenant_id, "hospital_name": tenant.hospital_name, **get_pending_request(tenant)}
+    )
+
+
+@router.get("/subscription/requests", response_model=list[SubscriptionRequestOut] | SubscriptionRequestOut | dict)
+@limiter.limit("30/minute")
+async def get_my_request_status(
+    request: Request,
+    all: bool = False,
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+):
+    """View the current tenant's pending request status or full request history."""
+    tenant_id = _get_tenant_id(user)
+    tenant = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    if all:
+        from app.services.subscription_request_service import list_subscription_requests
+        requests_data = list_subscription_requests(db, tenant_id=tenant_id, status=status)
+        return [SubscriptionRequestOut.model_validate(r) for r in requests_data]
+
+    pending = get_pending_request(tenant)
+    if not pending:
+        return {}
+    return SubscriptionRequestOut.model_validate(
+        {"tenant_id": tenant.tenant_id, "hospital_name": tenant.hospital_name, **pending}
+    )
+
+
+@router.get("/subscription/invoices/{invoice_id}/download")
+@limiter.limit("20/minute")
+async def download_invoice_pdf(
+    request: Request,
+    invoice_id: UUID,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+):
+    """Download a PDF version of an invoice."""
+    tenant_id = _get_tenant_id(user)
+    from app.models.saas import Invoice as InvoiceModel
+
+    invoice = db.query(InvoiceModel).filter(
+        InvoiceModel.invoice_id == invoice_id,
+        InvoiceModel.tenant_id == tenant_id,
+    ).first()
+    if not invoice:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+
+    from app.models.master import Tenant as TenantModel
+    tenant = db.query(TenantModel).filter(TenantModel.tenant_id == tenant_id).first()
+    hospital_name = tenant.hospital_name if tenant else tenant_id
+
+    from app.services.pdf_generator import generate_invoice_pdf
+
+    pdf_bytes = generate_invoice_pdf(
+        invoice_number=invoice.invoice_number or str(invoice.invoice_id),
+        hospital_name=hospital_name,
+        plan_name=invoice.plan_name,
+        amount=invoice.amount,
+        currency=invoice.currency,
+        due_date=invoice.due_date,
+        billing_period_start=invoice.billing_period_start,
+        billing_period_end=invoice.billing_period_end,
+        status=invoice.status,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="invoice_{invoice.invoice_number or invoice.invoice_id}.pdf"',
+            "Content-Type": "application/pdf",
+        },
+    )
+
+
+@router.get("/subscription/invoices/{invoice_id}/receipt")
+@limiter.limit("20/minute")
+async def download_receipt_pdf(
+    request: Request,
+    invoice_id: UUID,
+    db: Session = Depends(get_db),
+    user: TokenPayload = Depends(get_current_active_user),
+):
+    """Download a PDF receipt for a paid invoice."""
+    tenant_id = _get_tenant_id(user)
+    from app.models.saas import Invoice as InvoiceModel, SaaSPayment as SaaSPaymentModel
+
+    invoice = db.query(InvoiceModel).filter(
+        InvoiceModel.invoice_id == invoice_id,
+        InvoiceModel.tenant_id == tenant_id,
+    ).first()
+    if not invoice:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+
+    payment = db.query(SaaSPaymentModel).filter(
+        SaaSPaymentModel.invoice_id == invoice_id,
+    ).order_by(SaaSPaymentModel.paid_at.desc()).first()
+
+    from app.models.master import Tenant as TenantModel
+    tenant = db.query(TenantModel).filter(TenantModel.tenant_id == tenant_id).first()
+    hospital_name = tenant.hospital_name if tenant else tenant_id
+
+    from app.services.pdf_generator import generate_receipt_pdf
+
+    pdf_bytes = generate_receipt_pdf(
+        invoice_number=invoice.invoice_number or str(invoice.invoice_id),
+        hospital_name=hospital_name,
+        amount=payment.amount if payment else invoice.amount,
+        currency=invoice.currency,
+        payment_method=payment.payment_method if payment else "N/A",
+        reference_number=payment.reference_number if payment else None,
+        paid_at=payment.paid_at if payment else invoice.paid_at,
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="receipt_{invoice.invoice_number or invoice.invoice_id}.pdf"',
+            "Content-Type": "application/pdf",
+        },
+    )
+
+
+@router.get("/subscription/plans", response_model=list[PlanCatalogOut])
 @limiter.limit("60/minute")
 async def list_plans(
     request: Request,
+    db: Session = Depends(get_db),
     _: TokenPayload = Depends(get_current_active_user),
 ):
     """List available subscription plans."""
-    return [PlanCatalogOut.model_validate(plan_to_json(p)) for p in SubscriptionPlan]
+    from app.models.saas import SubscriptionPlan as SubscriptionPlanModel
+    from app.services.subscription_plans import PLAN_RANK, SubscriptionPlan
+    
+    plans = db.query(SubscriptionPlanModel).filter(SubscriptionPlanModel.is_active == True).order_by(SubscriptionPlanModel.monthly_price).all()
+    
+    result = []
+    for p in plans:
+        try:
+            enum_val = SubscriptionPlan(p.plan_name.lower())
+            rank = PLAN_RANK[enum_val]
+        except ValueError:
+            rank = 99
+            
+        result.append({
+            "plan": p.plan_name.lower(),
+            "plan_id": p.plan_id,
+            "display_name": p.plan_name.title(),
+            "monthly_price": int(p.monthly_price),
+            "annual_price": int(p.annual_price),
+            "trial_days": 14,
+            "max_users": p.max_users,
+            "storage_gb": p.storage_gb,
+            "features": sorted(p.modules_included or []),
+            "rank": rank,
+            "plan_name": p.plan_name.title(),
+            "modules_included": sorted(p.modules_included or []),
+            "uptime_sla_pct": float(p.uptime_sla_pct),
+            "backup_frequency_hours": p.backup_frequency_hours,
+        })
+    return result
 
 
-@router.get("/invoices", response_model=list[InvoiceOut])
+@router.get("/subscription/invoices", response_model=list[InvoiceOut])
 @limiter.limit("30/minute")
 async def list_my_invoices(
     request: Request,
@@ -287,6 +558,34 @@ async def get_my_tenant_stats(
 
     plan_details = get_plan(SubscriptionPlan(tenant.subscription_plan))
     now = datetime.now(timezone.utc)
+    from app.services.provision import get_tenant_db_session
+    from sqlalchemy import text
+
+    user_count = 0
+    active_user_count = 0
+    patient_count = 0
+    db_size_bytes = 0
+    try:
+        tenant_db = get_tenant_db_session(tenant_id)
+        result = tenant_db.execute(text("SELECT COUNT(*) FROM users"))
+        user_count = result.scalar() or 0
+        result = tenant_db.execute(text("SELECT COUNT(*) FROM users WHERE is_active = true"))
+        active_user_count = result.scalar() or 0
+        result = tenant_db.execute(text("SELECT COUNT(*) FROM patients"))
+        patient_count = result.scalar() or 0
+        
+        db_name = tenant_db.get_bind().url.database
+        result = tenant_db.execute(
+            text("SELECT pg_database_size(:db)"),
+            {"db": db_name},
+        )
+        db_size_bytes = result.scalar() or 0
+    except Exception:
+        pass
+    finally:
+        if 'tenant_db' in locals():
+            tenant_db.close()
+            
     invoice_count = (
         db.query(InvoiceModel)
         .filter(InvoiceModel.tenant_id == tenant_id)
@@ -311,6 +610,11 @@ async def get_my_tenant_stats(
         "invoice_count": invoice_count,
         "audit_event_count": audit_count,
         "pending_plan": tenant.pending_plan,
+        "user_count": user_count,
+        "active_user_count": active_user_count,
+        "patient_count": patient_count,
+        "db_size_bytes": db_size_bytes,
+        "db_size_mb": round(db_size_bytes / 1024 / 1024),
     }
 
 

@@ -19,6 +19,8 @@ class RefreshToken(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(Text, nullable=True)
 
 
 class PasswordResetToken(Base):

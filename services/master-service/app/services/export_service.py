@@ -34,7 +34,17 @@ def _table_to_dicts(engine, table_name: str) -> list[dict]:
         rows = conn.execute(text(f"SELECT * FROM {table_name}")).fetchall()
         result = []
         for row in rows:
-            result.append({col: _serialize_value(getattr(row, col)) for col in columns})
+            row_dict = {}
+            for col in columns:
+                try:
+                    val = getattr(row, col)
+                except AttributeError:
+                    try:
+                        val = row._mapping[col]
+                    except Exception:
+                        val = row[col]
+                row_dict[col] = _serialize_value(val)
+            result.append(row_dict)
         return result
 
 
@@ -48,29 +58,15 @@ async def export_tenant_data(db: Session, tenant_id: str) -> dict:
 
     engine = create_engine(dsn, pool_pre_ping=True)
 
-    tables = [
-        "patients",
-        "patient_insurance",
-        "patient_number_sequences",
-        "visits",
-        "queues",
-        "queue_number_sequences",
-        "visit_number_sequences",
-        "users",
-    ]
-
     data = {}
     with engine.connect() as conn:
         inspector = inspect(engine)
-        existing = set(inspector.get_table_names())
+        tables = inspector.get_table_names()
         for table in tables:
-            if table in existing:
-                try:
-                    data[table] = _table_to_dicts(engine, table)
-                except Exception as exc:
-                    logger.warning("Failed to export table %s: %s", table, exc)
-                    data[table] = []
-            else:
+            try:
+                data[table] = _table_to_dicts(engine, table)
+            except Exception as exc:
+                logger.warning("Failed to export table %s: %s", table, exc)
                 data[table] = []
 
     engine.dispose()

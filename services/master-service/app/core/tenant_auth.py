@@ -63,7 +63,7 @@ async def _decode_token(token: str) -> dict[str, Any]:
 
     kid = headers.get("kid", "")
 
-    if kid == "impersonation-key" or not kid:
+    if kid in ("impersonation-key", "superadmin-key"):
         try:
             payload = jwt.decode(
                 token, settings.secret_key, algorithms=["HS256"],

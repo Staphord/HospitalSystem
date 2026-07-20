@@ -35,7 +35,6 @@ async def lifespan(app: FastAPI):
     init_db()
 
     from app.db.master import get_master_db
-    from app.models.master import Tenant, GlobalAuditLog
     from app.db.base import Base
 
     master_db = get_master_db()
@@ -47,14 +46,31 @@ async def lifespan(app: FastAPI):
     logger.info("Admin service started")
 
     consumer_task = None
+    backup_stop = asyncio.Event()
+    backup_task = None
     try:
-        from app.events import subscriber as _sub
-        if hasattr(_sub, "start_subscriber"):
-            consumer_task = asyncio.create_task(_sub.start_subscriber())
+        from app.events.subscriber import start_subscriber
+
+        consumer_task = asyncio.create_task(start_subscriber())
     except Exception:
-        pass
+        logger.exception("Failed to start RabbitMQ subscriber")
+
+    try:
+        from app.services.backup import backup_scheduler_loop
+
+        backup_task = asyncio.create_task(backup_scheduler_loop(backup_stop))
+    except Exception:
+        logger.exception("Failed to start backup scheduler")
 
     yield
+
+    backup_stop.set()
+    if backup_task:
+        backup_task.cancel()
+        try:
+            await backup_task
+        except asyncio.CancelledError:
+            pass
 
     if consumer_task:
         consumer_task.cancel()
@@ -74,6 +90,16 @@ app = FastAPI(
     docs_url=docs_url,
     openapi_url=openapi_url,
     lifespan=lifespan,
+    openapi_tags=[
+        {
+            "name": "Wards & Beds",
+            "description": (
+                "Create and manage beds by ward_name. There is no separate wards table — "
+                "POST /admin/beds with a ward_name defines the ward. "
+                "Clinical assign/release lives on ward-service."
+            ),
+        },
+    ],
 )
 
 app.state.limiter = limiter

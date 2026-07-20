@@ -28,6 +28,10 @@ class Settings(BaseSettings):
 
     audit_db_url: str | None = Field(default=None, alias="AUDIT_DATABASE_URL")
 
+    backup_root: str = Field(default="/var/backups/hospital", alias="BACKUP_ROOT")
+    backup_retention_days: int = Field(default=30, alias="BACKUP_RETENTION_DAYS")
+    backup_check_interval: int = Field(default=21600, alias="BACKUP_CHECK_INTERVAL")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

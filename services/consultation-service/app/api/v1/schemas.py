@@ -10,6 +10,23 @@ class DiagnosisCreate(BaseModel):
     description: str = Field(..., description="Diagnosis text description")
     sequence_order: Optional[int] = Field(None, description="Required when diagnosis_type = 'differential'")
 
+
+class DispositionRequest(BaseModel):
+    disposition: str = Field(..., description="outpatient | admission | referral | deceased")
+    notes: Optional[str] = None
+
+
+class DispositionResponse(BaseModel):
+    id: uuid.UUID
+    visit_id: uuid.UUID
+    patient_id: uuid.UUID
+    disposition: Optional[str]
+    disposition_notes: Optional[str]
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class DiagnosisResponse(BaseModel):
     id: uuid.UUID
     consultation_id: uuid.UUID

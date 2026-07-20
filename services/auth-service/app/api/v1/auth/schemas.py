@@ -154,3 +154,15 @@ class MFALoginVerifyRequest(BaseModel):
 class MFAEmailSendLoginRequest(BaseModel):
     challenge_token: str = Field(..., min_length=1)
 
+
+class FirstLoginChangePasswordRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=255)
+    temp_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        return validate_password(value)
+
+

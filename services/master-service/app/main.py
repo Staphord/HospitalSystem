@@ -260,6 +260,15 @@ app.add_middleware(AuditLogMiddleware)
 app.add_middleware(BodySizeLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
+from fastapi.staticfiles import StaticFiles
+import os
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(static_dir, exist_ok=True)
+os.makedirs(os.path.join(static_dir, "logos"), exist_ok=True)
+
+app.mount("/api/v1/superadmin/static", StaticFiles(directory=static_dir), name="static")
+
 app.include_router(api_v1_router, prefix="/api/v1")
 
 
