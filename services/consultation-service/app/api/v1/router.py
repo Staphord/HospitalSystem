@@ -180,11 +180,38 @@ async def get_doctor_queue(
         wait_time = int((end_time_naive - q_created_naive).total_seconds() / 60)
         
         # Calculate pending and completed investigations
-        inv_stmt = select(InvestigationRequest).where(InvestigationRequest.visit_id == q.visit_id)
+        inv_stmt = select(InvestigationRequest).where(
+            InvestigationRequest.visit_id == q.visit_id,
+            InvestigationRequest.status != "cancelled"
+        )
         inv_res = await db.execute(inv_stmt)
         invs = inv_res.scalars().all()
-        pending_count = len([i for i in invs if i.status not in ("completed", "cancelled", "acknowledged")])
-        completed_count = len([i for i in invs if i.status == "completed"])
+
+        pending_count = 0
+        completed_count = 0
+
+        for i in invs:
+            if i.status in ("completed", "acknowledged"):
+                completed_count += 1
+            else:
+                has_result = False
+                if i.request_type in ("laboratory", "lab"):
+                    lab_check = select(LabResult.result_id).where(LabResult.request_id == i.id)
+                    has_result = (await db.execute(lab_check)).scalar_one_or_none() is not None
+                elif i.request_type == "radiology":
+                    rad_check = select(RadiologyReport.report_id).where(RadiologyReport.request_id == i.id)
+                    has_result = (await db.execute(rad_check)).scalar_one_or_none() is not None
+
+                if has_result:
+                    completed_count += 1
+                else:
+                    pending_count += 1
+
+        eff_visit_status = v.status
+        if invs and pending_count == 0 and completed_count > 0:
+            eff_visit_status = "results_ready"
+        elif invs and pending_count > 0:
+            eff_visit_status = "awaiting_results"
 
         queue_list.append(QueueItemResponse(
             queue_id=q.queue_id,
@@ -200,10 +227,11 @@ async def get_doctor_queue(
             chief_complaint=t.chief_complaint if t else None,
             wait_time_minutes=max(0, wait_time),
             queue_status=q.status,
-            visit_status=v.status,
+            visit_status=eff_visit_status,
             pending_investigations_count=pending_count,
             completed_investigations_count=completed_count
         ))
+
     return queue_list
 
 
