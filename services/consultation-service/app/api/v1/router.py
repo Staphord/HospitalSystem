@@ -1498,7 +1498,8 @@ async def get_consultation_summary(
             route=p.route,
             instructions=p.instructions,
             prescribed_by=p.prescribed_by,
-            status=p.status
+            status=p.status,
+            prescribed_at=getattr(p, 'prescribed_at', None) or getattr(p, 'created_at', None)
         ) for p in prescriptions
     ]
 
@@ -1663,7 +1664,8 @@ async def get_patient_encounter_view(
                 route=p.route,
                 instructions=p.instructions,
                 prescribed_by=p.prescribed_by,
-                status=p.status
+                status=p.status,
+                prescribed_at=getattr(p, 'prescribed_at', None) or getattr(p, 'created_at', None)
             ) for p in prescriptions
         ]
 
@@ -1774,7 +1776,8 @@ async def get_patient_history(
                     route=p.route,
                     instructions=p.instructions,
                     prescribed_by=p.prescribed_by,
-                    status=p.status
+                    status=p.status,
+                    prescribed_at=getattr(p, 'prescribed_at', None) or getattr(p, 'created_at', None)
                 ) for p in prescriptions
             ]
 
