@@ -746,7 +746,7 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         comp_dt = lr.resulted_at if (lr and lr.resulted_at) else req.created_at
         if comp_dt and comp_dt.tzinfo is None:
             comp_dt = comp_dt.replace(tzinfo=timezone.utc)
-        comp_time_str = comp_dt.strftime("%I:%M %p") if comp_dt else "—"
+        comp_time_str = comp_dt.strftime("%d %b, %I:%M %p") if comp_dt else "—"
 
         completed_today_list.append({
             "id": req.id,
