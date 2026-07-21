@@ -3,7 +3,7 @@ from datetime import datetime, timezone, date
 from uuid import UUID
 from typing import Optional, Any
 
-from sqlalchemy import select, case, and_, func
+from sqlalchemy import select, case, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import (
@@ -36,15 +36,45 @@ def _user_identifier(user: TokenPayload) -> str:
 async def _resolve_user_name(db: AsyncSession, identifier: Optional[str]) -> Optional[str]:
     if not identifier:
         return None
-    # Try querying users table by keycloak_sub or username
-    stmt = select(User).where(
-        (User.keycloak_sub == identifier) | (User.username == identifier)
-    )
+
+    str_id = str(identifier).strip()
+    if not str_id:
+        return None
+
+    uuid_obj = None
+    try:
+        if isinstance(identifier, UUID):
+            uuid_obj = identifier
+        else:
+            uuid_obj = UUID(str_id)
+    except Exception:
+        pass
+
+    conds = [
+        User.keycloak_sub == str_id,
+        User.username == str_id,
+        User.email == str_id,
+    ]
+    if uuid_obj:
+        conds.append(User.id == uuid_obj)
+
+    stmt = select(User).where(or_(*conds))
     res = await db.execute(stmt)
-    u = res.scalar_one_or_none()
-    if u and u.full_name:
-        return u.full_name
-    return identifier
+    u = res.scalars().first()
+
+    if u:
+        if u.full_name and u.full_name.strip():
+            return u.full_name.strip()
+        if getattr(u, "first_name", None) or getattr(u, "last_name", None):
+            full = f"{getattr(u, 'first_name', '') or ''} {getattr(u, 'last_name', '') or ''}".strip()
+            if full:
+                return full
+    # If identifier is a 36-char UUID string that wasn't found in users DB
+    if uuid_obj or len(str_id) == 36:
+        return "Doctor"
+
+    return str_id
+
 
 
 # ── Group 1: Request Queue ───────────────────────────────────────────────────
@@ -86,7 +116,7 @@ async def get_lab_requests(
 
     requests_list = []
     for req, pat, u in rows:
-        requested_by_name = u.full_name if u else (req.requested_by or req.created_by)
+        requested_by_name = (u.full_name if u and u.full_name else await _resolve_user_name(db, req.requested_by or req.created_by)) or (req.requested_by or req.created_by or "—")
         requests_list.append({
             "request_id": req.id,
             "visit_id": req.visit_id,
@@ -696,11 +726,12 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         elapsed_mins = int((now_utc - req_at).total_seconds() / 60.0) if req_at else 0
         ago_str = f"{elapsed_mins} mins ago" if elapsed_mins < 60 else f"{elapsed_mins // 60} hrs ago"
 
+        doc_name = await _resolve_user_name(db, req.requested_by or req.created_by) or (req.requested_by or req.created_by or "—")
         high_priority_requests.append({
             "id": req.id,
             "patientName": pat_name,
             "testName": req.test_name,
-            "requestedBy": req.requested_by or "Attending Physician",
+            "requestedBy": doc_name,
             "requestedAgo": ago_str,
             "priority": req.urgency or "stat",
         })
