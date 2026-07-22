@@ -52,6 +52,7 @@ class PrescriptionItem(BaseModel):
     duration: str
     route: str
     instructions: Optional[str] = None
+    quantity_prescribed: Optional[int] = None
     prescribed_by: str
     prescribed_at: datetime
     status: PrescriptionStatus
@@ -261,7 +262,9 @@ class LowStockAlertsResponse(BaseModel):
 # ── Labels ─────────────────────────────────────────────────────────────────────
 
 class LabelGenerateRequest(BaseModel):
-    dispensing_id: UUID
+    dispensing_id: Optional[UUID] = None
+    prescription_item_id: Optional[UUID] = None
+    quantity: Optional[int] = None
 
 
 class LabelPayload(BaseModel):

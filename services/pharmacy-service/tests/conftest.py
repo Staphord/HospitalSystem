@@ -1,4 +1,6 @@
 import asyncio
+from datetime import date, datetime, timezone
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +11,7 @@ from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.db.base import Base
 from app.dependencies import get_tenant_db
 from app.main import app
-from app.models.pharmacy import DrugInventory
+from app.models.pharmacy import DrugInventory, Patient, Visit, Queue, Prescription, PrescriptionItem
 from app.services.inventory import (
     SEED_INVENTORY_AMOXICILLIN_ID,
     SEED_INVENTORY_METRONIDAZOLE_ID,
@@ -79,6 +81,54 @@ def test_engine():
                         unit_price=55.00,
                         location="Shelf C-1",
                         is_active=True,
+                    ),
+                    Patient(
+                        id=UUID("c3000003-0003-4003-8003-000000000003"),
+                        hospital_id="default-hospital",
+                        patient_number="PT-4891",
+                        full_name="Jane Mwita",
+                        date_of_birth=date(1985, 4, 12),
+                        gender="Female",
+                        allergies="Penicillin",
+                    ),
+                    Visit(
+                        visit_id=UUID("b2000002-0002-4002-8002-000000000002"),
+                        patient_id=UUID("c3000003-0003-4003-8003-000000000003"),
+                        visit_number="V-20260315-042",
+                        visit_date=date.today(),
+                        visit_type="outpatient",
+                        payment_type="cash",
+                        status="in_pharmacy",
+                        billing_cleared=True,
+                    ),
+                    Queue(
+                        queue_id=UUID("a1000001-0001-4001-8001-000000000001"),
+                        visit_id=UUID("b2000002-0002-4002-8002-000000000002"),
+                        patient_id="c3000003-0003-4003-8003-000000000003",
+                        queue_type="pharmacy",
+                        queue_number="PH-007",
+                        priority="urgent",
+                        status="waiting",
+                        created_at=datetime.now(timezone.utc),
+                    ),
+                    Prescription(
+                        prescription_id=UUID("e2000002-0002-4002-8002-000000000002"),
+                        visit_id=UUID("b2000002-0002-4002-8002-000000000002"),
+                        patient_id=UUID("c3000003-0003-4003-8003-000000000003"),
+                        prescribed_by="Dr. Nguyen",
+                        prescribed_at=datetime.now(timezone.utc),
+                        status="pending",
+                    ),
+                    PrescriptionItem(
+                        prescription_item_id=UUID("d4000004-0004-4004-8004-000000000004"),
+                        prescription_id=UUID("e2000002-0002-4002-8002-000000000002"),
+                        drug_name="Amoxicillin",
+                        dose="500mg",
+                        frequency="Three times daily",
+                        duration="7 days",
+                        instructions="Take after meals",
+                        quantity_prescribed=21,
+                        status="pending",
                     ),
                 ]
             )

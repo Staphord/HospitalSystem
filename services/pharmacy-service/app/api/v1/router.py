@@ -45,16 +45,18 @@ router = APIRouter(
 async def get_pharmacy_queue(
     status: Literal["waiting", "in_progress", "completed"] = Query("waiting"),
     queue_date: date = Query(default_factory=date.today, alias="date"),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> PharmacyQueueResponse:
-    return pharmacy_service.get_pharmacy_queue(queue_date, status)
+    return await pharmacy_service.get_pharmacy_queue(db, queue_date, status)
 
 
 @router.patch("/queue/{queue_id}/call", response_model=PharmacyQueueItem, tags=["Queue"])
 async def call_queue_patient(
     queue_id: UUID,
     user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> PharmacyQueueItem:
-    return pharmacy_service.call_queue_patient(queue_id, user)
+    return await pharmacy_service.call_queue_patient(db, queue_id, user)
 
 
 # ── Prescriptions ──────────────────────────────────────────────────────────────
@@ -62,8 +64,9 @@ async def call_queue_patient(
 @router.get("/prescriptions/{visit_id}", response_model=VisitPrescriptionsResponse, tags=["Prescriptions"])
 async def get_visit_prescriptions(
     visit_id: UUID,
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> VisitPrescriptionsResponse:
-    return pharmacy_service.get_visit_prescriptions(visit_id)
+    return await pharmacy_service.get_visit_prescriptions(db, visit_id)
 
 
 @router.get(
@@ -73,8 +76,9 @@ async def get_visit_prescriptions(
 )
 async def check_drug_interactions(
     visit_id: UUID,
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> InteractionCheckResponse:
-    return pharmacy_service.check_drug_interactions(visit_id)
+    return await pharmacy_service.check_drug_interactions(db, visit_id)
 
 
 # ── Dispensing ─────────────────────────────────────────────────────────────────
@@ -83,15 +87,17 @@ async def check_drug_interactions(
 async def dispense_prescription(
     body: DispenseRequest,
     user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> DispenseResponse:
-    return pharmacy_service.dispense_prescription(body, user)
+    return await pharmacy_service.dispense_prescription(db, body, user)
 
 
 @router.get("/dispense/{visit_id}/summary", response_model=DispenseSummaryResponse, tags=["Dispensing"])
 async def get_dispense_summary(
     visit_id: UUID,
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> DispenseSummaryResponse:
-    return pharmacy_service.get_dispense_summary(visit_id)
+    return await pharmacy_service.get_dispense_summary(db, visit_id)
 
 
 # ── Inventory (static paths before /{inventory_id}) ────────────────────────────
@@ -147,16 +153,18 @@ async def get_inventory_detail(
 async def generate_label(
     body: LabelGenerateRequest,
     user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> LabelGenerateResponse:
-    return pharmacy_service.generate_label(body, user)
+    return await pharmacy_service.generate_label(db, body, user)
 
 
 # ── Notifications ──────────────────────────────────────────────────────────────
 
 @router.get("/notifications", response_model=PharmacyNotificationsResponse, tags=["Notifications"])
 async def list_notifications(
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> PharmacyNotificationsResponse:
-    return pharmacy_service.list_notifications()
+    return await pharmacy_service.list_notifications(db)
 
 
 @router.patch(
@@ -166,5 +174,6 @@ async def list_notifications(
 )
 async def mark_notification_read(
     notification_id: UUID,
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> MarkNotificationReadResponse:
-    return pharmacy_service.mark_notification_read(notification_id)
+    return await pharmacy_service.mark_notification_read(db, notification_id)

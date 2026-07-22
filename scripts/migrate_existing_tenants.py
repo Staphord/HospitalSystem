@@ -60,8 +60,23 @@ def _get_tenant_ids() -> list[str]:
     engine = create_engine(_master_db_url(), pool_pre_ping=True)
     try:
         with engine.connect() as conn:
-            rows = conn.execute(text("SELECT tenant_id FROM tenants ORDER BY tenant_id"))
+            rows = conn.execute(text("SELECT tenant_id FROM tenants WHERE is_active IS TRUE ORDER BY tenant_id"))
             return [row[0] for row in rows]
+    finally:
+        engine.dispose()
+
+
+def _get_existing_databases() -> set[str]:
+    # Connect to default postgres DB to query pg_database catalog
+    admin_url = os.environ.get(
+        "DB_ADMIN_URL",
+        "postgresql://postgres:nasr@localhost:5432/postgres",
+    )
+    engine = create_engine(admin_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("SELECT datname FROM pg_database"))
+            return {row[0] for row in rows}
     finally:
         engine.dispose()
 
@@ -95,11 +110,23 @@ def _migrate_tenant(tenant_id: str) -> None:
 
 def main() -> None:
     tenant_ids = _get_tenant_ids()
-    print(f"Found {len(tenant_ids)} tenant(s) to migrate")
     if not tenant_ids:
         return
+
     print(f"Using alembic.ini: {_alembic_ini()}")
-    for tenant_id in tenant_ids:
+    existing_dbs = _get_existing_databases()
+    print(f"Found {len(tenant_ids)} tenant(s) in master database")
+
+    to_migrate = []
+    for t_id in tenant_ids:
+        db_name = f"tenant_{t_id}"
+        if db_name in existing_dbs:
+            to_migrate.append(t_id)
+        else:
+            print(f"Skipping {t_id} (database {db_name} does not exist)")
+
+    print(f"Migrating {len(to_migrate)} tenant database(s)...")
+    for tenant_id in to_migrate:
         _migrate_tenant(tenant_id)
 
 

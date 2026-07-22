@@ -214,3 +214,52 @@ def test_list_subscription_requests_with_history(db):
     assert approved_reqs[0]["pending_action"] == "upgrade"
     assert approved_reqs[0]["review_notes"] == "First request approved"
 
+
+def test_create_same_plan_billing_cycle_upgrade_request(db):
+    tenant = _make_tenant(db, subscription_plan="basic", subscription_billing_cycle="monthly")
+    create_plan_change_request(
+        db,
+        tenant_id=tenant.tenant_id,
+        action="upgrade",
+        requested_plan="basic",
+        requested_billing_cycle="annual",
+        reason="Upgrading to annual",
+    )
+    db.commit()
+
+    assert tenant.pending_action == "upgrade"
+    assert tenant.requested_plan == "basic"
+    assert tenant.subscription_metadata.get("requested_billing_cycle") == "annual"
+
+
+def test_create_same_plan_billing_cycle_downgrade_request(db):
+    tenant = _make_tenant(db, subscription_plan="basic", subscription_billing_cycle="annual")
+    create_plan_change_request(
+        db,
+        tenant_id=tenant.tenant_id,
+        action="downgrade",
+        requested_plan="basic",
+        requested_billing_cycle="monthly",
+        reason="Downgrading to monthly",
+    )
+    db.commit()
+
+    assert tenant.pending_action == "downgrade"
+    assert tenant.requested_plan == "basic"
+    assert tenant.subscription_metadata.get("requested_billing_cycle") == "monthly"
+
+
+def test_create_identical_plan_change_request_fails(db):
+    tenant = _make_tenant(db, subscription_plan="basic", subscription_billing_cycle="monthly")
+    with pytest.raises(Exception) as exc_info:
+        create_plan_change_request(
+            db,
+            tenant_id=tenant.tenant_id,
+            action="upgrade",
+            requested_plan="basic",
+            requested_billing_cycle="monthly",
+            reason="Same plan and cycle",
+        )
+    assert "identical" in str(exc_info.value.detail).lower()
+
+
