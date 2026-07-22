@@ -56,17 +56,18 @@ openapi_url = None if settings.environment == "prod" else "/openapi.json"
 
 app = FastAPI(
     title="Laboratory Service",
-    description="Laboratory service for the hospital management system",
+    description="Laboratory service for the hospital management system (SRS v1.0 / FR-22 to FR-27)",
     version="1.0.0",
     docs_url=docs_url,
     openapi_url=openapi_url,
     lifespan=lifespan,
     openapi_tags=[
-        {"name": "Queue", "description": "Laboratory patient worklist, patient calling, and queue management"},
-        {"name": "Requests", "description": "Detailed clinical investigation requests dossiers"},
-        {"name": "Specimens", "description": "Specimen collection, receipt verification, and rejection handling"},
-        {"name": "Results", "description": "Laboratory result entry, drafting, modification, and verification sign-offs"},
-        {"name": "History", "description": "Historical diagnostic test results lookup per patient"},
+        {"name": "Request Queue", "description": "View incoming laboratory investigation requests queue and single request dossiers"},
+        {"name": "Specimen Tracking", "description": "Specimen collection, physical tracking (received/processing), rejection handling, and specimen audit log"},
+        {"name": "Results Entry", "description": "Drafting, entering, amending, and reading laboratory test results"},
+        {"name": "Result Verification", "description": "Verifying and locking lab results, completing investigation requests and active specimens"},
+        {"name": "Billing", "description": "Generating laboratory fee line items on open visit bills"},
+        {"name": "Doctor View", "description": "Doctor-facing endpoint to read verified laboratory results in encounter view"},
     ],
 )
 

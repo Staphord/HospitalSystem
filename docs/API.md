@@ -362,13 +362,27 @@ Authorization: Bearer <token>
 ## Hospital Admin Endpoints
 
 All endpoints require `hospital_admin` role and operate within the user's tenant.
+Tenant ID is always taken from the JWT — never from the request body.
 
-### User Management
+### User Management (FR-53)
 
 #### List Users
 ```http
-GET /api/v1/admin/users
+GET /api/v1/admin/users?role=&is_active=&department_id=&q=&limit=50&offset=0&sort=username
 Authorization: Bearer <token>
+```
+Response: array of users. Total count in `X-Total-Count` header.
+
+Assignable SRS roles include: `hospital_admin`, `receptionist`, `triage_nurse`, `nurse`, `clinician`, `doctor`, `lab_technician`, `radiographer`, `pharmacist`, `cashier`, `patient`, `hospital_user`.
+
+#### Assignable Roles
+```http
+GET /api/v1/admin/users/assignable-roles
+```
+
+#### Get User
+```http
+GET /api/v1/admin/users/{keycloak_sub}
 ```
 
 #### Create User
@@ -382,32 +396,146 @@ Authorization: Bearer <token>
   "password": "string",
   "email": "user@example.com",
   "full_name": "string",
-  "role": "hospital_user"
+  "role": "receptionist",
+  "department_id": "uuid-optional",
+  "phone": "string-optional"
 }
 ```
+New users are created with `force_password_change=true` and a 90-day password expiry.
 
 #### Update User
 ```http
 PATCH /api/v1/admin/users/{keycloak_sub}
-Content-Type: application/json
-Authorization: Bearer <token>
-
-{
-  "username": "string",
-  "email": "user@example.com",
-  "full_name": "string",
-  "role": "nurse",
-  "password": "string",
-  "is_active": true,
-  "force_password_change": false
-}
 ```
+Role changes **replace** Keycloak realm roles (old roles removed). Deactivating a user revokes Keycloak sessions. Cannot demote/deactivate/delete the last active `hospital_admin`. Cannot assign `super_admin`.
 
 #### Delete User
 ```http
-DELETE /api/v1/admin/users/{keycloak_sub}
-Authorization: Bearer <token>
+DELETE /api/v1/admin/users/{keycloak_sub}?hard=false
 ```
+Default is soft-delete (`is_active=false`, `deleted_at` set). `hard=true` removes Keycloak + local row. Self-delete is blocked.
+
+### Permissions (FR-54)
+
+```http
+GET /api/v1/admin/permissions
+PUT /api/v1/admin/permissions/{role_name}
+```
+Body for PUT: `{ "modules": ["reception"], "actions": ["create","read"] }`.
+System Keycloak roles cannot be deleted/renamed. Tenant roles sync into Keycloak on create.
+
+### Audit Trail (FR-56)
+
+```http
+GET /api/v1/admin/audit-logs?user_id=&action=&table_name=&from=&to=&limit=50&offset=0
+GET /api/v1/admin/audit-logs/{log_id}
+GET /api/v1/admin/audit-logs/export?format=csv|json
+```
+Writes go to the **tenant** `audit_logs` table (not Master DB).
+
+### System Configuration (FR-55)
+
+```http
+GET|PATCH /api/v1/admin/hospital-profile
+GET|POST /api/v1/admin/departments
+PATCH|DELETE /api/v1/admin/departments/{department_id}
+GET|POST /api/v1/admin/fee-schedules
+PATCH|DELETE /api/v1/admin/fee-schedules/{fee_id}
+GET|POST /api/v1/admin/insurance-providers
+PATCH|DELETE /api/v1/admin/insurance-providers/{provider_id}
+GET /api/v1/admin/beds
+GET /api/v1/admin/beds/summary
+POST|PATCH|DELETE /api/v1/admin/beds[/{bed_id}]
+```
+
+### Reports (FR-57)
+
+```http
+GET /api/v1/admin/reports/patient-census?from=&to=
+GET /api/v1/admin/reports/wait-times?from=&to=
+GET /api/v1/admin/reports/discharges?from=&to=
+GET /api/v1/admin/reports/bed-occupancy
+GET /api/v1/admin/reports/dashboard
+GET /api/v1/admin/reports/revenue-summary   # returns 501 until billing tables exist
+```
+
+### Backups (FR-58)
+
+```http
+POST /api/v1/admin/backups
+GET /api/v1/admin/backups
+GET /api/v1/admin/backups/status
+GET /api/v1/admin/backups/{backup_id}/download
+```
+Uses `pg_dump` into `BACKUP_ROOT/{tenant_id}/`. Hospital admin cannot restore (ops/superadmin). Apply tenant migration `0014_admin_module_tables` (and later heads) via `python scripts/migrate_all_tenants.py` or Docker:
+
+```text
+docker cp scripts/migrate_existing_tenants.py hospital-master-service:/tmp/migrate_existing_tenants.py
+docker exec -w /app hospital-master-service python /tmp/migrate_existing_tenants.py
+```
+
+Or recreate master-service so `/app/scripts` is mounted, then:
+
+```text
+docker compose -f infrastructure/docker-compose.yml up -d master-service
+docker exec -w /app hospital-master-service python /app/scripts/migrate_existing_tenants.py
+```
+
+## Ward / Inpatient (FR-47–FR-52)
+
+Prefix: `/api/v1/ward`. Roles: doctors/clinicians admit & discharge; nurses write notes and manage bed assignment; hospital_admin read-all.
+
+### Beds (FR-47)
+
+```http
+GET  /api/v1/ward/beds?ward_name=&bed_type=&is_available=&is_active=true
+GET  /api/v1/ward/beds/board
+POST /api/v1/ward/beds/{bed_id}/assign   # body: { "admission_id": "..." } optional
+POST /api/v1/ward/beds/{bed_id}/release
+```
+
+Bed **catalog** CRUD remains under `/api/v1/admin/beds` (FR-55). Ward only assigns/releases availability.
+
+### Admissions (FR-48 / FR-51 / FR-52)
+
+```http
+POST /api/v1/ward/admissions
+GET  /api/v1/ward/admissions?status=&patient_id=&ward_name=
+GET  /api/v1/ward/admissions/{admission_id}
+GET  /api/v1/ward/admissions/{admission_id}/los
+POST /api/v1/ward/admissions/{admission_id}/discharge
+```
+
+Create body: `{ "visit_id", "bed_id", "admitting_diagnosis" }`.  
+If a consultation exists for the visit, its `disposition` must be `admission`.  
+Discharge publishes `patient.discharged` (includes `length_of_stay_days`, `visit_id`); billing-service adds an idempotent `WARD_DAY` bill line.
+
+### Orders & nursing notes (FR-49 / FR-50)
+
+```http
+POST  /api/v1/ward/admissions/{id}/orders
+GET   /api/v1/ward/admissions/{id}/orders
+PATCH /api/v1/ward/admissions/{id}/orders/{order_id}
+POST  /api/v1/ward/admissions/{id}/nursing-notes
+GET   /api/v1/ward/admissions/{id}/nursing-notes
+```
+
+Order types: `medication|nursing|diet|investigation|procedure|other`.  
+Note types: `observation|intervention|progress|medication_given|ward_round`.
+
+### Consultation disposition (FR-18 / FR-21)
+
+```http
+POST /api/v1/consultation/encounters/{consultation_id}/diagnoses
+  # diagnosis_type: provisional | differential | final
+
+POST /api/v1/consultation/encounters/{consultation_id}/disposition
+  # { "disposition": "outpatient|admission|referral|deceased", "notes": "..." }
+```
+
+`admission` and `outpatient` require a `final` diagnosis first.
+
+Tenant migration: `0016_ward_module_tables` (admissions, inpatient_orders, nursing_notes, bills, bill_items, consultation disposition columns, visit status enum values).
 
 ## Tenant Self-Service
 

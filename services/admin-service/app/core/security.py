@@ -32,15 +32,28 @@ def _issuer(realm: str | None = None) -> str:
 
 
 def _extract_realm_from_iss(token: str) -> str | None:
-    """Extract realm name from the unverified token's iss claim."""
+    """Extract realm from iss even when Keycloak host differs from KEYCLOAK_URL.
+
+    Tokens often have iss like http://keycloak:8080/realms/{realm} while services
+    call Keycloak via http://host.docker.internal:8080 — host prefix must not block
+    realm extraction.
+    """
     try:
         claims = jwt.get_unverified_claims(token)
-        iss = claims.get("iss", "")
-        if iss.startswith(settings.keycloak_url + "/realms/"):
-            return iss.split("/realms/", 1)[1]
+        iss = claims.get("iss", "") or ""
+        marker = "/realms/"
+        if marker not in iss:
+            return None
+        return iss.split(marker, 1)[1].split("/", 1)[0] or None
     except Exception:
-        pass
-    return None
+        return None
+
+
+def _token_iss(token: str) -> str | None:
+    try:
+        return jwt.get_unverified_claims(token).get("iss")
+    except Exception:
+        return None
 
 
 async def _fetch_jwks(realm: str | None = None) -> Dict[str, Any]:
@@ -49,8 +62,13 @@ async def _fetch_jwks(realm: str | None = None) -> Dict[str, Any]:
         return _jwks_cache[cache_key]
 
     url = f"{_issuer(realm)}/protocol/openid-connect/certs"
+    # Keycloak hostname-strict setups return 404 when Host is host.docker.internal
+    headers: Dict[str, str] = {}
+    if "host.docker.internal" in (settings.keycloak_url or ""):
+        headers["Host"] = "localhost"
+
     async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(url)
+        response = await client.get(url, headers=headers)
         response.raise_for_status()
         jwks = response.json()
         _jwks_cache[cache_key] = jwks
@@ -105,7 +123,15 @@ async def _decode_token(token: str) -> Dict[str, Any]:
 
     # Multi-realm: derive realm from the token's issuer claim
     token_realm = _extract_realm_from_iss(token)
-    jwks = await _fetch_jwks(token_realm)
+    token_issuer = _token_iss(token)
+    try:
+        jwks = await _fetch_jwks(token_realm)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Unable to validate token against Keycloak realm '{token_realm or settings.keycloak_realm}'",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
     rsa_key = _build_rsa_key(jwks, kid)
 
     try:
@@ -113,7 +139,8 @@ async def _decode_token(token: str) -> Dict[str, Any]:
             token,
             rsa_key,
             algorithms=["RS256"],
-            issuer=_issuer(token_realm),
+            # Prefer token iss (may be http://keycloak:8080/...) over KEYCLOAK_URL host
+            issuer=token_issuer or _issuer(token_realm),
             options={"verify_exp": True, "verify_aud": False},
         )
         return payload

@@ -1,7 +1,19 @@
 """Run tenant Alembic migrations on all existing tenant databases.
 
-Usage:
-    docker compose -p hospital_flow -f infrastructure/docker-compose.yml run --rm master-service python /app/scripts/migrate_existing_tenants.py
+Usage (from repo root):
+
+    # After compose remounts scripts (one-time recreate):
+    docker compose -f infrastructure/docker-compose.yml up -d master-service
+    docker exec -w /app hospital-master-service python /app/scripts/migrate_existing_tenants.py
+
+    # Without recreating: copy then run
+    docker cp scripts/migrate_existing_tenants.py hospital-master-service:/tmp/migrate_existing_tenants.py
+    docker exec -w /app hospital-master-service python /tmp/migrate_existing_tenants.py
+
+    # Single tenant:
+    docker exec -e TENANT_DB_URL=postgresql://postgres:12345678@postgres-master:5432/tenant_hosp-XXXX \\
+      -w /app hospital-master-service \\
+      alembic -c /app/migrations/tenant/alembic.ini upgrade heads
 """
 
 from __future__ import annotations
@@ -9,8 +21,24 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
+
+_ALEMBIC_CANDIDATES = (
+    Path("/app/migrations/tenant/alembic.ini"),
+    Path("migrations/tenant/alembic.ini"),
+)
+
+
+def _alembic_ini() -> str:
+    for path in _ALEMBIC_CANDIDATES:
+        if path.is_file():
+            return str(path)
+    raise FileNotFoundError(
+        "Could not find migrations/tenant/alembic.ini "
+        "(expected /app/migrations/tenant/alembic.ini inside master-service)"
+    )
 
 
 def _master_db_url() -> str:
@@ -62,17 +90,18 @@ def _migrate_tenant(tenant_id: str) -> None:
             "-m",
             "alembic",
             "-c",
-            "migrations/tenant/alembic.ini",
+            _alembic_ini(),
             "upgrade",
-            "head",
+            "heads",
         ],
         env=env,
         capture_output=True,
         text=True,
         check=False,
+        cwd="/app" if Path("/app/migrations").is_dir() else None,
     )
     if result.returncode != 0:
-        print(f"[FAIL] {tenant_id}: {result.stderr.strip()}")
+        print(f"[FAIL] {tenant_id}: {result.stderr.strip() or result.stdout.strip()}")
     else:
         print(f"[OK] {tenant_id}")
         if result.stdout:
@@ -81,9 +110,13 @@ def _migrate_tenant(tenant_id: str) -> None:
 
 def main() -> None:
     tenant_ids = _get_tenant_ids()
+    if not tenant_ids:
+        return
+
+    print(f"Using alembic.ini: {_alembic_ini()}")
     existing_dbs = _get_existing_databases()
     print(f"Found {len(tenant_ids)} tenant(s) in master database")
-    
+
     to_migrate = []
     for t_id in tenant_ids:
         db_name = f"tenant_{t_id}"
@@ -91,7 +124,7 @@ def main() -> None:
             to_migrate.append(t_id)
         else:
             print(f"Skipping {t_id} (database {db_name} does not exist)")
-            
+
     print(f"Migrating {len(to_migrate)} tenant database(s)...")
     for tenant_id in to_migrate:
         _migrate_tenant(tenant_id)

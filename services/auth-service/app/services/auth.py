@@ -61,6 +61,8 @@ async def login(username: str, password: str, db: Session, realm: str | None = N
         session_id=session_state,
         refresh_token=token_data["refresh_token"],
         expires_in=token_data.get("refresh_expires_in", 1800),
+        ip_address=ip_address,
+        user_agent=user_agent,
     )
 
     return {
@@ -70,6 +72,7 @@ async def login(username: str, password: str, db: Session, realm: str | None = N
         "refresh_expires_in": token_data.get("refresh_expires_in", 1800),
         "token_type": "Bearer",
         "session_id": session_id,
+        "user_sub": user_sub,
         "not_before_policy": token_data.get("not-before-policy", 0),
     }
 
@@ -176,7 +179,13 @@ def _extract_token_info(access_token: str, session_state_fallback: Optional[str]
 
 
 def _store_refresh_token(
-    db: Session, keycloak_sub: str, session_id: str, refresh_token: str, expires_in: int
+    db: Session,
+    keycloak_sub: str,
+    session_id: str,
+    refresh_token: str,
+    expires_in: int,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
 ) -> str:
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
 
@@ -187,6 +196,10 @@ def _store_refresh_token(
         record.refresh_token_hash = _hash_token(refresh_token)
         record.expires_at = expires_at
         record.is_revoked = False
+        if ip_address is not None:
+            record.ip_address = ip_address
+        if user_agent is not None:
+            record.user_agent = user_agent
     else:
         record = RefreshToken(
             session_id=session_id,
@@ -194,6 +207,8 @@ def _store_refresh_token(
             refresh_token_hash=_hash_token(refresh_token),
             expires_at=expires_at,
             is_revoked=False,
+            ip_address=ip_address,
+            user_agent=user_agent,
         )
         db.add(record)
 

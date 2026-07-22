@@ -8,7 +8,7 @@ services:
     container_name: hospital-postgres-master
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 12345678
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: hospital_master
     ports:
       - "5432:5432"
@@ -65,7 +65,7 @@ services:
       - "8000:8000"
     environment:
       ENVIRONMENT: dev
-      MASTER_DB_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      MASTER_DB_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -117,7 +117,7 @@ services:
       - "8001:8001"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -130,8 +130,8 @@ services:
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
-      DB_ADMIN_URL: postgresql://postgres:12345678@postgres-master:5432/postgres
-      TENANT_DB_TEMPLATE: postgresql://postgres:12345678@postgres-master:5432/tenant_{tenant_id}
+      DB_ADMIN_URL: postgresql://postgres:postgres@postgres-master:5432/postgres
+      TENANT_DB_TEMPLATE: postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}
       IMPERSONATION_TOKEN_TTL: 900
       SUSPENSION_CHECK_INTERVAL: 86400
       SUSPENDED_BLOCKLIST_TTL: 3600
@@ -169,7 +169,7 @@ services:
       - "8002:8002"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -182,8 +182,8 @@ services:
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
-      DB_ADMIN_URL: postgresql://postgres:12345678@postgres-master:5432/postgres
-      TENANT_DB_TEMPLATE: postgresql://postgres:12345678@postgres-master:5432/tenant_{tenant_id}
+      DB_ADMIN_URL: postgresql://postgres:postgres@postgres-master:5432/postgres
+      TENANT_DB_TEMPLATE: postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}
       IMPERSONATION_TOKEN_TTL: 900
       SUSPENSION_CHECK_INTERVAL: 86400
       SUSPENDED_BLOCKLIST_TTL: 3600
@@ -221,6 +221,7 @@ services:
     volumes:
       - ../migrations:/app/migrations:ro
       - ../shared:/app/shared:ro
+      - ../scripts:/app/scripts:ro
     networks:
       - hospital-network
     healthcheck:
@@ -238,7 +239,7 @@ services:
       - "8010:8010"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -282,7 +283,7 @@ services:
       - "8005:8005"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -318,7 +319,7 @@ services:
       - "8006:8006"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -353,7 +354,7 @@ services:
       - "8011:8011"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -367,6 +368,7 @@ services:
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      VISIT_SERVICE_URL: http://visit-service:8006
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -391,7 +393,7 @@ services:
       - "8012:8012"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -429,7 +431,7 @@ services:
       - "8013:8013"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -467,7 +469,7 @@ services:
       - "8014:8014"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -505,7 +507,7 @@ services:
       - "8015:8015"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -543,7 +545,7 @@ services:
       - "8016:8016"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -581,7 +583,7 @@ services:
       - "8017:8017"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -592,7 +594,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
       ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
-      DEFAULT_HOSPITAL_ID: default-hospital
+      DEFAULT_HOSPITAL_ID: hosp-ac224699
+      DEV_TENANT_ID: hosp-ac224699
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
@@ -619,7 +622,7 @@ services:
       - "8018:8018"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -633,6 +636,9 @@ services:
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      BACKUP_ROOT: /var/backups/hospital
+      BACKUP_RETENTION_DAYS: "30"
+      BACKUP_CHECK_INTERVAL: "21600"
     depends_on:
       postgres-master:
         condition: service_healthy
@@ -642,6 +648,7 @@ services:
         condition: service_healthy
     volumes:
       - ../shared:/app/shared:ro
+      - admin-backups:/var/backups/hospital
     networks:
       - hospital-network
     healthcheck:
@@ -659,7 +666,7 @@ services:
       - "8019:8019"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -697,7 +704,7 @@ services:
       - "8020:8020"
     environment:
       ENVIRONMENT: dev
-      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      DATABASE_URL: postgresql://postgres:postgres@postgres-master:5432/hospital_master
       SECRET_KEY: 6477db2372e99bef59ff6d4fa4edef3f3891daee3807153d4ea09448bec2f6c6
       REDIS_URL: redis://redis:6379/0
       KEYCLOAK_URL: http://host.docker.internal:8080
@@ -729,3 +736,4 @@ services:
 volumes:
   postgres-master-data:
   rabbitmq-data:
+  admin-backups:

@@ -14,3 +14,4 @@ cryptography
 pytest
 pytest-asyncio
 aio-pika
+aiosqlite

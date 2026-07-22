@@ -1,4 +1,4 @@
-"""Align patients table with patient-service model.
+﻿"""Align patients table with patient-service model.
 
 The initial migration created a patients table with columns:
   patient_id, phone, emergency_contact, blood_type
@@ -68,43 +68,86 @@ def upgrade() -> None:
     if "created_by" not in columns:
         op.add_column("patients", sa.Column("created_by", sa.String(36), nullable=True))
 
+    if "hospital_id" not in columns:
+        op.add_column("patients", sa.Column("hospital_id", sa.String(50), nullable=True))
+        op.execute("UPDATE patients SET hospital_id = '' WHERE hospital_id IS NULL")
+        op.alter_column("patients", "hospital_id", nullable=False)
+
+    if "patient_number" not in columns:
+        op.add_column("patients", sa.Column("patient_number", sa.String(20), nullable=True))
+        # Backfill from legacy patient_id when present
+        if "patient_id" in columns:
+            op.execute(
+                "UPDATE patients SET patient_number = LEFT(patient_id, 20) "
+                "WHERE patient_number IS NULL AND patient_id IS NOT NULL"
+            )
+        op.execute(
+            "UPDATE patients SET patient_number = 'P' || id::text "
+            "WHERE patient_number IS NULL"
+        )
+        op.alter_column("patients", "patient_number", nullable=False)
+
     # --- Drop old columns ---
     for old_col in ("phone", "emergency_contact", "blood_type"):
         if old_col in columns:
             op.drop_column("patients", old_col)
 
     # --- Set constraints ---
-    # Generate UUIDs for any rows still missing id
-    op.execute("""
-        UPDATE patients
-        SET id = gen_random_uuid()
-        WHERE id IS NULL
-    """)
-    op.alter_column("patients", "id", nullable=False)
-    
+    # Only backfill UUID ids when the column is UUID-typed (never assign UUID to INTEGER).
+    columns_after = {c["name"]: c for c in inspector.get_columns("patients")}
+    id_col = columns_after.get("id")
+    if id_col is not None:
+        col_type = id_col["type"]
+        type_name = type(col_type).__name__.lower()
+        is_uuid = "uuid" in type_name or str(col_type).lower().startswith("uuid")
+        if is_uuid:
+            op.execute("""
+                UPDATE patients
+                SET id = gen_random_uuid()
+                WHERE id IS NULL
+            """)
+            op.alter_column("patients", "id", nullable=False)
+        elif id_col.get("nullable", True):
+            # Legacy integer id column — leave type alone; patient-service uses its own sync path.
+            pass
+
     pk_constraint = inspector.get_pk_constraint("patients")
     if not pk_constraint or not pk_constraint.get("constrained_columns"):
         op.create_primary_key("pk_patients", "patients", ["id"])
 
     # Set NOT NULL on phone_primary for any existing rows (fill empty string)
-    if "phone_primary" in [c["name"] for c in inspector.get_columns("patients")]:
+    col_names = [c["name"] for c in inspector.get_columns("patients")]
+    if "phone_primary" in col_names:
         op.execute("UPDATE patients SET phone_primary = '' WHERE phone_primary IS NULL")
         op.alter_column("patients", "phone_primary", nullable=False)
 
     # Create indexes/constraints for the new schema if they don't exist
+    col_names = [c["name"] for c in inspector.get_columns("patients")]
     existing_indexes = [idx["name"] for idx in inspector.get_indexes("patients")]
-    if "idx_patients_hospital_id" not in existing_indexes:
+    if "hospital_id" in col_names and "idx_patients_hospital_id" not in existing_indexes:
         op.create_index("idx_patients_hospital_id", "patients", ["hospital_id"])
-    if "idx_patients_patient_number" not in existing_indexes:
+    if "patient_number" in col_names and "idx_patients_patient_number" not in existing_indexes:
         op.create_index("idx_patients_patient_number", "patients", ["patient_number"])
-    if "idx_patients_full_name" not in existing_indexes:
+    if "full_name" in col_names and "idx_patients_full_name" not in existing_indexes:
         op.create_index("idx_patients_full_name", "patients", ["full_name"])
 
     existing_constraints = [c["name"] for c in inspector.get_unique_constraints("patients")]
-    if "uq_hospital_patient_number" not in existing_constraints:
-        op.create_unique_constraint("uq_hospital_patient_number", "patients", ["hospital_id", "patient_number"])
-    if "uq_hospital_national_id" not in existing_constraints:
-        op.create_unique_constraint("uq_hospital_national_id", "patients", ["hospital_id", "national_id"])
+    if (
+        "hospital_id" in col_names
+        and "patient_number" in col_names
+        and "uq_hospital_patient_number" not in existing_constraints
+    ):
+        op.create_unique_constraint(
+            "uq_hospital_patient_number", "patients", ["hospital_id", "patient_number"]
+        )
+    if (
+        "hospital_id" in col_names
+        and "national_id" in col_names
+        and "uq_hospital_national_id" not in existing_constraints
+    ):
+        op.create_unique_constraint(
+            "uq_hospital_national_id", "patients", ["hospital_id", "national_id"]
+        )
 
 
 def downgrade() -> None:

@@ -61,18 +61,33 @@ async def create_keycloak_user(
     async with httpx.AsyncClient(timeout=10.0) as c:
         r = await c.post(url, json=payload, headers=hdrs)
         if r.status_code == 409:
-            search = await c.get(f"{url}?username={username}", headers=hdrs)
-            search.raise_for_status()
-            users = search.json()
-            if users:
-                user_id = users[0]["id"]
-                await c.put(f"{url}/{user_id}", json=payload, headers=hdrs)
-                return user_id
-            raise Exception(f"Conflict creating user '{username}' but could not find existing")
+            # 409 can be username OR email. Username-only search often returns []
+            # when the clash is on email under a different username.
+            user_id = None
+            for params in (
+                {"username": username, "exact": "true"},
+                {"email": email, "exact": "true"},
+            ):
+                search = await c.get(url, params=params, headers=hdrs)
+                search.raise_for_status()
+                users = search.json()
+                if users:
+                    user_id = users[0]["id"]
+                    break
+            if not user_id:
+                raise Exception(
+                    f"Conflict creating user '{username}': username or email already "
+                    f"exists in Keycloak (could not resolve existing user). "
+                    f"Try a different username and email."
+                )
+            await c.put(f"{url}/{user_id}", json=payload, headers=hdrs)
+            await set_user_password(user_id, password, realm=realm)
+            await assign_user_roles(user_id, roles, realm=realm)
+            return user_id
         r.raise_for_status()
         user_id = r.headers.get("location", "").rsplit("/", 1)[-1]
         if not user_id:
-            search2 = await c.get(f"{url}?username={username}", headers=hdrs)
+            search2 = await c.get(url, params={"username": username, "exact": "true"}, headers=hdrs)
             search2.raise_for_status()
             users2 = search2.json()
             user_id = users2[0]["id"] if users2 else None
@@ -86,21 +101,37 @@ async def create_keycloak_user(
     return user_id
 
 
-async def set_user_password(user_id: str, password: str, realm: str | None = None) -> None:
+async def set_user_password(
+    user_id: str,
+    password: str,
+    realm: str | None = None,
+    *,
+    temporary: bool = False,
+) -> None:
     hdrs = await _headers()
     url = f"{_admin_api_url(realm)}/users/{user_id}/reset-password"
-    payload = {"type": "password", "value": password, "temporary": False}
+    payload = {"type": "password", "value": password, "temporary": temporary}
     async with httpx.AsyncClient(timeout=10.0) as c:
         r = await c.put(url, json=payload, headers=hdrs)
         r.raise_for_status()
 
 
-async def set_user_password(user_id: str, password: str, realm: str | None = None) -> None:
+async def get_user_realm_roles(user_id: str, realm: str | None = None) -> list[dict]:
     hdrs = await _headers()
-    url = f"{_admin_api_url(realm)}/users/{user_id}/reset-password"
-    payload = {"type": "password", "value": password, "temporary": False}
+    url = f"{_admin_api_url(realm)}/users/{user_id}/role-mappings/realm"
     async with httpx.AsyncClient(timeout=10.0) as c:
-        r = await c.put(url, json=payload, headers=hdrs)
+        r = await c.get(url, headers=hdrs)
+        r.raise_for_status()
+        return r.json()
+
+
+async def remove_user_roles(user_id: str, roles: list[dict], realm: str | None = None) -> None:
+    if not roles:
+        return
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/users/{user_id}/role-mappings/realm"
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        r = await c.request("DELETE", url, json=roles, headers=hdrs)
         r.raise_for_status()
 
 
@@ -119,6 +150,28 @@ async def assign_user_roles(user_id: str, roles: list[str], realm: str | None = 
 
         if role_reps:
             r = await c.post(url, json=role_reps, headers=hdrs)
+            r.raise_for_status()
+
+
+async def replace_user_roles(user_id: str, roles: list[str], realm: str | None = None) -> None:
+    """Remove existing realm roles (except built-in default roles) and assign the target set."""
+    current = await get_user_realm_roles(user_id, realm=realm)
+    removable = [
+        r
+        for r in current
+        if not str(r.get("name", "")).startswith("default-roles-")
+        and r.get("name") not in ("offline_access", "uma_authorization")
+    ]
+    await remove_user_roles(user_id, removable, realm=realm)
+    await assign_user_roles(user_id, roles, realm=realm)
+
+
+async def logout_user_sessions(user_id: str, realm: str | None = None) -> None:
+    hdrs = await _headers()
+    url = f"{_admin_api_url(realm)}/users/{user_id}/logout"
+    async with httpx.AsyncClient(timeout=10.0) as c:
+        r = await c.post(url, headers=hdrs)
+        if r.status_code not in (204, 200):
             r.raise_for_status()
 
 
@@ -268,6 +321,9 @@ def create_local_user(
     role: str | None = None,
     is_active: bool = True,
     force_password_change: bool = False,
+    department_id=None,
+    phone: str | None = None,
+    password_expires_at=None,
 ) -> User:
     existing = db.query(User).filter(User.keycloak_sub == keycloak_sub).first()
     if existing:
@@ -280,6 +336,12 @@ def create_local_user(
             existing.is_active = is_active
         if force_password_change is not None:
             existing.force_password_change = force_password_change
+        if department_id is not None:
+            existing.department_id = department_id
+        if phone is not None:
+            existing.phone = phone
+        if password_expires_at is not None:
+            existing.password_expires_at = password_expires_at
         db.commit()
         db.refresh(existing)
         return existing
@@ -292,6 +354,9 @@ def create_local_user(
         hospital_id=hospital_id,
         is_active=is_active,
         force_password_change=force_password_change,
+        department_id=department_id,
+        phone=phone,
+        password_expires_at=password_expires_at,
     )
     db.add(user)
     db.commit()
@@ -299,8 +364,16 @@ def create_local_user(
     return user
 
 
-def get_local_users_by_hospital(db: Session, hospital_id: str) -> list[User]:
-    return db.query(User).filter(User.hospital_id == hospital_id).all()
+def get_local_users_by_hospital(
+    db: Session,
+    hospital_id: str,
+    *,
+    include_deleted: bool = False,
+) -> list[User]:
+    q = db.query(User).filter(User.hospital_id == hospital_id)
+    if not include_deleted:
+        q = q.filter(User.deleted_at.is_(None))
+    return q.all()
 
 
 def update_local_user(
@@ -313,6 +386,11 @@ def update_local_user(
     hospital_id: str | None = None,
     is_active: bool | None = None,
     force_password_change: bool | None = None,
+    department_id=None,
+    phone: str | None = None,
+    password_expires_at=None,
+    deleted_at=None,
+    clear_deleted: bool = False,
 ) -> User | None:
     user = db.query(User).filter(User.keycloak_sub == keycloak_sub).first()
     if not user:
@@ -331,6 +409,16 @@ def update_local_user(
         user.is_active = is_active
     if force_password_change is not None:
         user.force_password_change = force_password_change
+    if department_id is not None:
+        user.department_id = department_id
+    if phone is not None:
+        user.phone = phone
+    if password_expires_at is not None:
+        user.password_expires_at = password_expires_at
+    if deleted_at is not None:
+        user.deleted_at = deleted_at
+    if clear_deleted:
+        user.deleted_at = None
     db.commit()
     db.refresh(user)
     return user

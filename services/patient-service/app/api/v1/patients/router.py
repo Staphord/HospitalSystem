@@ -80,7 +80,7 @@ def search(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist", "triage_nurse", "doctor"])),
 ):
     patients = search_patients(
         db=db,
@@ -100,7 +100,7 @@ def get_patient(
     patient_id: str,
     db: Session = Depends(get_tenant_db),
     tenant_id: str = Depends(get_tenant_id_from_token),
-    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist"])),
+    payload: dict = Depends(require_any_role(["hospital_admin", "receptionist", "triage_nurse", "doctor"])),
 ):
     patient = get_patient_by_id(db, tenant_id, patient_id)
     if not patient:

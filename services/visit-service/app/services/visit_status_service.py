@@ -8,9 +8,11 @@ from app.models.visit import Visit
 _VALID_TRANSITIONS = {
     "registered": ["triaged", "cancelled"],
     "triaged": ["in_consultation", "cancelled"],
-    "in_consultation": ["in_lab", "in_pharmacy", "completed", "cancelled"],
+    "in_consultation": ["in_lab", "in_pharmacy", "admitted", "completed", "cancelled"],
     "in_lab": ["in_consultation", "completed", "cancelled"],
     "in_pharmacy": ["completed", "cancelled"],
+    "admitted": ["discharged", "completed", "cancelled"],
+    "discharged": [],
     "completed": [],
     "cancelled": [],
 }
