@@ -106,19 +106,32 @@ def create_plan_change_request(
 
     if not valid_plan_transition(current_plan, new_plan):
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid plan transition from {current_plan.value} to {new_plan.value}.",
         )
 
-    if action == "upgrade" and not is_upgrade(current_plan, new_plan):
+    current_cycle = tenant.subscription_billing_cycle or "monthly"
+    target_cycle = requested_billing_cycle or current_cycle
+
+    is_same_plan = (current_plan == new_plan)
+    is_cycle_upgrade = is_same_plan and (current_cycle == "monthly" and target_cycle == "annual")
+    is_cycle_downgrade = is_same_plan and (current_cycle == "annual" and target_cycle == "monthly")
+
+    if is_same_plan and current_cycle == target_cycle:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Requested plan and billing cycle are identical to the current subscription.",
+        )
+
+    if action == "upgrade" and not (is_upgrade(current_plan, new_plan) or is_cycle_upgrade):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"'{new_plan.value}' is not higher than current plan '{current_plan.value}'.",
         )
 
-    if action == "downgrade" and not is_downgrade(current_plan, new_plan):
+    if action == "downgrade" and not (is_downgrade(current_plan, new_plan) or is_cycle_downgrade):
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"'{new_plan.value}' is not lower than current plan '{current_plan.value}'.",
         )
 
@@ -198,10 +211,24 @@ def create_cancellation_request(
     now = _utc_now()
 
     if tenant.pending_action:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"A {tenant.pending_action} request is already pending. Resolve it first.",
-        )
+        if tenant.pending_action == "cancellation":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A cancellation request is already pending. Resolve it first.",
+            )
+        # Transition the old pending plan change request in the history to rejected
+        import copy
+        meta = copy.deepcopy(tenant.subscription_metadata or {})
+        history = list(meta.get("requests_history") or [])
+        for req in reversed(history):
+            if req.get("status") == "pending" and req.get("pending_action") in ("upgrade", "downgrade"):
+                req["status"] = "rejected"
+                req["review_notes"] = "Superseded by cancellation request"
+                req["reviewed_at"] = now.isoformat()
+                break
+        tenant.subscription_metadata = meta
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(tenant, "subscription_metadata")
 
     tenant.pending_action = "cancellation"
     tenant.requested_plan = None

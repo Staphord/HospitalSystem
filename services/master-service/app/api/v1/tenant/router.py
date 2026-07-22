@@ -287,10 +287,15 @@ async def request_plan_change(
 
     try:
         from app.services.subscription_plans import plan_rank
-        current = SubscriptionPlan(
-            db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first().subscription_plan
-        )
-        if plan_rank(current) >= plan_rank(current_plan):
+        tenant_obj = db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+        current = SubscriptionPlan(tenant_obj.subscription_plan)
+        current_cycle = tenant_obj.subscription_billing_cycle or "monthly"
+        target_cycle = body.billing_cycle or current_cycle
+
+        is_same_plan = (current == current_plan)
+        is_cycle_upgrade = is_same_plan and (current_cycle == "monthly" and target_cycle == "annual")
+
+        if plan_rank(current) > plan_rank(current_plan) or (is_same_plan and not is_cycle_upgrade):
             action = "downgrade"
     except Exception:
         pass
