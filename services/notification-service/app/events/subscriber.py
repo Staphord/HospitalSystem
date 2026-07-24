@@ -1,48 +1,393 @@
-# Events consumed by notification-service
+from uuid import UUID
 
+from app.api.v1.schemas import NotificationCreateRequest
+from app.db.tenant import get_tenant_session
 from app.messaging.subscriber import start_consumer
+from app.services.broadcaster import broadcaster
+from app.services import notifications as notification_service
 
-async def handle_lab_critical_value(lab_result_id: str, tenant_id: str) -> None:
-    """Stub: process lab.critical_value event."""
-    pass
 
-async def handle_radiology_report_ready(report_id: str, tenant_id: str) -> None:
-    """Stub: process radiology.report_ready event."""
-    pass
+async def handle_lab_critical_value(payload: dict, tenant_id: str) -> None:
+    """Process lab.critical_value event and emit alert."""
+    patient_name = payload.get("patient_name", "Patient")
+    test_name = payload.get("test_name", "Laboratory Test")
 
-async def handle_stock_low(item_id: str, tenant_id: str) -> None:
-    """Stub: process stock.low event."""
-    pass
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="doctor",
+        title="Critical Laboratory Result",
+        message=f"Critical value detected for {patient_name} in {test_name}.",
+        category="clinical",
+        priority="emergency",
+        action_url=f"/laboratory/requests/{payload.get('lab_result_id', '')}",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
 
-async def handle_patient_admitted(admission_id: str, tenant_id: str) -> None:
-    """Stub: process patient.admitted event."""
-    pass
 
-async def handle_prescription_issued(prescription_id: str, tenant_id: str) -> None:
-    """Stub: process prescription.issued event."""
-    pass
+async def handle_radiology_report_ready(payload: dict, tenant_id: str) -> None:
+    """Process radiology.report_ready event."""
+    patient_name = payload.get("patient_name", "Patient")
+    study_type = payload.get("study_type", "Radiology Study")
 
-async def handle_tenant_created(tenant_id: str) -> None:
-    """Stub: process tenant.created event."""
-    pass
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="doctor",
+        title="Imaging Report Ready",
+        message=f"{study_type} report for {patient_name} is now available.",
+        category="clinical",
+        priority="normal",
+        action_url=f"/radiology/requests/{payload.get('report_id', '')}/report",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_stock_low(payload: dict, tenant_id: str) -> None:
+    """Process stock.low inventory alert event."""
+    drug_name = payload.get("drug_name", "Drug item")
+    remaining = payload.get("remaining_stock", 0)
+
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="pharmacist",
+        title="Low Stock Alert",
+        message=f"{drug_name} stock is low ({remaining} remaining). Please reorder.",
+        category="pharmacy",
+        priority="urgent",
+        action_url="/pharmacy/stock",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_patient_admitted(payload: dict, tenant_id: str) -> None:
+    """Process patient.admitted event."""
+    patient_name = payload.get("patient_name", "Patient")
+    ward_name = payload.get("ward_name", "Ward")
+
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="ward_nurse",
+        title="New Patient Admission",
+        message=f"{patient_name} has been admitted to {ward_name}.",
+        category="clinical",
+        priority="normal",
+        action_url="/ward/admissions",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
+    """Process prescription.issued event."""
+    patient_name = payload.get("patient_name", "Patient")
+
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="pharmacist",
+        title="New Prescription Issued",
+        message=f"A new prescription was issued for {patient_name}.",
+        category="pharmacy",
+        priority="normal",
+        action_url="/pharmacy/queue",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_payment_received(payload: dict, tenant_id: str) -> None:
+    """Process payment.received event."""
+    amount = payload.get("amount", 0)
+    receipt = payload.get("receipt_number", "")
+
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="cashier",
+        title="Payment Processed",
+        message=f"Payment of TZS {amount:,.2f} recorded (Receipt: {receipt}).",
+        category="billing",
+        priority="normal",
+        action_url="/billing/bills",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_visit_created(payload: dict, tenant_id: str) -> None:
+    """Process visit.created / patient.checked_in event for triage nurse alert."""
+    patient_name = payload.get("patient_name", "Patient")
+
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="triage_nurse",
+        title="New Patient Checked In",
+        message=f"New patient ({patient_name}) checked in for triage assessment.",
+        category="clinical",
+        priority="normal",
+        action_url="/triage/queue",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_triage_completed(payload: dict, tenant_id: str) -> None:
+    """Process triage.completed event for doctor alert."""
+    patient_name = payload.get("patient_name", "Patient")
+
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="doctor",
+        title="Patient Triage Completed",
+        message=f"Triage assessment completed for {patient_name}. Ready for consultation.",
+        category="clinical",
+        priority="normal",
+        action_url="/consultation/queue",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_announcement_created(payload: dict) -> None:
+    """Process announcement.created event."""
+    title = payload.get("title", "System Announcement")
+    body = payload.get("body", "")
+    target_tenants = payload.get("target_tenant_ids") or []
+    
+    req = NotificationCreateRequest(
+        tenant_id=payload.get("tenant_id", "default"),
+        recipient_role="hospital_admin",
+        title=f"Announcement: {title}",
+        message=body,
+        category="system",
+        priority="urgent",
+        action_url="/notifications",
+        metadata_payload=payload,
+    )
+    
+    if target_tenants:
+        for tid in target_tenants:
+            req.tenant_id = tid
+            async for db in get_tenant_session(tid):
+                item = await notification_service.create_notification(db, req)
+                await broadcaster.broadcast(tid, item.model_dump())
+    else:
+        tenant_id = payload.get("tenant_id", "default")
+        async for db in get_tenant_session(tenant_id):
+            item = await notification_service.create_notification(db, req)
+            await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_tenant_activated(payload: dict, tenant_id: str) -> None:
+    """Process tenant.activated event."""
+    hosp = payload.get("hospital_name", "Hospital")
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="hospital_admin",
+        title="Account Activated",
+        message=f"The account for {hosp} has been activated. Full system access is enabled.",
+        category="system",
+        priority="normal",
+        action_url="/dashboard",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_tenant_suspended(payload: dict, tenant_id: str) -> None:
+    """Process tenant.suspended event."""
+    reason = payload.get("reason", "Subscription non-payment or admin policy")
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="hospital_admin",
+        title="Account Suspended",
+        message=f"Tenant account has been suspended: {reason}",
+        category="system",
+        priority="emergency",
+        action_url="/admin/subscription",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_tenant_reactivated(payload: dict, tenant_id: str) -> None:
+    """Process tenant.reactivated event."""
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="hospital_admin",
+        title="Account Reactivated",
+        message="Your account has been reactivated. Access is fully restored.",
+        category="system",
+        priority="normal",
+        action_url="/dashboard",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_subscription_invoice_generated(payload: dict, tenant_id: str) -> None:
+    """Process subscription.invoice_generated event."""
+    inv_num = payload.get("invoice_number", "")
+    amount = payload.get("amount", 0)
+    curr = payload.get("currency", "USD")
+    due = payload.get("due_date", "")
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="hospital_admin",
+        title="Renewal Invoice Generated",
+        message=f"Invoice #{inv_num} for {amount} {curr} due on {due}.",
+        category="billing",
+        priority="normal",
+        action_url="/admin/subscription",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_subscription_invoice_overdue(payload: dict, tenant_id: str) -> None:
+    """Process subscription.invoice_overdue event."""
+    inv_num = payload.get("invoice_number", "")
+    amount = payload.get("amount", 0)
+    curr = payload.get("currency", "USD")
+    due = payload.get("due_date", "")
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="hospital_admin",
+        title="Overdue Invoice Warning",
+        message=f"Invoice #{inv_num} for {amount} {curr} (due {due}) is overdue. Please settle to avoid suspension.",
+        category="billing",
+        priority="urgent",
+        action_url="/admin/subscription",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_subscription_request_processed(payload: dict, tenant_id: str) -> None:
+    """Process subscription_request.processed event."""
+    status_str = payload.get("status", "processed").title()
+    notes = payload.get("notes") or "No review notes provided."
+    req = NotificationCreateRequest(
+        tenant_id=tenant_id,
+        recipient_role="hospital_admin",
+        title=f"Subscription Request {status_str}",
+        message=f"Your subscription request was {status_str.lower()}. Notes: {notes}",
+        category="system",
+        priority="normal",
+        action_url="/admin/subscription",
+        metadata_payload=payload,
+    )
+    async for db in get_tenant_session(tenant_id):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast(tenant_id, item.model_dump())
+
+
+async def handle_subscription_request_created(payload: dict) -> None:
+    """Process subscription_request.created event for Superadmin alert."""
+    hosp = payload.get("hospital_name", "Hospital")
+    act = payload.get("pending_action", "plan change")
+    req = NotificationCreateRequest(
+        tenant_id="default",
+        recipient_role="super_admin",
+        title="New Subscription Request",
+        message=f"New {act} request received from {hosp}.",
+        category="system",
+        priority="normal",
+        action_url="/admin/requests",
+        metadata_payload=payload,
+    )
+    tenant_id = payload.get("tenant_id", "default")
+    async for db in get_tenant_session("default"):
+        item = await notification_service.create_notification(db, req)
+        await broadcaster.broadcast("default", item.model_dump())
+        if tenant_id != "default":
+            await broadcaster.broadcast(tenant_id, item.model_dump())
+
 
 async def _dispatch(routing_key: str, payload: dict) -> None:
+    tenant_id = payload.get("tenant_id", "default")
     if routing_key == "lab.critical_value":
-        await handle_lab_critical_value(payload["lab_result_id"], payload["tenant_id"])
+        await handle_lab_critical_value(payload, tenant_id)
     elif routing_key == "radiology.report_ready":
-        await handle_radiology_report_ready(payload["report_id"], payload["tenant_id"])
+        await handle_radiology_report_ready(payload, tenant_id)
     elif routing_key == "stock.low":
-        await handle_stock_low(payload["item_id"], payload["tenant_id"])
+        await handle_stock_low(payload, tenant_id)
     elif routing_key == "patient.admitted":
-        await handle_patient_admitted(payload["admission_id"], payload["tenant_id"])
+        await handle_patient_admitted(payload, tenant_id)
     elif routing_key == "prescription.issued":
-        await handle_prescription_issued(payload["prescription_id"], payload["tenant_id"])
-    elif routing_key == "tenant.created":
-        await handle_tenant_created(payload["tenant_id"])
+        await handle_prescription_issued(payload, tenant_id)
+    elif routing_key == "payment.received":
+        await handle_payment_received(payload, tenant_id)
+    elif routing_key in ("visit.created", "patient.checked_in"):
+        await handle_visit_created(payload, tenant_id)
+    elif routing_key == "triage.completed":
+        await handle_triage_completed(payload, tenant_id)
+    elif routing_key == "announcement.created":
+        await handle_announcement_created(payload)
+    elif routing_key == "tenant.activated":
+        await handle_tenant_activated(payload, tenant_id)
+    elif routing_key == "tenant.suspended":
+        await handle_tenant_suspended(payload, tenant_id)
+    elif routing_key == "tenant.reactivated":
+        await handle_tenant_reactivated(payload, tenant_id)
+    elif routing_key == "subscription.invoice_generated":
+        await handle_subscription_invoice_generated(payload, tenant_id)
+    elif routing_key == "subscription.invoice_overdue":
+        await handle_subscription_invoice_overdue(payload, tenant_id)
+    elif routing_key == "subscription_request.processed":
+        await handle_subscription_request_processed(payload, tenant_id)
+    elif routing_key == "subscription_request.created":
+        await handle_subscription_request_created(payload)
+
 
 async def start_subscriber() -> None:
+    """Initialize RabbitMQ event consumer for notification service."""
     await start_consumer(
         service_name="notification-service",
-        routing_keys=["lab.critical_value", "radiology.report_ready", "stock.low", "patient.admitted", "prescription.issued", "tenant.created"],
+        routing_keys=[
+            "lab.critical_value",
+            "radiology.report_ready",
+            "stock.low",
+            "patient.admitted",
+            "prescription.issued",
+            "payment.received",
+            "visit.created",
+            "patient.checked_in",
+            "triage.completed",
+            "announcement.created",
+            "tenant.activated",
+            "tenant.suspended",
+            "tenant.reactivated",
+            "subscription.invoice_generated",
+            "subscription.invoice_overdue",
+            "subscription_request.processed",
+            "subscription_request.created",
+        ],
         handler=_dispatch,
     )
