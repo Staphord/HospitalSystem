@@ -846,6 +846,7 @@ async def list_plans(
         out_plans.append(
             PlanCatalogOut(
                 plan=p.plan_name,
+                plan_name=p.plan_name,
                 plan_id=p.plan_id,
                 display_name=p.description or p.plan_name.replace("_", " ").title(),
                 monthly_price=int(p.monthly_price),
@@ -853,6 +854,10 @@ async def list_plans(
                 trial_days=30 if p.plan_name == "free_trial" else 0,
                 max_users=p.max_users,
                 features=p.modules_included or [],
+                modules_included=p.modules_included or [],
+                storage_gb=p.storage_gb or 0,
+                uptime_sla_pct=float(p.uptime_sla_pct) if p.uptime_sla_pct is not None else 99.9,
+                backup_frequency_hours=p.backup_frequency_hours or 24,
                 rank=rank,
             )
         )
@@ -1263,6 +1268,12 @@ async def activate_tenant_endpoint(
     db.commit()
     await remove_tenant_suspension_cache(tenant_id)
 
+    try:
+        from app.events.publisher import publish_tenant_activated
+        await publish_tenant_activated(tenant_id, {"hospital_name": result.tenant.hospital_name})
+    except Exception as evt_err:
+        logger.warning("Failed to publish tenant.activated event: %s", evt_err)
+
     # Trigger welcome email to the hospital administrator (FR-61)
     tenant = result.tenant
     admin_email = tenant.primary_contact_email or tenant.billing_email
@@ -1311,6 +1322,12 @@ async def suspend_tenant_endpoint(
     from app.services.tenant_service import _revoke_keycloak_sessions
     await _revoke_keycloak_sessions(tenant_id)
 
+    try:
+        from app.events.publisher import publish_tenant_suspended
+        await publish_tenant_suspended(tenant_id, {"hospital_name": result.tenant.hospital_name, "reason": body.reason})
+    except Exception as evt_err:
+        logger.warning("Failed to publish tenant.suspended event: %s", evt_err)
+
     state = _serialize_state(result.tenant)
     return SubscriptionActionOut.model_validate(
         {
@@ -1340,6 +1357,12 @@ async def reactivate_tenant_endpoint(
     )
     db.commit()
     await remove_tenant_suspension_cache(tenant_id)
+
+    try:
+        from app.events.publisher import publish_tenant_reactivated
+        await publish_tenant_reactivated(tenant_id, {"hospital_name": result.tenant.hospital_name})
+    except Exception as evt_err:
+        logger.warning("Failed to publish tenant.reactivated event: %s", evt_err)
 
     state = _serialize_state(result.tenant)
     return SubscriptionActionOut.model_validate(
@@ -1501,6 +1524,19 @@ async def create_announcement(
     )
     db.commit()
     db.refresh(announcement)
+
+    try:
+        from app.events.publisher import publish_announcement_created
+        await publish_announcement_created({
+            "announcement_id": str(announcement.announcement_id),
+            "title": announcement.title,
+            "body": announcement.body,
+            "audience": announcement.audience,
+            "target_tenant_ids": announcement.target_tenant_ids,
+        })
+    except Exception as evt_err:
+        logger.warning("Failed to publish announcement.created event: %s", evt_err)
+
     return AnnouncementOut.model_validate(announcement)
 
 
@@ -3935,6 +3971,16 @@ async def approve_subscription_request(
     )
     db.commit()
 
+    try:
+        from app.events.publisher import publish_subscription_request_processed
+        await publish_subscription_request_processed(tenant_id, {
+            "hospital_name": tenant.hospital_name,
+            "status": "approved",
+            "notes": body.notes,
+        })
+    except Exception as evt_err:
+        logger.warning("Failed to publish subscription_request.processed event: %s", evt_err)
+
     from app.services.tenant_service import cache_tenant_suspension
     if tenant.status == "terminated" or tenant.status == "suspended":
         await cache_tenant_suspension(tenant_id)
@@ -3984,6 +4030,16 @@ async def reject_subscription_request(
         ip_address=ip_address,
     )
     db.commit()
+
+    try:
+        from app.events.publisher import publish_subscription_request_processed
+        await publish_subscription_request_processed(tenant_id, {
+            "hospital_name": tenant.hospital_name,
+            "status": "rejected",
+            "notes": body.notes,
+        })
+    except Exception as evt_err:
+        logger.warning("Failed to publish subscription_request.processed event: %s", evt_err)
 
     hist = tenant.subscription_metadata.get("requests_history") or [] if tenant.subscription_metadata else []
     hist_entry = hist[-1] if hist else {}
