@@ -234,6 +234,7 @@ async def get_visit_verified_results(
 @router.get(
     "/dashboard/stats",
     response_model=LabDashboardStatsResponse,
+    response_model_by_alias=True,
     tags=["Dashboard"],
 )
 async def get_lab_dashboard_stats(

@@ -93,9 +93,9 @@ async def get_lab_requests(
 
     query = (
         select(InvestigationRequest, Patient, User)
-        .join(Patient, InvestigationRequest.patient_id == Patient.id)
+        .outerjoin(Patient, InvestigationRequest.patient_id == Patient.id)
         .outerjoin(User, InvestigationRequest.requested_by == User.keycloak_sub)
-        .where(InvestigationRequest.request_type.in_(["lab", "laboratory"]))
+        .where(func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]))
     )
 
     if status:
@@ -120,9 +120,9 @@ async def get_lab_requests(
         requests_list.append({
             "request_id": req.id,
             "visit_id": req.visit_id,
-            "patient_id": pat.id,
-            "patient_name": pat.full_name,
-            "patient_number": pat.patient_number or "P-000",
+            "patient_id": pat.id if pat else req.patient_id,
+            "patient_name": pat.full_name if pat else "Patient",
+            "patient_number": (pat.patient_number if pat else None) or "P-000",
             "test_name": req.test_name,
             "test_code": req.test_code,
             "clinical_indication": req.clinical_history,
@@ -138,11 +138,11 @@ async def get_lab_requests(
 async def get_lab_request_detail(db: AsyncSession, request_id: UUID) -> dict:
     stmt = (
         select(InvestigationRequest, Patient)
-        .join(Patient, InvestigationRequest.patient_id == Patient.id)
+        .outerjoin(Patient, InvestigationRequest.patient_id == Patient.id)
         .where(
             and_(
                 InvestigationRequest.id == request_id,
-                InvestigationRequest.request_type.in_(["lab", "laboratory"])
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
             )
         )
     )
@@ -202,11 +202,11 @@ async def get_lab_request_detail(db: AsyncSession, request_id: UUID) -> dict:
         "request_id": req.id,
         "visit_id": req.visit_id,
         "patient": {
-            "patient_id": pat.id,
-            "patient_number": pat.patient_number or "P-000",
-            "full_name": pat.full_name,
-            "date_of_birth": pat.date_of_birth,
-            "gender": pat.gender,
+            "patient_id": pat.id if pat else req.patient_id,
+            "patient_number": (pat.patient_number if pat else None) or "P-000",
+            "full_name": pat.full_name if pat else "Patient",
+            "date_of_birth": pat.date_of_birth if pat else None,
+            "gender": pat.gender if pat else "unspecified",
         },
         "test_name": req.test_name,
         "test_code": req.test_code,
