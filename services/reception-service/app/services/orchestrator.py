@@ -247,7 +247,18 @@ async def create_visit(body: Any, request: Request) -> dict:
     # Serialize UUID insurance_id to string if present
     if payload.get("insurance_id") and not isinstance(payload["insurance_id"], str):
         payload["insurance_id"] = str(payload["insurance_id"])
-    return await _forward("POST", settings.visit_service_url, "/api/v1/visits", request, payload)
+    result = await _forward("POST", settings.visit_service_url, "/api/v1/visits", request, payload)
+    try:
+        from app.events.publisher import publish_visit_created
+        tenant_id = getattr(getattr(request.state, "tenant", None), "tenant_id", "default")
+        await publish_visit_created(
+            visit_id=str(result.get("visit_id")),
+            patient_id=str(result.get("patient_id")),
+            tenant_id=tenant_id,
+        )
+    except Exception as evt_err:
+        logger.warning("Failed to publish visit.created event: %s", evt_err)
+    return result
 
 
 async def get_visit_detail(visit_id: str, request: Request) -> dict:
@@ -455,6 +466,17 @@ async def register_and_create_visit(body: Any, request: Request) -> dict:
                 status_code=vis_sc,
                 detail=created_visit.get("detail", "Visit creation failed after patient registration"),
             )
+
+        try:
+            from app.events.publisher import publish_visit_created
+            tenant_id = getattr(getattr(request.state, "tenant", None), "tenant_id", "default")
+            await publish_visit_created(
+                visit_id=str(created_visit.get("visit_id")),
+                patient_id=str(patient_id),
+                tenant_id=tenant_id,
+            )
+        except Exception as evt_err:
+            logger.warning("Failed to publish visit.created event: %s", evt_err)
 
         return {
             "patient": created_patient,

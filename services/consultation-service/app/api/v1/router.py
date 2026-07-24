@@ -1105,6 +1105,17 @@ async def record_prescription(
 
     await db.commit()
     await db.refresh(prescription)
+
+    try:
+        from app.events.publisher import publish_prescription_issued
+        await publish_prescription_issued(
+            prescription_id=str(prescription.id),
+            consultation_id=str(consultation_id),
+            tenant_id=ctx.tenant_id,
+        )
+    except Exception as evt_err:
+        logger.warning("Failed to publish prescription.issued event: %s", evt_err)
+
     return prescription
 
 
