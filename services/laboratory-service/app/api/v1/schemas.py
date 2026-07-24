@@ -278,6 +278,7 @@ class StatRequestItem(BaseModel):
     requested_by: str = Field(..., alias="requestedBy")
     requested_ago: str = Field(..., alias="requestedAgo")
     priority: str
+    status: Optional[str] = "pending"
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

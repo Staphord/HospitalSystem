@@ -663,13 +663,12 @@ async def get_visit_verified_results(db: AsyncSession, visit_id: UUID) -> dict:
 
 async def get_dashboard_stats(db: AsyncSession) -> dict:
     now_utc = datetime.now(timezone.utc)
-    today_start = datetime.combine(now_utc.date(), datetime.min.time(), tzinfo=timezone.utc)
 
     # 1. Pending tests count
     pending_stmt = select(func.count(InvestigationRequest.id)).where(
         and_(
-            InvestigationRequest.status == "pending",
-            InvestigationRequest.request_type.in_(["lab", "laboratory"])
+            func.lower(InvestigationRequest.status) == "pending",
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
         )
     )
     pending_cnt = (await db.execute(pending_stmt)).scalar() or 0
@@ -677,44 +676,42 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
     # 2. In progress tests count
     in_progress_stmt = select(func.count(InvestigationRequest.id)).where(
         and_(
-            InvestigationRequest.status.in_(["in_progress", "specimen_collected"]),
-            InvestigationRequest.request_type.in_(["lab", "laboratory"])
+            func.lower(InvestigationRequest.status).in_(["in_progress", "specimen_collected", "processing", "received"]),
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
         )
     )
     in_progress_cnt = (await db.execute(in_progress_stmt)).scalar() or 0
 
-    # 3. Completed today count
+    # 3. Completed count
     completed_today_stmt = select(func.count(InvestigationRequest.id)).where(
         and_(
-            InvestigationRequest.status == "completed",
-            InvestigationRequest.request_type.in_(["lab", "laboratory"]),
-            InvestigationRequest.created_at >= today_start
+            func.lower(InvestigationRequest.status).in_(["completed", "verified", "resulted"]),
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
         )
     )
     completed_today_cnt = (await db.execute(completed_today_stmt)).scalar() or 0
 
     # 4. Critical values count
     critical_stmt = select(func.count(LabResult.result_id)).where(
-        and_(
-            LabResult.is_critical.is_(True),
-            LabResult.created_at >= today_start
-        )
+        LabResult.is_critical.is_(True)
     )
     critical_cnt = (await db.execute(critical_stmt)).scalar() or 0
 
-    # 5. Fetch High Priority Requests (stat/urgent)
+    # 5. Fetch 5 Recent Requests (STAT/Urgent prioritized, then routine most recent)
+    urgency_order = case(
+        (func.lower(InvestigationRequest.urgency) == "stat", 1),
+        (func.lower(InvestigationRequest.urgency) == "urgent", 2),
+        else_=3
+    )
+
     high_prio_stmt = (
         select(InvestigationRequest, Patient)
         .outerjoin(Patient, Patient.id == InvestigationRequest.patient_id)
         .where(
-            and_(
-                InvestigationRequest.request_type.in_(["lab", "laboratory"]),
-                InvestigationRequest.urgency.in_(["stat", "urgent"]),
-                InvestigationRequest.status != "completed"
-            )
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
         )
-        .order_by(InvestigationRequest.created_at.desc())
-        .limit(10)
+        .order_by(urgency_order, InvestigationRequest.created_at.desc())
+        .limit(5)
     )
     high_prio_rows = (await db.execute(high_prio_stmt)).all()
     high_priority_requests = []
@@ -733,7 +730,8 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
             "testName": req.test_name,
             "requestedBy": doc_name,
             "requestedAgo": ago_str,
-            "priority": req.urgency or "stat",
+            "priority": req.urgency or "routine",
+            "status": req.status or "pending",
         })
 
     # 6. Fetch Critical Values List
@@ -764,8 +762,8 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         .outerjoin(LabResult, LabResult.request_id == InvestigationRequest.id)
         .where(
             and_(
-                InvestigationRequest.request_type.in_(["lab", "laboratory"]),
-                InvestigationRequest.status == "completed"
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]),
+                func.lower(InvestigationRequest.status).in_(["completed", "verified", "resulted"])
             )
         )
         .order_by(InvestigationRequest.created_at.desc())
@@ -792,8 +790,8 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         .join(LabResult, LabResult.request_id == InvestigationRequest.id)
         .where(
             and_(
-                InvestigationRequest.request_type.in_(["lab", "laboratory"]),
-                LabResult.status.in_(["resulted", "verified"])
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]),
+                func.lower(LabResult.status).in_(["resulted", "verified", "completed"])
             )
         )
     )
