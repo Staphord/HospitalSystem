@@ -128,6 +128,15 @@ async def register_patient(body: Any, request: Request) -> dict:
         )
     if sc >= 400:
         raise HTTPException(status_code=sc, detail=data.get("detail", "Patient registration failed"))
+    if isinstance(data, dict):
+        pat_id = str(data.get("id") or data.get("patient_id") or "")
+        tenant_id = headers.get("x-tenant-id", "default")
+        if pat_id:
+            try:
+                from app.events.publisher import publish_patient_registered
+                await publish_patient_registered(pat_id, tenant_id)
+            except Exception:
+                pass
     return data
 
 

@@ -836,6 +836,11 @@ async def raise_investigation(
         requested_at=datetime.datetime.utcnow(),
     )
     db.add(inv_req)
+    try:
+        from app.events.publisher import publish_investigation_requested
+        await publish_investigation_requested(str(consultation_id), ctx.tenant_id or "default")
+    except Exception:
+        pass
 
     # Update visit status
     visit.status = "awaiting_results"
