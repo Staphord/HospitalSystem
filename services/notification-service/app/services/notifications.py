@@ -128,6 +128,12 @@ async def get_unread_count(
     recipient_role: list[str] | str | None = None,
 ) -> UnreadCountResponse:
     """Calculate total unread notifications for a user or role."""
+    pref_stmt = select(NotificationPreference).where(NotificationPreference.user_id == recipient_id)
+    pref_res = await db.execute(pref_stmt)
+    pref = pref_res.scalar_one_or_none()
+    if pref and not pref.in_app_enabled:
+        return UnreadCountResponse(unread_count=0)
+
     recipient_filter = _build_recipient_filter(recipient_id, recipient_role)
 
     roles = []

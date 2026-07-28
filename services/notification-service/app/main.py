@@ -30,7 +30,11 @@ logger = logging.getLogger("service")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.core.database import init_db
+    from app.services.broadcaster import broadcaster
+
     init_db()
+
+    await broadcaster.connect()
 
     consumer_task = None
     try:
@@ -49,6 +53,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+    await broadcaster.disconnect()
     logger.info("Service shutting down")
 
 docs_url = None if settings.environment == "prod" else "/docs"
