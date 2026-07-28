@@ -399,6 +399,12 @@ async def create_lab_result(
     db.add(result)
     await db.commit()
     await db.refresh(result)
+    if body.is_critical:
+        try:
+            from app.events.publisher import publish_lab_critical_value
+            await publish_lab_critical_value(str(result.result_id), getattr(user, "tenant_id", "default") or "default")
+        except Exception:
+            pass
     return result
 
 
@@ -512,6 +518,12 @@ async def verify_lab_result(db: AsyncSession, result_id: UUID, user: TokenPayloa
 
     await db.commit()
     await db.refresh(result)
+
+    try:
+        from app.events.publisher import publish_lab_result_ready
+        await publish_lab_result_ready(str(result.result_id), getattr(user, "tenant_id", "default") or "default")
+    except Exception:
+        pass
 
     return {
         "result_id": result.result_id,

@@ -836,6 +836,11 @@ async def raise_investigation(
         requested_at=datetime.datetime.utcnow(),
     )
     db.add(inv_req)
+    try:
+        from app.events.publisher import publish_investigation_requested
+        await publish_investigation_requested(str(consultation_id), ctx.tenant_id or "default")
+    except Exception:
+        pass
 
     # Update visit status
     visit.status = "awaiting_results"
@@ -1105,6 +1110,17 @@ async def record_prescription(
 
     await db.commit()
     await db.refresh(prescription)
+
+    try:
+        from app.events.publisher import publish_prescription_issued
+        await publish_prescription_issued(
+            prescription_id=str(prescription.id),
+            consultation_id=str(consultation_id),
+            tenant_id=ctx.tenant_id,
+        )
+    except Exception as evt_err:
+        logger.warning("Failed to publish prescription.issued event: %s", evt_err)
+
     return prescription
 
 

@@ -324,6 +324,20 @@ async def run_renewal_invoices_generation() -> int:
                             billing_period_start=new_invoice.billing_period_start,
                             billing_period_end=new_invoice.billing_period_end,
                         )
+                    try:
+                        from app.events.publisher import publish_subscription_invoice_generated
+                        await publish_subscription_invoice_generated(
+                            tenant_id=tenant.tenant_id,
+                            payload={
+                                "invoice_number": new_invoice.invoice_number,
+                                "amount": float(new_invoice.amount),
+                                "currency": new_invoice.currency,
+                                "due_date": str(new_invoice.due_date),
+                                "plan_name": new_invoice.plan_name,
+                            }
+                        )
+                    except Exception as evt_err:
+                        logger.warning("Failed to publish subscription.invoice_generated event: %s", evt_err)
         db.commit()
     except Exception as e:
         logger.error("Failed running automatic renewal invoice generation: %s", e)
@@ -390,6 +404,20 @@ Please settle this invoice immediately to avoid service interruption.
                 continue
 
             try:
+                from app.events.publisher import publish_subscription_invoice_overdue
+                await publish_subscription_invoice_overdue(
+                    tenant_id=invoice.tenant_id,
+                    payload={
+                        "invoice_number": invoice.invoice_number,
+                        "amount": float(invoice.amount),
+                        "currency": invoice.currency,
+                        "due_date": str(invoice.due_date),
+                    }
+                )
+            except Exception as evt_err:
+                logger.warning("Failed publishing subscription.invoice_overdue event: %s", evt_err)
+
+            try:
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = subject
                 msg["From"] = settings.smtp_from
@@ -430,6 +458,7 @@ async def run_invoice_overdue_suspensions() -> int:
     from app.models.saas import Invoice as InvoiceRecord
     from app.models.master import Tenant
     from app.services.tenant_service import cache_tenant_suspension, _revoke_keycloak_sessions
+    from app.events.publisher import publish_tenant_suspended
 
     suspended_count = 0
     db = get_master_db()
@@ -464,6 +493,13 @@ async def run_invoice_overdue_suspensions() -> int:
                 
                 await cache_tenant_suspension(tenant.tenant_id)
                 await _revoke_keycloak_sessions(tenant.tenant_id)
+                try:
+                    await publish_tenant_suspended(
+                        tenant_id=tenant.tenant_id,
+                        payload={"reason": tenant.suspended_reason}
+                    )
+                except Exception as evt_err:
+                    logger.warning("Failed publishing tenant.suspended event: %s", evt_err)
                 suspended_count += 1
                 logger.warning("Suspended tenant %s due to overdue invoice %s", tenant.tenant_id, overdue_invoice.invoice_number)
     except Exception as e:

@@ -84,6 +84,11 @@ async def get_pharmacy_queue(
         rx_res = await db.execute(rx_stmt)
         prescription_count = rx_res.scalar() or 0
 
+        if prescription_count == 0:
+            rx_direct_stmt = select(func.count(Prescription.prescription_id)).where(Prescription.visit_id == visit.visit_id)
+            rx_direct_res = await db.execute(rx_direct_stmt)
+            prescription_count = rx_direct_res.scalar() or 0
+
         queue_items.append(
             PharmacyQueueItem(
                 queue_id=queue.queue_id,
@@ -150,9 +155,9 @@ async def get_visit_prescriptions(db: AsyncSession, visit_id: UUID) -> VisitPres
     # Query prescription joined with visit and patient
     rx_stmt = select(Prescription).where(Prescription.visit_id == visit_id)
     rx_res = await db.execute(rx_stmt)
-    prescription = rx_res.scalar_one_or_none()
+    prescriptions = rx_res.scalars().all()
 
-    if not prescription:
+    if not prescriptions:
         raise NotFoundError("Visit not found or no prescription recorded")
 
     visit = await db.get(Visit, visit_id)
@@ -169,31 +174,50 @@ async def get_visit_prescriptions(db: AsyncSession, visit_id: UUID) -> VisitPres
     final_diagnosis = diag_res.scalar() or "No diagnosis specified"
 
     prescribed_items = []
-    for item in prescription.items:
-        disp_summary = None
-        if item.dispensing_record:
-            disp_summary = {
-                "dispensing_id": item.dispensing_record.dispensing_id,
-                "quantity_dispensed": item.dispensing_record.quantity_dispensed,
-                "dispensed_at": item.dispensing_record.dispensed_at,
-            }
+    for prescription in prescriptions:
+        if prescription.items:
+            for item in prescription.items:
+                disp_summary = None
+                if item.dispensing_record:
+                    disp_summary = {
+                        "dispensing_id": item.dispensing_record.dispensing_id,
+                        "quantity_dispensed": item.dispensing_record.quantity_dispensed,
+                        "dispensed_at": item.dispensing_record.dispensed_at,
+                    }
 
-        prescribed_items.append(
-            SchemaPrescriptionItem(
-                prescription_id=item.prescription_item_id,
-                drug_name=item.drug_name,
-                dose=item.dose or "",
-                frequency=item.frequency or "",
-                duration=item.duration or "",
-                route="oral",
-                instructions=item.instructions,
-                quantity_prescribed=item.quantity_prescribed,
-                prescribed_by=prescription.prescribed_by or "Doctor",
-                prescribed_at=prescription.prescribed_at,
-                status=item.status,
-                dispensing_record=disp_summary,
+                prescribed_items.append(
+                    SchemaPrescriptionItem(
+                        prescription_id=item.prescription_item_id,
+                        drug_name=item.drug_name,
+                        dose=item.dose or "",
+                        frequency=item.frequency or "",
+                        duration=item.duration or "",
+                        route="oral",
+                        instructions=item.instructions,
+                        quantity_prescribed=item.quantity_prescribed,
+                        prescribed_by=prescription.prescribed_by or "Doctor",
+                        prescribed_at=prescription.prescribed_at,
+                        status=item.status,
+                        dispensing_record=disp_summary,
+                    )
+                )
+        else:
+            prescribed_items.append(
+                SchemaPrescriptionItem(
+                    prescription_id=prescription.prescription_id,
+                    drug_name=getattr(prescription, "drug_name", "Medication"),
+                    dose=getattr(prescription, "dose", "") or "",
+                    frequency=getattr(prescription, "frequency", "") or "",
+                    duration=getattr(prescription, "duration", "") or "",
+                    route=getattr(prescription, "route", "oral") or "oral",
+                    instructions=getattr(prescription, "instructions", None),
+                    quantity_prescribed=1,
+                    prescribed_by=prescription.prescribed_by or "Doctor",
+                    prescribed_at=prescription.prescribed_at,
+                    status=prescription.status or "pending",
+                    dispensing_record=None,
+                )
             )
-        )
 
     return VisitPrescriptionsResponse(
         visit_id=visit_id,

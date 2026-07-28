@@ -25,6 +25,11 @@ async def create_report(
     _ctx: TenantContext = Depends(get_current_tenant),
 ):
     report = await radiology_service.create_report(db, body.model_dump())
+    try:
+        from app.events.publisher import publish_radiology_report_ready
+        await publish_radiology_report_ready(str(report.id), _ctx.tenant_id or "default")
+    except Exception:
+        pass
     return report
 
 

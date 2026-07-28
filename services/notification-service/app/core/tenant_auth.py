@@ -106,14 +106,15 @@ async def get_current_tenant(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
 ) -> TenantContext:
-    if not credentials or not credentials.scheme.lower() == "bearer":
+    token = credentials.credentials if (credentials and credentials.scheme.lower() == "bearer") else request.query_params.get("token")
+    if not token:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             detail="Missing bearer token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    payload = await _decode_token(credentials.credentials)
+    payload = await _decode_token(token)
 
     # Local superadmin token handling
     if payload.get("type") == "superadmin":

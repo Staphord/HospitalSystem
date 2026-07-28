@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 # ── Queue ──────────────────────────────────────────────────────────────────────
 
 QueueStatus = Literal["waiting", "in_progress", "completed"]
-QueuePriority = Literal["emergency", "urgent", "semi_urgent", "non_urgent"]
+QueuePriority = Literal["emergency", "urgent", "semi_urgent", "non_urgent", "routine"]
 PaymentType = Literal["cash", "insurance"]
 
 

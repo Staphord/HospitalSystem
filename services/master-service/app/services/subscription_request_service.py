@@ -196,6 +196,24 @@ def create_plan_change_request(
         ip_address=ip_address,
     )
 
+    try:
+        import asyncio
+        from app.events.publisher import publish_subscription_request_created
+        coro = publish_subscription_request_created({
+            "tenant_id": tenant.tenant_id,
+            "hospital_name": tenant.hospital_name,
+            "pending_action": action,
+            "requested_plan": new_plan.value,
+            "reason": reason,
+        })
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(coro)
+        except RuntimeError:
+            asyncio.run(coro)
+    except Exception as evt_err:
+        logger.warning("Failed to publish subscription_request.created event: %s", evt_err)
+
     return tenant
 
 
@@ -281,6 +299,24 @@ def create_cancellation_request(
         user_sub=user_sub,
         ip_address=ip_address,
     )
+
+    try:
+        import asyncio
+        from app.events.publisher import publish_subscription_request_created
+        coro = publish_subscription_request_created({
+            "tenant_id": tenant.tenant_id,
+            "hospital_name": tenant.hospital_name,
+            "pending_action": "cancellation",
+            "requested_plan": None,
+            "reason": reason,
+        })
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(coro)
+        except RuntimeError:
+            asyncio.run(coro)
+    except Exception as evt_err:
+        logger.warning("Failed to publish subscription_request.created event: %s", evt_err)
 
     return tenant
 
