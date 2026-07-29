@@ -1,4 +1,5 @@
 import httpx
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, cast
