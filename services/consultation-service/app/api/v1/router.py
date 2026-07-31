@@ -2593,12 +2593,25 @@ async def get_doctor_dashboard_stats(
         })
 
     # ── 3. Pending Results List & Critical Alerts ─────────────────────────────
+    pending_results_list = []
+    critical_alerts_list = []
+
+    # Add Triage Emergencies to critical alerts
+    for q, v, p, t in q_rows:
+        if q.priority == "emergency":
+            q_created_naive = q.created_at.replace(tzinfo=None)
+            condition = t.chief_complaint if t else "No complaint recorded"
+            critical_alerts_list.append({
+                "id": q.queue_id,
+                "title": f"Triage Emergency: {p.full_name}",
+                "description": f"Condition: {condition}. Triaged at {q_created_naive.strftime('%H:%M')}",
+                "is_highlight": True,
+                "type": "triage",
+                "visit_id": v.visit_id
+            })
     inv_stmt = select(InvestigationRequest).order_by(InvestigationRequest.created_at.desc())
     inv_res = await db.execute(inv_stmt)
     invs = inv_res.scalars().all()
-
-    pending_results_list = []
-    critical_alerts_list = []
     
     for inv in invs:
         pat_stmt = select(Patient).where(Patient.id == inv.patient_id)

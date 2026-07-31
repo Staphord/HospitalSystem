@@ -450,6 +450,8 @@ class DashboardCriticalAlert(BaseModel):
     title: str
     description: str
     is_highlight: bool
+    type: str = "investigation"
+    visit_id: Optional[uuid.UUID] = None
 
 class DoctorDashboardStatsResponse(BaseModel):
     stats: DashboardStatsCard

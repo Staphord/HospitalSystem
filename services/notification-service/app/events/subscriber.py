@@ -148,14 +148,19 @@ async def handle_visit_created(payload: dict, tenant_id: str) -> None:
 async def handle_triage_completed(payload: dict, tenant_id: str) -> None:
     """Process triage.completed event for doctor alert."""
     patient_name = payload.get("patient_name", "Patient")
+    triage_category = payload.get("triage_category", "non_urgent")
+
+    is_emergency = triage_category == "emergency"
+    title = "URGENT: Emergency Patient Triaged" if is_emergency else "Patient Triage Completed"
+    priority = "urgent" if is_emergency else "normal"
 
     req = NotificationCreateRequest(
         tenant_id=tenant_id,
         recipient_role="doctor",
-        title="Patient Triage Completed",
+        title=title,
         message=f"Triage assessment completed for {patient_name}. Ready for consultation.",
         category="clinical",
-        priority="normal",
+        priority=priority,
         action_url="/consultation/queue",
         metadata_payload=payload,
     )
