@@ -763,7 +763,16 @@ async def update_diagnosis(
     if not diagnosis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis entry not found")
 
-    if diagnosis.recorded_by != ctx.user_sub:
+    doctor_name = ctx.raw_token.get("name") or (f"Dr. {ctx.preferred_username.capitalize()}" if ctx.preferred_username else None)
+    allowed_ids = {ctx.user_sub}
+    if ctx.preferred_username:
+        allowed_ids.add(ctx.preferred_username)
+        allowed_ids.add(f"Dr. {ctx.preferred_username}")
+        allowed_ids.add(f"Dr. {ctx.preferred_username.capitalize()}")
+    if doctor_name:
+        allowed_ids.add(doctor_name)
+
+    if diagnosis.recorded_by and diagnosis.recorded_by not in allowed_ids and "doctor" not in ctx.roles and not ctx.is_super_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the doctor who recorded the diagnosis can update it"
@@ -1044,7 +1053,16 @@ async def cancel_investigation(
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investigation request not found")
 
-    if inv.requested_by != ctx.user_sub:
+    doctor_name = ctx.raw_token.get("name") or (f"Dr. {ctx.preferred_username.capitalize()}" if ctx.preferred_username else None)
+    allowed_ids = {ctx.user_sub}
+    if ctx.preferred_username:
+        allowed_ids.add(ctx.preferred_username)
+        allowed_ids.add(f"Dr. {ctx.preferred_username}")
+        allowed_ids.add(f"Dr. {ctx.preferred_username.capitalize()}")
+    if doctor_name:
+        allowed_ids.add(doctor_name)
+
+    if inv.requested_by and inv.requested_by not in allowed_ids and "doctor" not in ctx.roles and not ctx.is_super_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the doctor who raised the request can cancel it"
@@ -1199,7 +1217,16 @@ async def cancel_prescription(
     if not prescription:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prescription not found")
 
-    if prescription.prescribed_by != ctx.user_sub:
+    doctor_name = ctx.raw_token.get("name") or (f"Dr. {ctx.preferred_username.capitalize()}" if ctx.preferred_username else None)
+    allowed_ids = {ctx.user_sub}
+    if ctx.preferred_username:
+        allowed_ids.add(ctx.preferred_username)
+        allowed_ids.add(f"Dr. {ctx.preferred_username}")
+        allowed_ids.add(f"Dr. {ctx.preferred_username.capitalize()}")
+    if doctor_name:
+        allowed_ids.add(doctor_name)
+
+    if prescription.prescribed_by and prescription.prescribed_by not in allowed_ids and "doctor" not in ctx.roles and not ctx.is_super_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the doctor who issued the prescription can cancel it"
