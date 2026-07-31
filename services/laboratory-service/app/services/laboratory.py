@@ -732,7 +732,10 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         .where(
             and_(
                 func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]),
-                func.lower(InvestigationRequest.status).notin_(["completed", "verified", "resulted"])
+                or_(
+                    InvestigationRequest.status.is_(None),
+                    func.lower(InvestigationRequest.status).notin_(["completed", "verified", "resulted", "cancelled"])
+                )
             )
         )
         .order_by(urgency_order, InvestigationRequest.created_at.desc())
