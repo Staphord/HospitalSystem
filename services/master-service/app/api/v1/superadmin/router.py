@@ -564,130 +564,152 @@ async def create_tenant(
     db.commit()
     db.refresh(tenant)
 
-    # Create per-tenant Keycloak realm and verify it exists
     try:
-        await setup_tenant_realm(tenant_id)
-        exists = await verify_tenant_realm_exists(tenant_id)
-        if exists:
-            tenant.keycloak_realm = tenant_id
-        else:
-            logger.warning("Realm %s was not actually created after setup, falling back", tenant_id)
+            # Create per-tenant Keycloak realm and verify it exists
+        try:
+            await setup_tenant_realm(tenant_id)
+            exists = await verify_tenant_realm_exists(tenant_id)
+            if exists:
+                tenant.keycloak_realm = tenant_id
+            else:
+                logger.warning("Realm %s was not actually created after setup, falling back", tenant_id)
+                tenant.keycloak_realm = settings.keycloak_realm
+            db.commit()
+        except Exception as e:
+            logger.warning("Failed to setup tenant realm %s: %s", tenant_id, e)
             tenant.keycloak_realm = settings.keycloak_realm
-        db.commit()
-    except Exception as e:
-        logger.warning("Failed to setup tenant realm %s: %s", tenant_id, e)
-        tenant.keycloak_realm = settings.keycloak_realm
-        db.commit()
-
-    realm = tenant.keycloak_realm or settings.keycloak_realm
-
-    # Superadmin-created tenants start with a free trial; the tenant admin
-    # can upgrade later through self-service.
-    subscription_service.subscribe_tenant(
-        db=db,
-        tenant_id=tenant.tenant_id,
-        plan=SubscriptionPlan.FREE_TRIAL,
-        billing_cycle=BillingCycle.MONTHLY,
-    )
-    db.commit()
-    db.refresh(tenant)
-
-    # Generate secure password if not provided
-    admin_password = body.admin_password
-    if not admin_password or not admin_password.strip():
-        import secrets
-        import string
-        upper = string.ascii_uppercase
-        lower = string.ascii_lowercase
-        digits = string.digits
-        special = "!@#$%^*"
-        all_chars = upper + lower + digits + special
-        while True:
-            pwd = "".join(secrets.choice(all_chars) for _ in range(12))
-            if (any(c in upper for c in pwd)
-                    and any(c in lower for c in pwd)
-                    and any(c in digits for c in pwd)
-                    and any(c in special for c in pwd)):
-                admin_password = pwd
-                break
-
-    # Determine base frontend URL from Referer/Origin headers for dynamic matching
-    referer = request.headers.get("referer")
-    origin = request.headers.get("origin")
-    base_url = None
-    if referer:
-        from urllib.parse import urlparse
-        parsed = urlparse(referer)
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
-    elif origin:
-        base_url = origin
-    else:
-        base_url = settings.frontend_url
-
-    await ensure_roles(["hospital_user", "hospital_admin"], realm=realm)
-    try:
-        kc_sub = await create_keycloak_user(
-            username=body.admin_username,
-            password=admin_password,
-            email=body.admin_email,
-            roles=["hospital_admin", "hospital_user"],
-            full_name=body.admin_full_name or None,
-            temporary_password=True,  # Enforce password reset on first login
-            realm=realm,
+            db.commit()
+    
+        realm = tenant.keycloak_realm or settings.keycloak_realm
+    
+        # Superadmin-created tenants start with a free trial; the tenant admin
+        # can upgrade later through self-service.
+        subscription_service.subscribe_tenant(
+            db=db,
+            tenant_id=tenant.tenant_id,
+            plan=SubscriptionPlan.FREE_TRIAL,
+            billing_cycle=BillingCycle.MONTHLY,
         )
-    except Exception as e:
-        db.rollback()
+        db.commit()
+        db.refresh(tenant)
+    
+        # Generate secure password if not provided
+        admin_password = body.admin_password
+        if not admin_password or not admin_password.strip():
+            import secrets
+            import string
+            upper = string.ascii_uppercase
+            lower = string.ascii_lowercase
+            digits = string.digits
+            special = "!@#$%^*"
+            all_chars = upper + lower + digits + special
+            while True:
+                pwd = "".join(secrets.choice(all_chars) for _ in range(12))
+                if (any(c in upper for c in pwd)
+                        and any(c in lower for c in pwd)
+                        and any(c in digits for c in pwd)
+                        and any(c in special for c in pwd)):
+                    admin_password = pwd
+                    break
+    
+        # Determine base frontend URL from Referer/Origin headers for dynamic matching
+        referer = request.headers.get("referer")
+        origin = request.headers.get("origin")
+        base_url = None
+        if referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+        elif origin:
+            base_url = origin
+        else:
+            base_url = settings.frontend_url
+    
+        await ensure_roles(["hospital_user", "hospital_admin"], realm=realm)
+        try:
+            kc_sub = await create_keycloak_user(
+                username=body.admin_username,
+                password=admin_password,
+                email=body.admin_email,
+                roles=["hospital_admin", "hospital_user"],
+                full_name=body.admin_full_name or None,
+                temporary_password=True,  # Enforce password reset on first login
+                realm=realm,
+            )
+        except Exception as e:
+            # We don't raise HTTP exception here yet, we let the outer try/except handle the rollback
+            raise Exception(f"Failed to create admin user: {e}")
+    
+        from app.services.keycloak_admin import set_user_attribute
+        await set_user_attribute(kc_sub, "tenant_id", tenant_id, realm=realm)
+    
+        # Create tenant database synchronously and store user in tenant DB
+        # NO FALLBACK: tenant database MUST be created, or tenant creation fails
+        from app.services.provision import provision_tenant_database_sync, get_tenant_db_session
+        dsn = provision_tenant_database_sync(tenant_id, body.hospital_name)
+    
+        # Create local user in the tenant database (not master DB)
+        tenant_db = get_tenant_db_session(tenant_id)
+        try:
+            create_local_user(
+                db=tenant_db,
+                keycloak_sub=kc_sub,
+                username=body.admin_username,
+                full_name=body.admin_full_name or None,
+                email=body.admin_email,
+                role="hospital_admin",
+                hospital_id=tenant_id,
+                force_password_change=True,
+            )
+        finally:
+            tenant_db.close()
+    
+        # Trigger welcome email to the hospital administrator 
+        admin_email = tenant.primary_contact_email or tenant.billing_email
+        if admin_email:
+            background_tasks.add_task(
+                _send_hospital_admin_welcome_email,
+                email=admin_email,
+                hospital_name=tenant.hospital_name,
+                admin_username=body.admin_username,
+                tenant_id=tenant_id,
+                admin_password=admin_password,
+                login_url=base_url,
+            )
+    
+        _log_action(
+            db,
+            token,
+            request,
+            "tenant.onboard",
+            tenant_id,
+            {"hospital_name": body.hospital_name, "country": body.country, "city": body.city},
+        )
+        db.commit()
+    
+    except Exception as saga_exc:
+        logger.error(f"Tenant creation failed for {tenant_id}, initiating saga rollback: {saga_exc}")
+        
+        # Rollback 1: Drop the tenant DB if it exists
+        try:
+            from app.services.provision import drop_tenant_database
+            drop_tenant_database(tenant_id)
+        except Exception as e:
+            logger.error(f"Saga Rollback: Failed to drop database for {tenant_id}: {e}")
+            
+        # Rollback 2: Hard delete Tenant record
+        try:
+            db.delete(tenant)
+            db.commit()
+            logger.info(f"Saga Rollback: Hard deleted tenant record {tenant_id}")
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Saga Rollback: Failed to hard delete tenant {tenant_id}: {e}")
+            
         raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to create admin user: {e}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Tenant creation failed and rollback was executed: {saga_exc}"
         )
-
-    from app.services.keycloak_admin import set_user_attribute
-    await set_user_attribute(kc_sub, "tenant_id", tenant_id, realm=realm)
-
-    # Create tenant database synchronously and store user in tenant DB
-    # NO FALLBACK: tenant database MUST be created, or tenant creation fails
-    from app.services.provision import provision_tenant_database_sync, get_tenant_db_session
-    dsn = provision_tenant_database_sync(tenant_id, body.hospital_name)
-
-    # Create local user in the tenant database (not master DB)
-    tenant_db = get_tenant_db_session(tenant_id)
-    try:
-        create_local_user(
-            db=tenant_db,
-            keycloak_sub=kc_sub,
-            username=body.admin_username,
-            full_name=body.admin_full_name or None,
-            email=body.admin_email,
-            role="hospital_admin",
-            hospital_id=tenant_id,
-            force_password_change=True,
-        )
-    finally:
-        tenant_db.close()
-
-    # Trigger welcome email to the hospital administrator 
-    admin_email = tenant.primary_contact_email or tenant.billing_email
-    if admin_email:
-        background_tasks.add_task(
-            _send_hospital_admin_welcome_email,
-            email=admin_email,
-            hospital_name=tenant.hospital_name,
-            admin_username=body.admin_username,
-            tenant_id=tenant_id,
-            admin_password=admin_password,
-            login_url=base_url,
-        )
-
-    _log_action(
-        db,
-        token,
-        request,
-        "tenant.onboard",
-        tenant_id,
-        {"hospital_name": body.hospital_name, "country": body.country, "city": body.city},
-    )
-    db.commit()
 
     return TenantOut.model_validate(tenant)
 
