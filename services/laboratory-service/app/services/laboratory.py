@@ -730,7 +730,10 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         select(InvestigationRequest, Patient)
         .outerjoin(Patient, Patient.id == InvestigationRequest.patient_id)
         .where(
-            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
+            and_(
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]),
+                func.lower(InvestigationRequest.status).notin_(["completed", "verified", "resulted"])
+            )
         )
         .order_by(urgency_order, InvestigationRequest.created_at.desc())
         .limit(5)
