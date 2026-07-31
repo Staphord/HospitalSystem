@@ -29,6 +29,9 @@ async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
         raise TenantNotFoundError(f"Tenant '{tenant_id}' not found or inactive")
 
     async_dsn = dsn.replace("postgresql://", "postgresql+asyncpg://")
+    import logging
+    logging.getLogger("service").error(f"ATTEMPTING TO CONNECT TO TENANT DB WITH DSN: {async_dsn}")
+    
     engine = create_async_engine(
         async_dsn,
         pool_pre_ping=True,
