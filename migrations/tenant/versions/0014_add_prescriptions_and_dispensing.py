@@ -18,9 +18,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Create prescriptions table
+    # 1. Create pharmacy_prescriptions table
     op.create_table(
-        "prescriptions",
+        "pharmacy_prescriptions",
         sa.Column("prescription_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("visit_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("patient_id", sa.UUID(as_uuid=True), nullable=False),
@@ -31,12 +31,12 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["visit_id"], ["visits.visit_id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["patient_id"], ["patients.id"], ondelete="CASCADE"),
     )
-    op.create_index("idx_prescriptions_visit_id", "prescriptions", ["visit_id"])
-    op.create_index("idx_prescriptions_patient_id", "prescriptions", ["patient_id"])
+    op.create_index("idx_pharmacy_prescriptions_visit_id", "pharmacy_prescriptions", ["visit_id"])
+    op.create_index("idx_pharmacy_prescriptions_patient_id", "pharmacy_prescriptions", ["patient_id"])
 
-    # 2. Create prescription_items table
+    # 2. Create pharmacy_prescription_items table
     op.create_table(
-        "prescription_items",
+        "pharmacy_prescription_items",
         sa.Column("prescription_item_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("prescription_id", sa.UUID(as_uuid=True), nullable=False),
         sa.Column("drug_name", sa.String(length=200), nullable=False),
@@ -47,9 +47,9 @@ def upgrade() -> None:
         sa.Column("quantity_prescribed", sa.Integer(), nullable=True),
         sa.Column("status", sa.String(length=50), nullable=False, server_default="pending"),
         sa.PrimaryKeyConstraint("prescription_item_id"),
-        sa.ForeignKeyConstraint(["prescription_id"], ["prescriptions.prescription_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["prescription_id"], ["pharmacy_prescriptions.prescription_id"], ondelete="CASCADE"),
     )
-    op.create_index("idx_prescription_items_prescription_id", "prescription_items", ["prescription_id"])
+    op.create_index("idx_pharmacy_prescription_items_prescription_id", "pharmacy_prescription_items", ["prescription_id"])
 
     # 3. Create dispensing_records table
     op.create_table(
@@ -65,7 +65,7 @@ def upgrade() -> None:
         sa.Column("dispensed_by", sa.String(length=255), nullable=True),
         sa.Column("dispensed_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("dispensing_id"),
-        sa.ForeignKeyConstraint(["prescription_item_id"], ["prescription_items.prescription_item_id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["prescription_item_id"], ["pharmacy_prescription_items.prescription_item_id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["visit_id"], ["visits.visit_id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["inventory_id"], ["drug_inventory.inventory_id"], ondelete="SET NULL"),
     )
@@ -75,5 +75,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("dispensing_records")
-    op.drop_table("prescription_items")
-    op.drop_table("prescriptions")
+    op.drop_table("pharmacy_prescription_items")
+    op.drop_table("pharmacy_prescriptions")
