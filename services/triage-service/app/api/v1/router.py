@@ -1,4 +1,5 @@
 import httpx
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, cast
@@ -277,6 +278,32 @@ async def skip_patient(
     )
 
 
+def format_patient_age(dob: date) -> str:
+    if not dob:
+        return "--"
+    today = date.today()
+    if dob > today:
+        return "0 days"
+    
+    diff_days = (today - dob).days
+    years = today.year - dob.year
+    months = today.month - dob.month
+    days = today.day - dob.day
+
+    if days < 0:
+        months -= 1
+    if months < 0:
+        years -= 1
+        months += 12
+
+    if years == 0 and months == 0:
+        return f"{diff_days} day" if diff_days == 1 else f"{diff_days} days"
+    elif years == 0:
+        return f"{months} month" if months == 1 else f"{months} months"
+    else:
+        return f"{years} yr" if years == 1 else f"{years} yrs"
+
+
 @router.get("/history/search", response_model=TriageHistorySearchResponse, tags=["Triage History"])
 async def search_triage_history(
     query: Optional[str] = Query(None),
@@ -355,7 +382,6 @@ async def search_triage_history(
     result = await db.execute(stmt)
     rows = result.all()
 
-    today = date.today()
     patients_list = []
     for row in rows:
         p = row[0]
@@ -363,8 +389,8 @@ async def search_triage_history(
         assessed_at = row[2]
         total_visits = row[3]
 
-        # Calculate age
-        age = today.year - p.date_of_birth.year - ((today.month, today.day) < (p.date_of_birth.month, p.date_of_birth.day))
+        # Calculate age using utility
+        age_str = format_patient_age(p.date_of_birth)
 
         # Format category label
         cat_label = None
@@ -378,7 +404,7 @@ async def search_triage_history(
                 patientNumber=p.patient_number,
                 gender=p.gender.title(),
                 dob=p.date_of_birth.strftime("%d %b %Y"),
-                age=age,
+                age=age_str,
                 phone="", # Default empty or query if phone exists on patient schema replica
                 lastTriageCategory=cat_label,
                 lastAssessedAt=assessed_at.strftime("%d/%m/%Y %H:%M") if assessed_at else None,

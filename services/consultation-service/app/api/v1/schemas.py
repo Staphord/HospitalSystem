@@ -67,7 +67,7 @@ class PrescriptionResponse(BaseModel):
     instructions: Optional[str]
     prescribed_by: Optional[str]
     status: str
-    prescribed_at: datetime
+    prescribed_at: Optional[datetime] = None
     dispensing_status: Optional[str] = None
 
     class Config:

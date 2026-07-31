@@ -68,6 +68,51 @@ from app.models.consultation import (
     InpatientOrder,
     Referral,
 )
+from app.models.user import User
+
+
+async def _resolve_doctor_name(db: AsyncSession, identifier: Optional[str]) -> str:
+    if not identifier:
+        return "—"
+
+    str_id = str(identifier).strip()
+    if not str_id:
+        return "—"
+
+    uuid_obj = None
+    try:
+        if isinstance(identifier, uuid.UUID):
+            uuid_obj = identifier
+        else:
+            uuid_obj = uuid.UUID(str_id)
+    except Exception:
+        pass
+
+    conds = [
+        User.keycloak_sub == str_id,
+        User.username == str_id,
+        User.email == str_id,
+    ]
+    if uuid_obj:
+        conds.append(User.id == uuid_obj)
+
+    stmt = select(User).where(or_(*conds))
+    res = await db.execute(stmt)
+    u = res.scalars().first()
+
+    if u:
+        name = (u.full_name or "").strip()
+        if name:
+            return name
+        full = f"{getattr(u, 'first_name', '') or ''} {getattr(u, 'last_name', '') or ''}".strip()
+        if full:
+            return full
+        if u.username:
+            return u.username
+
+    return str_id
+
+
 
 logger = logging.getLogger("consultation_service.api")
 router = APIRouter(dependencies=[Depends(get_current_tenant)])
@@ -832,7 +877,7 @@ async def raise_investigation(
         clinical_history=body.clinical_indication,
         status="pending",
         urgency=body.urgency,
-        requested_by=ctx.user_sub,
+        requested_by=ctx.raw_token.get("name") or (f"Dr. {ctx.preferred_username.capitalize()}" if ctx.preferred_username else None) or ctx.user_sub,
         requested_at=datetime.datetime.utcnow(),
     )
     db.add(inv_req)
@@ -1514,7 +1559,8 @@ async def get_consultation_summary(
             route=p.route,
             instructions=p.instructions,
             prescribed_by=p.prescribed_by,
-            status=p.status
+            status=p.status,
+            prescribed_at=getattr(p, 'prescribed_at', None) or getattr(p, 'created_at', None)
         ) for p in prescriptions
     ]
 
@@ -1679,7 +1725,8 @@ async def get_patient_encounter_view(
                 route=p.route,
                 instructions=p.instructions,
                 prescribed_by=p.prescribed_by,
-                status=p.status
+                status=p.status,
+                prescribed_at=getattr(p, 'prescribed_at', None) or getattr(p, 'created_at', None)
             ) for p in prescriptions
         ]
 
@@ -1790,7 +1837,8 @@ async def get_patient_history(
                     route=p.route,
                     instructions=p.instructions,
                     prescribed_by=p.prescribed_by,
-                    status=p.status
+                    status=p.status,
+                    prescribed_at=getattr(p, 'prescribed_at', None) or getattr(p, 'created_at', None)
                 ) for p in prescriptions
             ]
 
@@ -1953,7 +2001,7 @@ async def get_admission_details(
     cons_stmt = select(Consultation).where(Consultation.visit_id == adm.visit_id)
     cons_res = await db.execute(cons_stmt)
     consultation = cons_res.scalars().first()
-    doc_name = consultation.created_by if (consultation and consultation.created_by) else "Dr. Amina Hassan"
+    doc_name = await _resolve_doctor_name(db, consultation.created_by if (consultation and consultation.created_by) else None)
 
     # Calculate length of stay (minimum 1 day)
     los = (datetime.datetime.utcnow() - adm.admission_date).days
@@ -2054,7 +2102,7 @@ async def create_inpatient_order_route(
         description=body.description,
         sub_description=body.sub_description,
         issued_at=datetime.datetime.utcnow(),
-        issued_by=current_user.username if hasattr(current_user, "username") else "doctor",
+        issued_by=await _resolve_doctor_name(db, getattr(current_user, "sub", None) or getattr(current_user, "username", None)),
         due_label=body.due_label or "Due as scheduled",
         status="pending",
     )

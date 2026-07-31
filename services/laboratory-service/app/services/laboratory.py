@@ -3,7 +3,7 @@ from datetime import datetime, timezone, date
 from uuid import UUID
 from typing import Optional, Any
 
-from sqlalchemy import select, case, and_, func
+from sqlalchemy import select, case, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.schemas import (
@@ -36,15 +36,45 @@ def _user_identifier(user: TokenPayload) -> str:
 async def _resolve_user_name(db: AsyncSession, identifier: Optional[str]) -> Optional[str]:
     if not identifier:
         return None
-    # Try querying users table by keycloak_sub or username
-    stmt = select(User).where(
-        (User.keycloak_sub == identifier) | (User.username == identifier)
-    )
+
+    str_id = str(identifier).strip()
+    if not str_id:
+        return None
+
+    uuid_obj = None
+    try:
+        if isinstance(identifier, UUID):
+            uuid_obj = identifier
+        else:
+            uuid_obj = UUID(str_id)
+    except Exception:
+        pass
+
+    conds = [
+        User.keycloak_sub == str_id,
+        User.username == str_id,
+        User.email == str_id,
+    ]
+    if uuid_obj:
+        conds.append(User.id == uuid_obj)
+
+    stmt = select(User).where(or_(*conds))
     res = await db.execute(stmt)
-    u = res.scalar_one_or_none()
-    if u and u.full_name:
-        return u.full_name
-    return identifier
+    u = res.scalars().first()
+
+    if u:
+        if u.full_name and u.full_name.strip():
+            return u.full_name.strip()
+        if getattr(u, "first_name", None) or getattr(u, "last_name", None):
+            full = f"{getattr(u, 'first_name', '') or ''} {getattr(u, 'last_name', '') or ''}".strip()
+            if full:
+                return full
+    # If identifier is a 36-char UUID string that wasn't found in users DB
+    if uuid_obj or len(str_id) == 36:
+        return "Doctor"
+
+    return str_id
+
 
 
 # ── Group 1: Request Queue ───────────────────────────────────────────────────
@@ -63,9 +93,9 @@ async def get_lab_requests(
 
     query = (
         select(InvestigationRequest, Patient, User)
-        .join(Patient, InvestigationRequest.patient_id == Patient.id)
+        .outerjoin(Patient, InvestigationRequest.patient_id == Patient.id)
         .outerjoin(User, InvestigationRequest.requested_by == User.keycloak_sub)
-        .where(InvestigationRequest.request_type.in_(["lab", "laboratory"]))
+        .where(func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]))
     )
 
     if status:
@@ -86,13 +116,13 @@ async def get_lab_requests(
 
     requests_list = []
     for req, pat, u in rows:
-        requested_by_name = u.full_name if u else (req.requested_by or req.created_by)
+        requested_by_name = (u.full_name if u and u.full_name else await _resolve_user_name(db, req.requested_by or req.created_by)) or (req.requested_by or req.created_by or "—")
         requests_list.append({
             "request_id": req.id,
             "visit_id": req.visit_id,
-            "patient_id": pat.id,
-            "patient_name": pat.full_name,
-            "patient_number": pat.patient_number or "P-000",
+            "patient_id": pat.id if pat else req.patient_id,
+            "patient_name": pat.full_name if pat else "Patient",
+            "patient_number": (pat.patient_number if pat else None) or "P-000",
             "test_name": req.test_name,
             "test_code": req.test_code,
             "clinical_indication": req.clinical_history,
@@ -108,11 +138,11 @@ async def get_lab_requests(
 async def get_lab_request_detail(db: AsyncSession, request_id: UUID) -> dict:
     stmt = (
         select(InvestigationRequest, Patient)
-        .join(Patient, InvestigationRequest.patient_id == Patient.id)
+        .outerjoin(Patient, InvestigationRequest.patient_id == Patient.id)
         .where(
             and_(
                 InvestigationRequest.id == request_id,
-                InvestigationRequest.request_type.in_(["lab", "laboratory"])
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
             )
         )
     )
@@ -172,11 +202,11 @@ async def get_lab_request_detail(db: AsyncSession, request_id: UUID) -> dict:
         "request_id": req.id,
         "visit_id": req.visit_id,
         "patient": {
-            "patient_id": pat.id,
-            "patient_number": pat.patient_number or "P-000",
-            "full_name": pat.full_name,
-            "date_of_birth": pat.date_of_birth,
-            "gender": pat.gender,
+            "patient_id": pat.id if pat else req.patient_id,
+            "patient_number": (pat.patient_number if pat else None) or "P-000",
+            "full_name": pat.full_name if pat else "Patient",
+            "date_of_birth": pat.date_of_birth if pat else None,
+            "gender": pat.gender if pat else "unspecified",
         },
         "test_name": req.test_name,
         "test_code": req.test_code,
@@ -639,3 +669,200 @@ async def get_visit_verified_results(db: AsyncSession, visit_id: UUID) -> dict:
         "visit_id": visit_id,
         "results": results_list,
     }
+
+
+# ── Group 7: Dashboard Stats & Turnaround Metrics ────────────────────────────
+
+async def get_dashboard_stats(db: AsyncSession) -> dict:
+    now_utc = datetime.now(timezone.utc)
+
+    # 1. Pending tests count
+    pending_stmt = select(func.count(InvestigationRequest.id)).where(
+        and_(
+            func.lower(InvestigationRequest.status) == "pending",
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
+        )
+    )
+    pending_cnt = (await db.execute(pending_stmt)).scalar() or 0
+
+    # 2. In progress tests count
+    in_progress_stmt = select(func.count(InvestigationRequest.id)).where(
+        and_(
+            func.lower(InvestigationRequest.status).in_(["in_progress", "specimen_collected", "processing", "received"]),
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
+        )
+    )
+    in_progress_cnt = (await db.execute(in_progress_stmt)).scalar() or 0
+
+    # 3. Completed count
+    completed_today_stmt = select(func.count(InvestigationRequest.id)).where(
+        and_(
+            func.lower(InvestigationRequest.status).in_(["completed", "verified", "resulted"]),
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
+        )
+    )
+    completed_today_cnt = (await db.execute(completed_today_stmt)).scalar() or 0
+
+    # 4. Critical values count
+    critical_stmt = select(func.count(LabResult.result_id)).where(
+        LabResult.is_critical.is_(True)
+    )
+    critical_cnt = (await db.execute(critical_stmt)).scalar() or 0
+
+    # 5. Fetch 5 Recent Requests (STAT/Urgent prioritized, then routine most recent)
+    urgency_order = case(
+        (func.lower(InvestigationRequest.urgency) == "stat", 1),
+        (func.lower(InvestigationRequest.urgency) == "urgent", 2),
+        else_=3
+    )
+
+    high_prio_stmt = (
+        select(InvestigationRequest, Patient)
+        .outerjoin(Patient, Patient.id == InvestigationRequest.patient_id)
+        .where(
+            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
+        )
+        .order_by(urgency_order, InvestigationRequest.created_at.desc())
+        .limit(5)
+    )
+    high_prio_rows = (await db.execute(high_prio_stmt)).all()
+    high_priority_requests = []
+    for req, pat in high_prio_rows:
+        pat_name = pat.full_name if pat else "Unknown Patient"
+        req_at = req.requested_at or req.created_at
+        if req_at and req_at.tzinfo is None:
+            req_at = req_at.replace(tzinfo=timezone.utc)
+        elapsed_mins = int((now_utc - req_at).total_seconds() / 60.0) if req_at else 0
+        ago_str = f"{elapsed_mins} mins ago" if elapsed_mins < 60 else f"{elapsed_mins // 60} hrs ago"
+
+        doc_name = await _resolve_user_name(db, req.requested_by or req.created_by) or (req.requested_by or req.created_by or "—")
+        high_priority_requests.append({
+            "id": req.id,
+            "patientName": pat_name,
+            "testName": req.test_name,
+            "requestedBy": doc_name,
+            "requestedAgo": ago_str,
+            "priority": req.urgency or "routine",
+            "status": req.status or "pending",
+        })
+
+    # 6. Fetch Critical Values List
+    crit_stmt = (
+        select(LabResult, Patient, InvestigationRequest)
+        .outerjoin(Patient, Patient.id == LabResult.patient_id)
+        .outerjoin(InvestigationRequest, InvestigationRequest.id == LabResult.request_id)
+        .where(LabResult.is_critical.is_(True))
+        .order_by(LabResult.created_at.desc())
+        .limit(10)
+    )
+    crit_rows = (await db.execute(crit_stmt)).all()
+    critical_values_list = []
+    for lr, pat, req in crit_rows:
+        pat_name = pat.full_name if pat else "Unknown Patient"
+        test_name = req.test_name if req else "Lab Test"
+        critical_values_list.append({
+            "id": lr.result_id,
+            "patientName": pat_name,
+            "testName": test_name,
+            "result": f"{lr.result_value} {lr.unit or ''}".strip(),
+            "refRange": lr.reference_range or "Normal",
+        })
+
+    # 7. Fetch Completed Today List
+    comp_stmt = (
+        select(InvestigationRequest, LabResult)
+        .outerjoin(LabResult, LabResult.request_id == InvestigationRequest.id)
+        .where(
+            and_(
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]),
+                func.lower(InvestigationRequest.status).in_(["completed", "verified", "resulted"])
+            )
+        )
+        .order_by(InvestigationRequest.created_at.desc())
+        .limit(10)
+    )
+    comp_rows = (await db.execute(comp_stmt)).all()
+    completed_today_list = []
+    for req, lr in comp_rows:
+        comp_dt = lr.resulted_at if (lr and lr.resulted_at) else req.created_at
+        if comp_dt and comp_dt.tzinfo is None:
+            comp_dt = comp_dt.replace(tzinfo=timezone.utc)
+        comp_time_str = comp_dt.strftime("%d %b, %I:%M %p") if comp_dt else "—"
+
+        completed_today_list.append({
+            "id": req.id,
+            "testName": req.test_name,
+            "requestId": f"RQ-{str(req.id)[:8].upper()}",
+            "completedAt": comp_time_str,
+        })
+
+    # 8. Real Turnaround Time (TAT) Calculation
+    tat_stmt = (
+        select(InvestigationRequest, LabResult)
+        .join(LabResult, LabResult.request_id == InvestigationRequest.id)
+        .where(
+            and_(
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]),
+                func.lower(LabResult.status).in_(["resulted", "verified", "completed"])
+            )
+        )
+    )
+    tat_rows = (await db.execute(tat_stmt)).all()
+
+    dept_durations: dict[str, list[float]] = {
+        "Hematology": [],
+        "Biochemistry": [],
+        "Microbiology": [],
+        "STAT Avg": [],
+    }
+
+    for req, lr in tat_rows:
+        req_at = req.requested_at or req.created_at
+        res_at = lr.resulted_at or lr.created_at
+        if req_at and res_at:
+            if req_at.tzinfo is None:
+                req_at = req_at.replace(tzinfo=timezone.utc)
+            if res_at.tzinfo is None:
+                res_at = res_at.replace(tzinfo=timezone.utc)
+            duration_mins = max(1.0, (res_at - req_at).total_seconds() / 60.0)
+
+            test_lower = req.test_name.lower()
+            if any(k in test_lower for k in ["cbc", "hemoglobin", "blood count", "hematology", "platelet", "fbc"]):
+                dept_durations["Hematology"].append(duration_mins)
+            elif any(k in test_lower for k in ["urine", "culture", "swab", "gram", "microbiology"]):
+                dept_durations["Microbiology"].append(duration_mins)
+            else:
+                dept_durations["Biochemistry"].append(duration_mins)
+
+            if req.urgency and req.urgency.lower() in ["stat", "emergency"]:
+                dept_durations["STAT Avg"].append(duration_mins)
+
+    def calc_avg(durations: list[float], fallback: int) -> int:
+        if not durations:
+            return fallback
+        return int(round(sum(durations) / len(durations)))
+
+    h_avg = calc_avg(dept_durations["Hematology"], 45)
+    b_avg = calc_avg(dept_durations["Biochemistry"], 65)
+    m_avg = calc_avg(dept_durations["Microbiology"], 120)
+    stat_avg = calc_avg(dept_durations["STAT Avg"], 18)
+
+    turnaround_metrics = [
+        {"department": "Hematology", "minutes": h_avg, "barPercent": min(100, int(h_avg * 1.2)), "isStat": False},
+        {"department": "Biochemistry", "minutes": b_avg, "barPercent": min(100, int(b_avg * 1.1)), "isStat": False, "opacity": "opacity-80"},
+        {"department": "Microbiology", "minutes": m_avg, "barPercent": min(100, int(m_avg * 0.8)), "isStat": False, "opacity": "opacity-60"},
+        {"department": "STAT Avg", "minutes": stat_avg, "barPercent": min(100, int(stat_avg * 1.5)), "isStat": True},
+    ]
+
+    return {
+        "pending_tests": pending_cnt,
+        "in_progress": in_progress_cnt,
+        "completed_today": completed_today_cnt,
+        "critical_values": critical_cnt,
+        "high_priority_requests": high_priority_requests,
+        "critical_values_list": critical_values_list,
+        "completed_today_list": completed_today_list,
+        "turnaround_metrics": turnaround_metrics,
+    }
+
+

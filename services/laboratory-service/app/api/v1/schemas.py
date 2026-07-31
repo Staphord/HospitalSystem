@@ -267,3 +267,61 @@ class DoctorVisitResultItem(BaseModel):
 class DoctorVisitResultsResponse(BaseModel):
     visit_id: UUID
     results: list[DoctorVisitResultItem]
+
+
+# ── Group 7: Dashboard Stats & Turnaround Metrics ────────────────────────────
+
+class StatRequestItem(BaseModel):
+    id: UUID
+    patient_name: str = Field(..., alias="patientName")
+    test_name: str = Field(..., alias="testName")
+    requested_by: str = Field(..., alias="requestedBy")
+    requested_ago: str = Field(..., alias="requestedAgo")
+    priority: str
+    status: Optional[str] = "pending"
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class CriticalValueItem(BaseModel):
+    id: UUID
+    patient_name: str = Field(..., alias="patientName")
+    test_name: str = Field(..., alias="testName")
+    result: str
+    ref_range: Optional[str] = Field(None, alias="refRange")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class CompletedTestItem(BaseModel):
+    id: UUID
+    test_name: str = Field(..., alias="testName")
+    request_id: str = Field(..., alias="requestId")
+    completed_at: str = Field(..., alias="completedAt")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class TurnaroundMetricItem(BaseModel):
+    department: str
+    minutes: int
+    bar_percent: int = Field(..., alias="barPercent")
+    is_stat: bool = Field(False, alias="isStat")
+    opacity: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class LabDashboardStatsResponse(BaseModel):
+    pending_tests: int = Field(..., alias="pendingTests")
+    in_progress: int = Field(..., alias="inProgress")
+    completed_today: int = Field(..., alias="completedToday")
+    critical_values: int = Field(..., alias="criticalValues")
+    high_priority_requests: list[StatRequestItem] = Field(default_factory=list, alias="highPriorityRequests")
+    critical_values_list: list[CriticalValueItem] = Field(default_factory=list, alias="criticalValuesList")
+    completed_today_list: list[CompletedTestItem] = Field(default_factory=list, alias="completedTodayList")
+    turnaround_metrics: list[TurnaroundMetricItem] = Field(default_factory=list, alias="turnaroundMetrics")
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+

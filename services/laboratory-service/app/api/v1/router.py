@@ -23,6 +23,7 @@ from app.api.v1.schemas import (
     LabBillCreateRequest,
     LabBillResponse,
     DoctorVisitResultsResponse,
+    LabDashboardStatsResponse,
 )
 from app.core.security import TokenPayload, require_role, get_current_active_user
 from app.core.tenant_auth import get_current_tenant
@@ -226,3 +227,18 @@ async def get_visit_verified_results(
     session: AsyncSession = Depends(get_tenant_db),
 ):
     return await lab_service.get_visit_verified_results(session, visit_id)
+
+
+# ── Group 7 — Dashboard Stats ────────────────────────────────────────────────
+
+@router.get(
+    "/dashboard/stats",
+    response_model=LabDashboardStatsResponse,
+    response_model_by_alias=True,
+    tags=["Dashboard"],
+)
+async def get_lab_dashboard_stats(
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.get_dashboard_stats(session)
+
