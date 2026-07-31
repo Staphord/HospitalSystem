@@ -427,16 +427,50 @@ async def handle_lab_result_ready(payload: dict, tenant_id: str) -> None:
 
 
 async def handle_investigation_requested(payload: dict, tenant_id: str) -> None:
-    """Process investigation.requested event for lab tech alert."""
+    """Process investigation.requested event for lab/radiology tech alert."""
     consult_id = payload.get("consultation_id", "")
+    test_name = payload.get("test_name", "")
+    urgency_raw = (payload.get("urgency") or "routine").strip().upper()
+    req_by = payload.get("requested_by", "")
+    req_type = (payload.get("request_type") or "laboratory").lower()
+
+    if urgency_raw in ("STAT", "EMERGENCY"):
+        urgency_prefix = "[STAT]"
+        priority_level = "emergency"
+    elif urgency_raw == "URGENT":
+        urgency_prefix = "[URGENT]"
+        priority_level = "urgent"
+    else:
+        urgency_prefix = "[ROUTINE]"
+        priority_level = "normal"
+
+    is_radiology = req_type in ("radiology", "rad", "xray", "imaging")
+    recipient_role = "radiologist" if is_radiology else "lab_technician"
+    action_url = "/radiology/queue" if is_radiology else "/laboratory/requests"
+    service_name = "Radiology" if is_radiology else "Lab"
+
+    if test_name:
+        title = f"{urgency_prefix} New {service_name} Order: {test_name}"
+    else:
+        title = f"{urgency_prefix} New {service_name} Investigation Requested"
+
+    details = []
+    if test_name:
+        details.append(f"Test: {test_name}")
+    details.append(f"Urgency: {urgency_raw}")
+    if req_by:
+        details.append(f"Doctor: {req_by}")
+    if consult_id:
+        details.append(f"Consultation #{consult_id[:8] if len(consult_id) > 8 else consult_id}")
+
     req = NotificationCreateRequest(
         tenant_id=tenant_id,
-        recipient_role="lab_technician",
-        title="Investigation Ordered",
-        message=f"New diagnostic investigation requested (Consultation #{consult_id}).",
+        recipient_role=recipient_role,
+        title=title,
+        message=" | ".join(details),
         category="clinical",
-        priority="normal",
-        action_url="/laboratory/requests",
+        priority=priority_level,
+        action_url=action_url,
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):

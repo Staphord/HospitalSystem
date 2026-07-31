@@ -892,7 +892,14 @@ async def raise_investigation(
     db.add(inv_req)
     try:
         from app.events.publisher import publish_investigation_requested
-        await publish_investigation_requested(str(consultation_id), ctx.tenant_id or "default")
+        await publish_investigation_requested(
+            consultation_id=str(consultation_id),
+            tenant_id=ctx.tenant_id or "default",
+            test_name=body.test_name,
+            urgency=body.urgency or "routine",
+            request_type=body.request_type or "laboratory",
+            requested_by=inv_req.requested_by or "",
+        )
     except Exception:
         pass
 

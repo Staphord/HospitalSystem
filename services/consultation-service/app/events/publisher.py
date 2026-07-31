@@ -8,9 +8,26 @@ Publishes:
 
 from app.messaging.publisher import publish_event
 
-async def publish_investigation_requested(consultation_id: str, tenant_id: str) -> None:
-    """Placeholder: Publish investigation.requested event."""
-    await publish_event("investigation.requested", {"consultation_id": consultation_id, "tenant_id": tenant_id})
+async def publish_investigation_requested(
+    consultation_id: str,
+    tenant_id: str,
+    test_name: str = "",
+    urgency: str = "routine",
+    request_type: str = "laboratory",
+    requested_by: str = "",
+) -> None:
+    """Publish investigation.requested event with complete order details."""
+    await publish_event(
+        "investigation.requested",
+        {
+            "consultation_id": consultation_id,
+            "tenant_id": tenant_id,
+            "test_name": test_name,
+            "urgency": urgency,
+            "request_type": request_type,
+            "requested_by": requested_by,
+        },
+    )
 
 async def publish_prescription_issued(prescription_id: str, consultation_id: str, tenant_id: str) -> None:
     """Placeholder: Publish prescription.issued event."""
