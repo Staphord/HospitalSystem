@@ -19,7 +19,7 @@ async def handle_lab_critical_value(payload: dict, tenant_id: str) -> None:
         message=f"Critical value detected for {patient_name} in {test_name}.",
         category="clinical",
         priority="emergency",
-        action_url=f"/laboratory/requests/{payload.get('lab_result_id', '')}",
+        action_url="/consultation/results",
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):
@@ -39,7 +39,7 @@ async def handle_radiology_report_ready(payload: dict, tenant_id: str) -> None:
         message=f"{study_type} report for {patient_name} is now available.",
         category="clinical",
         priority="normal",
-        action_url=f"/radiology/requests/{payload.get('report_id', '')}/report",
+        action_url="/consultation/results",
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):
@@ -411,14 +411,36 @@ async def handle_user_deactivated(payload: dict, tenant_id: str) -> None:
 async def handle_lab_result_ready(payload: dict, tenant_id: str) -> None:
     """Process lab.result_ready event for doctor alert."""
     res_id = payload.get("result_id", "")
+    test_name = payload.get("test_name", "")
+    requested_by = payload.get("requested_by", "")
+    is_critical = payload.get("is_critical", False)
+
+    if is_critical:
+        title = f"[CRITICAL RESULT] Lab Result Ready: {test_name}" if test_name else "[CRITICAL RESULT] Laboratory Result Ready"
+        priority_level = "emergency"
+    else:
+        title = f"[RESULT READY] Lab Result Ready: {test_name}" if test_name else "[RESULT READY] Laboratory Result Ready"
+        priority_level = "normal"
+
+    details = []
+    if test_name:
+        details.append(f"Test: {test_name}")
+    if is_critical:
+        details.append("Status: CRITICAL VALUE DETECTED")
+    else:
+        details.append("Status: Finalized")
+    if requested_by:
+        details.append(f"Ordered by: {requested_by}")
+    details.append("Result is ready for clinical review.")
+
     req = NotificationCreateRequest(
         tenant_id=tenant_id,
         recipient_role="doctor",
-        title="Laboratory Result Ready",
-        message=f"Lab result #{res_id} is finalized and ready for review.",
+        title=title,
+        message=" | ".join(details),
         category="clinical",
-        priority="normal",
-        action_url=f"/laboratory/requests/{res_id}",
+        priority=priority_level,
+        action_url="/consultation/results",
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):
