@@ -511,7 +511,7 @@ async def get_lab_result_by_request(db: AsyncSession, request_id: UUID) -> dict:
 
 # ── Group 4: Result Verification ─────────────────────────────────────────────
 
-async def verify_lab_result(db: AsyncSession, result_id: UUID, user: TokenPayload) -> dict:
+async def verify_lab_result(db: AsyncSession, result_id: UUID, user: TokenPayload, tenant_id: str = "default") -> dict:
     stmt = select(LabResult).where(LabResult.result_id == result_id)
     result = (await db.execute(stmt)).scalar_one_or_none()
     if not result:
@@ -549,9 +549,19 @@ async def verify_lab_result(db: AsyncSession, result_id: UUID, user: TokenPayloa
     await db.commit()
     await db.refresh(result)
 
+    resolved_tenant = tenant_id if (tenant_id and tenant_id != "default") else (user.raw.get("tenant_id") or "default")
+
     try:
         from app.events.publisher import publish_lab_result_ready
-        await publish_lab_result_ready(str(result.result_id), getattr(user, "tenant_id", "default") or "default")
+        await publish_lab_result_ready(
+            result_id=str(result.result_id),
+            tenant_id=resolved_tenant,
+            request_id=str(result.request_id),
+            test_name=req.test_name if req else "",
+            requested_by=req.requested_by if req else "",
+            is_critical=bool(result.is_critical),
+            patient_id=str(result.patient_id) if getattr(result, "patient_id", None) else "",
+        )
     except Exception:
         pass
 
@@ -720,7 +730,13 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         select(InvestigationRequest, Patient)
         .outerjoin(Patient, Patient.id == InvestigationRequest.patient_id)
         .where(
-            func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"])
+            and_(
+                func.lower(InvestigationRequest.request_type).in_(["lab", "laboratory"]),
+                or_(
+                    InvestigationRequest.status.is_(None),
+                    func.lower(InvestigationRequest.status).notin_(["completed", "verified", "resulted", "cancelled"])
+                )
+            )
         )
         .order_by(urgency_order, InvestigationRequest.created_at.desc())
         .limit(5)
@@ -864,5 +880,33 @@ async def get_dashboard_stats(db: AsyncSession) -> dict:
         "completed_today_list": completed_today_list,
         "turnaround_metrics": turnaround_metrics,
     }
+
+
+async def notify_doctor_for_result(db: AsyncSession, result_id: UUID, user: TokenPayload, tenant_id: str = "default") -> dict:
+    stmt = select(LabResult).where(LabResult.result_id == result_id)
+    result = (await db.execute(stmt)).scalar_one_or_none()
+    if not result:
+        raise NotFoundError("Lab result record not found")
+
+    req_stmt = select(InvestigationRequest).where(InvestigationRequest.id == result.request_id)
+    req = (await db.execute(req_stmt)).scalar_one_or_none()
+
+    resolved_tenant = tenant_id if (tenant_id and tenant_id != "default") else (user.raw.get("tenant_id") or "default")
+
+    try:
+        from app.events.publisher import publish_lab_result_ready
+        await publish_lab_result_ready(
+            result_id=str(result.result_id),
+            tenant_id=resolved_tenant,
+            request_id=str(result.request_id),
+            test_name=req.test_name if req else "",
+            requested_by=req.requested_by if req else "",
+            is_critical=bool(result.is_critical),
+            patient_id=str(result.patient_id) if getattr(result, "patient_id", None) else "",
+        )
+    except Exception as e:
+        logger.error(f"Failed to publish notification for result {result_id}: {e}")
+
+    return {"message": f"Doctor notified successfully for result {result_id}"}
 
 

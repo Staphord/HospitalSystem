@@ -763,7 +763,16 @@ async def update_diagnosis(
     if not diagnosis:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Diagnosis entry not found")
 
-    if diagnosis.recorded_by != ctx.user_sub:
+    doctor_name = ctx.raw_token.get("name") or (f"Dr. {ctx.preferred_username.capitalize()}" if ctx.preferred_username else None)
+    allowed_ids = {ctx.user_sub}
+    if ctx.preferred_username:
+        allowed_ids.add(ctx.preferred_username)
+        allowed_ids.add(f"Dr. {ctx.preferred_username}")
+        allowed_ids.add(f"Dr. {ctx.preferred_username.capitalize()}")
+    if doctor_name:
+        allowed_ids.add(doctor_name)
+
+    if diagnosis.recorded_by and diagnosis.recorded_by not in allowed_ids and "doctor" not in ctx.roles and not ctx.is_super_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the doctor who recorded the diagnosis can update it"
@@ -883,7 +892,14 @@ async def raise_investigation(
     db.add(inv_req)
     try:
         from app.events.publisher import publish_investigation_requested
-        await publish_investigation_requested(str(consultation_id), ctx.tenant_id or "default")
+        await publish_investigation_requested(
+            consultation_id=str(consultation_id),
+            tenant_id=ctx.tenant_id or "default",
+            test_name=body.test_name,
+            urgency=body.urgency or "routine",
+            request_type=body.request_type or "laboratory",
+            requested_by=inv_req.requested_by or "",
+        )
     except Exception:
         pass
 
@@ -1044,7 +1060,16 @@ async def cancel_investigation(
     if not inv:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investigation request not found")
 
-    if inv.requested_by != ctx.user_sub:
+    doctor_name = ctx.raw_token.get("name") or (f"Dr. {ctx.preferred_username.capitalize()}" if ctx.preferred_username else None)
+    allowed_ids = {ctx.user_sub}
+    if ctx.preferred_username:
+        allowed_ids.add(ctx.preferred_username)
+        allowed_ids.add(f"Dr. {ctx.preferred_username}")
+        allowed_ids.add(f"Dr. {ctx.preferred_username.capitalize()}")
+    if doctor_name:
+        allowed_ids.add(doctor_name)
+
+    if inv.requested_by and inv.requested_by not in allowed_ids and "doctor" not in ctx.roles and not ctx.is_super_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the doctor who raised the request can cancel it"
@@ -1199,7 +1224,16 @@ async def cancel_prescription(
     if not prescription:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prescription not found")
 
-    if prescription.prescribed_by != ctx.user_sub:
+    doctor_name = ctx.raw_token.get("name") or (f"Dr. {ctx.preferred_username.capitalize()}" if ctx.preferred_username else None)
+    allowed_ids = {ctx.user_sub}
+    if ctx.preferred_username:
+        allowed_ids.add(ctx.preferred_username)
+        allowed_ids.add(f"Dr. {ctx.preferred_username}")
+        allowed_ids.add(f"Dr. {ctx.preferred_username.capitalize()}")
+    if doctor_name:
+        allowed_ids.add(doctor_name)
+
+    if prescription.prescribed_by and prescription.prescribed_by not in allowed_ids and "doctor" not in ctx.roles and not ctx.is_super_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the doctor who issued the prescription can cancel it"
@@ -2593,12 +2627,25 @@ async def get_doctor_dashboard_stats(
         })
 
     # ── 3. Pending Results List & Critical Alerts ─────────────────────────────
+    pending_results_list = []
+    critical_alerts_list = []
+
+    # Add Triage Emergencies to critical alerts
+    for q, v, p, t in q_rows:
+        if q.priority == "emergency":
+            q_created_naive = q.created_at.replace(tzinfo=None)
+            condition = t.chief_complaint if t else "No complaint recorded"
+            critical_alerts_list.append({
+                "id": q.queue_id,
+                "title": f"Triage Emergency: {p.full_name}",
+                "description": f"Condition: {condition}. Triaged at {q_created_naive.strftime('%H:%M')}",
+                "is_highlight": True,
+                "type": "triage",
+                "visit_id": v.visit_id
+            })
     inv_stmt = select(InvestigationRequest).order_by(InvestigationRequest.created_at.desc())
     inv_res = await db.execute(inv_stmt)
     invs = inv_res.scalars().all()
-
-    pending_results_list = []
-    critical_alerts_list = []
     
     for inv in invs:
         pat_stmt = select(Patient).where(Patient.id == inv.patient_id)

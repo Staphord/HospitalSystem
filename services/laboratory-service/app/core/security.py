@@ -183,18 +183,18 @@ def _extract_roles(user: TokenPayload) -> list[str]:
     return user.realm_access.get("roles", []) if user.realm_access else []
 
 
-def require_role(role: str):
+def require_role(*roles: str):
     async def _role_dependency(user: TokenPayload = Depends(get_current_active_user)) -> TokenPayload:
-        roles = _extract_roles(user)
+        user_roles = _extract_roles(user)
 
-        # Allow role aliases so "tech", "lab_technician", "admin", "super_admin", and "doctor" (for views) pass cleanly
-        allowed_roles = {role}
-        if role == "lab_technician":
+        # Allow role aliases so "tech", "lab_technician", "admin", "super_admin", and "doctor" pass cleanly
+        allowed_roles = set(roles)
+        if "lab_technician" in allowed_roles:
             allowed_roles.update(["tech", "lab_technician", "admin", "super_admin"])
-        elif role == "doctor":
+        if "doctor" in allowed_roles:
             allowed_roles.update(["doctor", "lab_technician", "tech", "admin", "super_admin"])
 
-        allowed = any(r in roles for r in allowed_roles) or "super_admin" in roles or "admin" in roles
+        allowed = any(r in user_roles for r in allowed_roles) or "super_admin" in user_roles or "admin" in user_roles
         if not allowed:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
