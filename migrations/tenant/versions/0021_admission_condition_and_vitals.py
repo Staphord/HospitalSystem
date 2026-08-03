@@ -1,7 +1,7 @@
 """Add admission condition, nursing note resp rate, and visitor phone.
 
-Revision ID: 0019_admission_condition_and_vitals
-Revises: 0018_ward_visitors_handover
+Revision ID: 0021_admission_condition_and_vitals
+Revises: 0020_merge_tenant_heads
 Create Date: 2026-07-19
 """
 
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0019_admission_condition_and_vitals"
-down_revision: Union[str, None] = "0018_ward_visitors_handover"
+revision: str = "0021_admission_condition_and_vitals"
+down_revision: Union[str, None] = "0020_merge_tenant_heads"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

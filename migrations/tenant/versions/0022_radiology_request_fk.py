@@ -1,7 +1,7 @@
 """Make radiology_reports.request_id required FK (1:1 with investigation_requests).
 
-Revision ID: 0020_radiology_request_fk
-Revises: 0019_admission_condition_and_vitals
+Revision ID: 0022_radiology_request_fk
+Revises: 0021_admission_condition_and_vitals
 Create Date: 2026-07-27
 """
 
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0020_radiology_request_fk"
-down_revision: Union[str, None] = "0019_admission_condition_and_vitals"
+revision: str = "0022_radiology_request_fk"
+down_revision: Union[str, None] = "0021_admission_condition_and_vitals"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
