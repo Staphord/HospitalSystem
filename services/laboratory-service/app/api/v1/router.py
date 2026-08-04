@@ -23,9 +23,10 @@ from app.api.v1.schemas import (
     LabBillCreateRequest,
     LabBillResponse,
     DoctorVisitResultsResponse,
+    LabDashboardStatsResponse,
 )
 from app.core.security import TokenPayload, require_role, get_current_active_user
-from app.core.tenant_auth import get_current_tenant
+from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.dependencies import get_tenant_db
 from app.services import laboratory as lab_service
 
@@ -42,7 +43,7 @@ router = APIRouter(
     "/requests",
     response_model=LabRequestsListResponse,
     tags=["Request Queue"],
-    dependencies=[Depends(require_role("lab_technician"))],
+    dependencies=[Depends(require_role("lab_technician", "doctor"))],
 )
 async def list_lab_requests(
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -63,7 +64,7 @@ async def list_lab_requests(
     "/requests/{request_id}",
     response_model=LabRequestDetailResponse,
     tags=["Request Queue"],
-    dependencies=[Depends(require_role("lab_technician"))],
+    dependencies=[Depends(require_role("lab_technician", "doctor"))],
 )
 async def get_lab_request(
     request_id: UUID,
@@ -170,7 +171,7 @@ async def update_result(
     "/requests/{request_id}/result",
     response_model=ResultDetailResponse,
     tags=["Results Entry"],
-    dependencies=[Depends(require_role("lab_technician"))],
+    dependencies=[Depends(require_role("lab_technician", "doctor"))],
 )
 async def get_result(
     request_id: UUID,
@@ -190,9 +191,24 @@ async def get_result(
 async def verify_result(
     result_id: UUID,
     user: TokenPayload = Depends(get_current_active_user),
+    ctx: TenantContext = Depends(get_current_tenant),
     session: AsyncSession = Depends(get_tenant_db),
 ):
-    return await lab_service.verify_lab_result(session, result_id, user=user)
+    return await lab_service.verify_lab_result(session, result_id, user=user, tenant_id=ctx.tenant_id)
+
+
+@router.post(
+    "/results/{result_id}/notify-doctor",
+    tags=["Result Verification"],
+    dependencies=[Depends(require_role("lab_technician"))],
+)
+async def notify_doctor(
+    result_id: UUID,
+    user: TokenPayload = Depends(get_current_active_user),
+    ctx: TenantContext = Depends(get_current_tenant),
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.notify_doctor_for_result(session, result_id, user=user, tenant_id=ctx.tenant_id)
 
 
 # ── Group 5 — Billing ─────────────────────────────────────────────────────────
@@ -226,3 +242,18 @@ async def get_visit_verified_results(
     session: AsyncSession = Depends(get_tenant_db),
 ):
     return await lab_service.get_visit_verified_results(session, visit_id)
+
+
+# ── Group 7 — Dashboard Stats ────────────────────────────────────────────────
+
+@router.get(
+    "/dashboard/stats",
+    response_model=LabDashboardStatsResponse,
+    response_model_by_alias=True,
+    tags=["Dashboard"],
+)
+async def get_lab_dashboard_stats(
+    session: AsyncSession = Depends(get_tenant_db),
+):
+    return await lab_service.get_dashboard_stats(session)
+

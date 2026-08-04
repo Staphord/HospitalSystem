@@ -7,6 +7,12 @@ Publishes:
 
 from app.messaging.publisher import publish_event
 
-async def publish_triage_completed(triage_id: str, visit_id: str, tenant_id: str) -> None:
+async def publish_triage_completed(triage_id: str, visit_id: str, tenant_id: str, triage_category: str = "non_urgent", patient_name: str = "Patient") -> None:
     """Placeholder: Publish triage.completed event."""
-    await publish_event("triage.completed", {"triage_id": triage_id, "visit_id": visit_id, "tenant_id": tenant_id})
+    await publish_event("triage.completed", {
+        "triage_id": triage_id,
+        "visit_id": visit_id,
+        "tenant_id": tenant_id,
+        "triage_category": triage_category,
+        "patient_name": patient_name
+    })

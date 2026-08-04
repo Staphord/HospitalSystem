@@ -150,7 +150,7 @@ class Queue(Base):
 
 class FeeSchedule(Base):
     __tablename__ = "fee_schedules"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    fee_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     item_code = Column(String(50), nullable=True)
     item_name = Column(String(200), nullable=False)
     item_type = Column(String(50), nullable=False)

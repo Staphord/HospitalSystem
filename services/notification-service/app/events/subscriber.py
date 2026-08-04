@@ -19,7 +19,7 @@ async def handle_lab_critical_value(payload: dict, tenant_id: str) -> None:
         message=f"Critical value detected for {patient_name} in {test_name}.",
         category="clinical",
         priority="emergency",
-        action_url=f"/laboratory/requests/{payload.get('lab_result_id', '')}",
+        action_url="/consultation/results",
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):
@@ -39,7 +39,7 @@ async def handle_radiology_report_ready(payload: dict, tenant_id: str) -> None:
         message=f"{study_type} report for {patient_name} is now available.",
         category="clinical",
         priority="normal",
-        action_url=f"/radiology/requests/{payload.get('report_id', '')}/report",
+        action_url="/consultation/results",
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):
@@ -148,14 +148,19 @@ async def handle_visit_created(payload: dict, tenant_id: str) -> None:
 async def handle_triage_completed(payload: dict, tenant_id: str) -> None:
     """Process triage.completed event for doctor alert."""
     patient_name = payload.get("patient_name", "Patient")
+    triage_category = payload.get("triage_category", "non_urgent")
+
+    is_emergency = triage_category == "emergency"
+    title = "URGENT: Emergency Patient Triaged" if is_emergency else "Patient Triage Completed"
+    priority = "urgent" if is_emergency else "normal"
 
     req = NotificationCreateRequest(
         tenant_id=tenant_id,
         recipient_role="doctor",
-        title="Patient Triage Completed",
+        title=title,
         message=f"Triage assessment completed for {patient_name}. Ready for consultation.",
         category="clinical",
-        priority="normal",
+        priority=priority,
         action_url="/consultation/queue",
         metadata_payload=payload,
     )
@@ -406,14 +411,36 @@ async def handle_user_deactivated(payload: dict, tenant_id: str) -> None:
 async def handle_lab_result_ready(payload: dict, tenant_id: str) -> None:
     """Process lab.result_ready event for doctor alert."""
     res_id = payload.get("result_id", "")
+    test_name = payload.get("test_name", "")
+    requested_by = payload.get("requested_by", "")
+    is_critical = payload.get("is_critical", False)
+
+    if is_critical:
+        title = f"[CRITICAL RESULT] Lab Result Ready: {test_name}" if test_name else "[CRITICAL RESULT] Laboratory Result Ready"
+        priority_level = "emergency"
+    else:
+        title = f"[RESULT READY] Lab Result Ready: {test_name}" if test_name else "[RESULT READY] Laboratory Result Ready"
+        priority_level = "normal"
+
+    details = []
+    if test_name:
+        details.append(f"Test: {test_name}")
+    if is_critical:
+        details.append("Status: CRITICAL VALUE DETECTED")
+    else:
+        details.append("Status: Finalized")
+    if requested_by:
+        details.append(f"Ordered by: {requested_by}")
+    details.append("Result is ready for clinical review.")
+
     req = NotificationCreateRequest(
         tenant_id=tenant_id,
         recipient_role="doctor",
-        title="Laboratory Result Ready",
-        message=f"Lab result #{res_id} is finalized and ready for review.",
+        title=title,
+        message=" | ".join(details),
         category="clinical",
-        priority="normal",
-        action_url=f"/laboratory/requests/{res_id}",
+        priority=priority_level,
+        action_url="/consultation/results",
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):
@@ -422,16 +449,50 @@ async def handle_lab_result_ready(payload: dict, tenant_id: str) -> None:
 
 
 async def handle_investigation_requested(payload: dict, tenant_id: str) -> None:
-    """Process investigation.requested event for lab tech alert."""
+    """Process investigation.requested event for lab/radiology tech alert."""
     consult_id = payload.get("consultation_id", "")
+    test_name = payload.get("test_name", "")
+    urgency_raw = (payload.get("urgency") or "routine").strip().upper()
+    req_by = payload.get("requested_by", "")
+    req_type = (payload.get("request_type") or "laboratory").lower()
+
+    if urgency_raw in ("STAT", "EMERGENCY"):
+        urgency_prefix = "[STAT]"
+        priority_level = "emergency"
+    elif urgency_raw == "URGENT":
+        urgency_prefix = "[URGENT]"
+        priority_level = "urgent"
+    else:
+        urgency_prefix = "[ROUTINE]"
+        priority_level = "normal"
+
+    is_radiology = req_type in ("radiology", "rad", "xray", "imaging")
+    recipient_role = "radiologist" if is_radiology else "lab_technician"
+    action_url = "/radiology/queue" if is_radiology else "/laboratory/requests"
+    service_name = "Radiology" if is_radiology else "Lab"
+
+    if test_name:
+        title = f"{urgency_prefix} New {service_name} Order: {test_name}"
+    else:
+        title = f"{urgency_prefix} New {service_name} Investigation Requested"
+
+    details = []
+    if test_name:
+        details.append(f"Test: {test_name}")
+    details.append(f"Urgency: {urgency_raw}")
+    if req_by:
+        details.append(f"Doctor: {req_by}")
+    if consult_id:
+        details.append(f"Consultation #{consult_id[:8] if len(consult_id) > 8 else consult_id}")
+
     req = NotificationCreateRequest(
         tenant_id=tenant_id,
-        recipient_role="lab_technician",
-        title="Investigation Ordered",
-        message=f"New diagnostic investigation requested (Consultation #{consult_id}).",
+        recipient_role=recipient_role,
+        title=title,
+        message=" | ".join(details),
         category="clinical",
-        priority="normal",
-        action_url="/laboratory/requests",
+        priority=priority_level,
+        action_url=action_url,
         metadata_payload=payload,
     )
     async for db in get_tenant_session(tenant_id):

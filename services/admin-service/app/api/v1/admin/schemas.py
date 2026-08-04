@@ -279,6 +279,8 @@ class FeeScheduleOut(BaseModel):
 
 class InsuranceProviderCreate(BaseModel):
     name: str = Field(..., max_length=150)
+    contact_person: str | None = None
+    policies: list[str] | None = None
     contact_email: str | None = None
     contact_phone: str | None = None
     notes: str | None = None
@@ -287,6 +289,8 @@ class InsuranceProviderCreate(BaseModel):
 
 class InsuranceProviderUpdate(BaseModel):
     name: str | None = None
+    contact_person: str | None = None
+    policies: list[str] | None = None
     contact_email: str | None = None
     contact_phone: str | None = None
     notes: str | None = None
@@ -296,6 +300,8 @@ class InsuranceProviderUpdate(BaseModel):
 class InsuranceProviderOut(BaseModel):
     provider_id: UUID
     name: str
+    contact_person: str | None = None
+    policies: list[str] = Field(default_factory=list)
     contact_email: str | None
     contact_phone: str | None
     notes: str | None

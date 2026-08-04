@@ -158,6 +158,12 @@ async def record_triage_assessment(
     await db.commit()
     await db.refresh(new_assessment)
     
+    # Fetch patient name for notification
+    patient_stmt = select(Patient).where(Patient.id == db_visit.patient_id)
+    patient_res = await db.execute(patient_stmt)
+    db_patient = patient_res.scalars().first()
+    patient_name = db_patient.full_name if db_patient else "Patient"
+
     # 7. Publish triage.completed event to RabbitMQ
     if tenant_id:
         try:
@@ -165,7 +171,9 @@ async def record_triage_assessment(
             await publish_triage_completed(
                 triage_id=str(new_assessment.triage_id),
                 visit_id=str(visit_id),
-                tenant_id=tenant_id
+                tenant_id=tenant_id,
+                triage_category=norm_category,
+                patient_name=patient_name
             )
         except Exception as rabbit_err:
             logger.error(f"Failed to publish triage.completed event: {rabbit_err}")

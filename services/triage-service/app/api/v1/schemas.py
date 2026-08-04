@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Union, Any
 from uuid import UUID
 from datetime import datetime, date
 
@@ -154,7 +154,7 @@ class TriageHistoryPatientItem(BaseModel):
     patientNumber: str
     gender: str
     dob: str
-    age: int
+    age: Union[int, str]
     phone: str
     lastTriageCategory: Optional[str] = None
     lastAssessedAt: Optional[str] = None

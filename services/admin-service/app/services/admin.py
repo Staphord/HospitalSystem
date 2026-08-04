@@ -727,6 +727,8 @@ def create_insurance_provider(db: Session, data: dict, actor_sub: str, ip: str |
     row = InsuranceProvider(
         provider_id=uuid.uuid4(),
         name=data["name"],
+        contact_person=data.get("contact_person"),
+        policies=data.get("policies") or [],
         contact_email=data.get("contact_email"),
         contact_phone=data.get("contact_phone"),
         notes=data.get("notes"),
@@ -741,7 +743,7 @@ def create_insurance_provider(db: Session, data: dict, actor_sub: str, ip: str |
         action="CREATE",
         table_name="insurance_providers",
         record_id=str(row.provider_id),
-        new_values={"name": row.name},
+        new_values={"name": row.name, "contact_person": row.contact_person, "policies": row.policies},
         ip_address=ip,
     )
     return row

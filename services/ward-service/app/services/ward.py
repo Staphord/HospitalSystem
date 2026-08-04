@@ -30,6 +30,7 @@ ORDER_STATUSES = {"active", "completed", "discontinued"}
 NOTE_TYPES = {"observation", "intervention", "progress", "medication_given", "ward_round"}
 ADMISSION_ACTIVE = "active"
 ADMISSION_DISCHARGED = "discharged"
+ADMISSION_CONDITIONS = {"stable", "monitoring", "critical"}
 
 
 def _utcnow() -> datetime:
@@ -184,6 +185,7 @@ async def create_admission(
         bed_id=bed_id,
         admitting_doctor_id=doctor_sub,
         admitting_diagnosis=admitting_diagnosis,
+        condition="stable",
         admission_date=_utcnow(),
         status=ADMISSION_ACTIVE,
         ward_name=bed.ward_name,
@@ -203,6 +205,21 @@ async def create_admission(
     except Exception:
         await db.rollback()
         logger.warning("Could not set visit status=admitted for %s", visit_id)
+    return adm
+
+
+async def update_admission_condition(
+    db: AsyncSession, admission_id: uuid.UUID, *, condition: str, actor_sub: str
+) -> Admission:
+    if condition not in ADMISSION_CONDITIONS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=f"Invalid condition: {condition}")
+    adm = await get_admission(db, admission_id)
+    if adm.status != ADMISSION_ACTIVE:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Admission is not active")
+    adm.condition = condition
+    adm.updated_at = _utcnow()
+    await db.commit()
+    await db.refresh(adm)
     return adm
 
 
@@ -320,6 +337,7 @@ async def create_nursing_note(
         vitals_temp=data.get("vitals_temp"),
         vitals_pulse=data.get("vitals_pulse"),
         vitals_spo2=data.get("vitals_spo2"),
+        vitals_resp_rate=data.get("vitals_resp_rate"),
         authored_by=authored_by,
     )
     db.add(row)
@@ -466,6 +484,7 @@ async def create_visitor(
         patient_name=data["patient_name"],
         bed_label=data["bed_label"],
         visitor_name=data["visitor_name"],
+        visitor_phone=data.get("visitor_phone"),
         relationship=data["relationship"],
         national_id=data.get("national_id"),
         check_in_at=_utcnow(),

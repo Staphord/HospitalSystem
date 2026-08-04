@@ -212,6 +212,28 @@ def require_role(role: str):
     return _role_dependency
 
 
+def require_any_role(*roles: str):
+    """Allow the request if the caller has any of the given roles.
+
+    ``hospital_admin`` and ``super_admin`` are always allowed, matching
+    ward-service's README rule that hospital admins can reach every ward
+    endpoint regardless of the endpoint's documented clinical-role set.
+    """
+
+    async def _role_dependency(user: TokenPayload = Depends(get_current_active_user)) -> TokenPayload:
+        user_roles = _extract_roles(user)
+        if "super_admin" in user_roles or "hospital_admin" in user_roles:
+            return user
+        if not any(r in user_roles for r in roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return user
+
+    return _role_dependency
+
+
 async def get_current_hospital_id(
         user: TokenPayload = Depends(get_current_active_user),
         db=Depends(get_db),

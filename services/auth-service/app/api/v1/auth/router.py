@@ -304,7 +304,7 @@ async def superadmin_login(
             raise last_exc
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Login processing error: {last_exc}",
+            detail="An internal server error occurred during login. Please try again later.",
         ) from last_exc
 
     # Successful login — clear brute-force counter
@@ -555,10 +555,9 @@ async def login(
         raise
     except Exception as exc:
         logger.exception("Login failed for %s: %s", body.username, exc)
-        record_failed_attempt(body.username, ip)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Login processing error: {exc}",
+            detail="An internal server error occurred during login. Please try again later.",
         ) from exc
 
     # Successful login — clear brute-force counter

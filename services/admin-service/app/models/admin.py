@@ -75,6 +75,8 @@ class InsuranceProvider(Base):
 
     provider_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(150), nullable=False, unique=True)
+    contact_person = Column(String(150), nullable=True)
+    policies = Column(JSONB, nullable=False, default=list)
     contact_email = Column(String(150), nullable=True)
     contact_phone = Column(String(20), nullable=True)
     notes = Column(Text, nullable=True)

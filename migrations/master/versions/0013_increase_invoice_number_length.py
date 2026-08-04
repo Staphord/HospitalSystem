@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # Revision identifiers
 revision: str = "0013_increase_invoice_number_length"
-down_revision: Union[str, Sequence[str], None] = "0012_merge_heads"
+down_revision: Union[str, Sequence[str], None] = "0011_add_missing_user_columns"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -139,6 +139,11 @@ def provision_tenant_database_sync(tenant_id: str, name: str) -> str:
         return dsn
     except Exception as exc:
         logger.error("[FAIL] Tenant provisioning failed for '%s': %s", tenant_id, exc)
+        try:
+            logger.info("Initiating rollback: dropping partially provisioned database '%s'", db_name)
+            drop_tenant_database(tenant_id)
+        except Exception as rollback_exc:
+            logger.error("Failed to rollback/drop database '%s': %s", db_name, rollback_exc)
         raise
 
 
@@ -169,6 +174,11 @@ async def provision_tenant_database(tenant_id: str, name: str) -> str:
         return dsn
     except Exception as exc:
         logger.error("[FAIL] Tenant provisioning failed for '%s': %s", tenant_id, exc)
+        try:
+            logger.info("Initiating rollback: dropping partially provisioned database '%s'", db_name)
+            drop_tenant_database(tenant_id)
+        except Exception as rollback_exc:
+            logger.error("Failed to rollback/drop database '%s': %s", db_name, rollback_exc)
         raise
 
 
