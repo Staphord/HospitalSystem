@@ -61,6 +61,7 @@ class PrescriptionItem(BaseModel):
 
 class PatientPrescriptionContext(BaseModel):
     patient_id: UUID
+    patient_number: Optional[str] = None
     patient_name: str
     date_of_birth: date
     allergies: Optional[str] = None
@@ -158,6 +159,19 @@ class DispenseSummaryResponse(BaseModel):
 # ── Inventory ──────────────────────────────────────────────────────────────────
 
 InventoryTransactionType = Literal["adjustment", "write_off", "return"]
+
+
+class CreateInventoryRequest(BaseModel):
+    drug_name: str = Field(min_length=1)
+    brand_name: Optional[str] = None
+    drug_code: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    unit: str = Field(min_length=1)
+    quantity_in_stock: int = Field(ge=0, default=0)
+    reorder_level: int = Field(ge=0, default=10)
+    unit_cost: float = Field(ge=0, default=0.0)
+    unit_price: float = Field(ge=0, default=0.0)
+    location: Optional[str] = None
 
 
 class InventoryListItem(BaseModel):

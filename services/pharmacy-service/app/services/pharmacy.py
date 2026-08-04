@@ -4,11 +4,58 @@ Pharmacy business logic with active database support.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, func, and_
+UUID_REGEX = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE)
+
+
+def _format_doctor_name(prescribed_by: str | None) -> str:
+    if not prescribed_by or not prescribed_by.strip():
+        return "Dr. Staff Doctor"
+    name = prescribed_by.strip()
+    if UUID_REGEX.match(name):
+        return "Dr. Staff Doctor"
+
+    name = re.sub(r"^(user_|usr_|doctor_|doc_)", "", name, flags=re.IGNORECASE)
+    if "@" in name:
+        name = name.split("@")[0]
+    name = re.sub(r"[._-]+", " ", name).strip()
+    if re.match(r"^dr\.?\s+", name, re.IGNORECASE):
+        name = re.sub(r"^dr\.?\s+", "", name, flags=re.IGNORECASE)
+
+    capitalized = " ".join(word.capitalize() for word in name.split() if word)
+    return f"Dr. {capitalized}" if capitalized else "Dr. Staff Doctor"
+
+
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.user import User
+
+
+async def _resolve_doctor_name(db: AsyncSession, prescribed_by: str | None) -> str:
+    if not prescribed_by or not prescribed_by.strip():
+        return "Dr. Staff Doctor"
+
+    raw = prescribed_by.strip()
+
+    try:
+        user_stmt = select(User).where(
+            or_(User.keycloak_sub == raw, User.username == raw)
+        )
+        user_res = await db.execute(user_stmt)
+        u = user_res.scalars().first()
+        if u and (u.full_name or u.username):
+            name = u.full_name or u.username
+            return _format_doctor_name(name)
+    except Exception:
+        pass
+
+    if not UUID_REGEX.match(raw):
+        return _format_doctor_name(raw)
+
+    return "Dr. Staff Doctor"
 
 from app.api.v1.schemas import (
     DispenseRequest,
@@ -175,6 +222,7 @@ async def get_visit_prescriptions(db: AsyncSession, visit_id: UUID) -> VisitPres
 
     prescribed_items = []
     for prescription in prescriptions:
+        doctor_display_name = await _resolve_doctor_name(db, prescription.prescribed_by)
         if prescription.items:
             for item in prescription.items:
                 disp_summary = None
@@ -195,7 +243,7 @@ async def get_visit_prescriptions(db: AsyncSession, visit_id: UUID) -> VisitPres
                         route="oral",
                         instructions=item.instructions,
                         quantity_prescribed=item.quantity_prescribed,
-                        prescribed_by=prescription.prescribed_by or "Doctor",
+                        prescribed_by=doctor_display_name,
                         prescribed_at=prescription.prescribed_at,
                         status=item.status,
                         dispensing_record=disp_summary,
@@ -212,7 +260,7 @@ async def get_visit_prescriptions(db: AsyncSession, visit_id: UUID) -> VisitPres
                     route=getattr(prescription, "route", "oral") or "oral",
                     instructions=getattr(prescription, "instructions", None),
                     quantity_prescribed=1,
-                    prescribed_by=prescription.prescribed_by or "Doctor",
+                    prescribed_by=doctor_display_name,
                     prescribed_at=prescription.prescribed_at,
                     status=prescription.status or "pending",
                     dispensing_record=None,
@@ -224,6 +272,7 @@ async def get_visit_prescriptions(db: AsyncSession, visit_id: UUID) -> VisitPres
         visit_number=visit.visit_number,
         patient={
             "patient_id": patient.id,
+            "patient_number": getattr(patient, "patient_number", None),
             "patient_name": patient.full_name,
             "date_of_birth": patient.date_of_birth,
             "allergies": patient.allergies,
