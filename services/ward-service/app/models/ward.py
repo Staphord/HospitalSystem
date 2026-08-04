@@ -53,6 +53,7 @@ class Admission(Base):
     bed_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     admitting_doctor_id = Column(String(255), nullable=False)
     admitting_diagnosis = Column(Text, nullable=False)
+    condition = Column(String(32), nullable=False, default="stable")
     admission_date = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     discharge_date = Column(DateTime(timezone=True), nullable=True)
     length_of_stay_days = Column(Numeric(6, 1), nullable=True)
@@ -93,6 +94,7 @@ class NursingNote(Base):
     vitals_temp = Column(Numeric(5, 2), nullable=True)
     vitals_pulse = Column(Integer, nullable=True)
     vitals_spo2 = Column(Numeric(5, 2), nullable=True)
+    vitals_resp_rate = Column(Integer, nullable=True)
     authored_by = Column(String(255), nullable=False)
     authored_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
@@ -126,6 +128,7 @@ class VisitorLog(Base):
     patient_name = Column(String(200), nullable=False)
     bed_label = Column(String(50), nullable=False)
     visitor_name = Column(String(200), nullable=False)
+    visitor_phone = Column(String(30), nullable=True)
     relationship = Column(String(100), nullable=False)
     national_id = Column(String(100), nullable=True)
     check_in_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)

@@ -39,6 +39,7 @@ class AdmissionOut(BaseModel):
     bed_id: UUID
     admitting_doctor_id: str
     admitting_diagnosis: str
+    condition: str
     admission_date: datetime
     discharge_date: datetime | None = None
     length_of_stay_days: Decimal | None = None
@@ -55,6 +56,10 @@ class AdmissionOut(BaseModel):
 class DischargeRequest(BaseModel):
     discharge_diagnosis: str = Field(..., min_length=1)
     discharge_instructions: str | None = None
+
+
+class ConditionUpdate(BaseModel):
+    condition: str = Field(..., min_length=1)
 
 
 class OrderCreate(BaseModel):
@@ -97,6 +102,7 @@ class NursingNoteCreate(BaseModel):
     vitals_temp: Decimal | None = None
     vitals_pulse: int | None = None
     vitals_spo2: Decimal | None = None
+    vitals_resp_rate: int | None = None
 
 
 class NursingNoteOut(BaseModel):
@@ -109,6 +115,7 @@ class NursingNoteOut(BaseModel):
     vitals_temp: Decimal | None = None
     vitals_pulse: int | None = None
     vitals_spo2: Decimal | None = None
+    vitals_resp_rate: int | None = None
     authored_by: str
     authored_at: datetime
 
@@ -129,6 +136,7 @@ class VisitorCreate(BaseModel):
     patient_name: str = Field(..., min_length=1, max_length=200)
     bed_label: str = Field(..., min_length=1, max_length=50)
     visitor_name: str = Field(..., min_length=1, max_length=200)
+    visitor_phone: str | None = Field(default=None, max_length=30)
     relationship: str = Field(..., min_length=1, max_length=100)
     national_id: str | None = None
     approved: bool = True
@@ -144,6 +152,7 @@ class VisitorOut(BaseModel):
     patient_name: str
     bed_label: str
     visitor_name: str
+    visitor_phone: str | None = None
     relationship: str
     national_id: str | None = None
     check_in_at: datetime

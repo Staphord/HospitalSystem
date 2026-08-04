@@ -9,15 +9,11 @@ Prefer the **gateway** (`:8000`) so JWT + tenant resolution match production.
 
 ---
 
-## Auth (temporary)
+## Auth
 
-**JWT / role checks are currently disabled** on ward endpoints for local testing.
-
-- Call `http://localhost:8017/api/v1/ward/...` (or gateway `/api/v1/ward/...`) **without** a Bearer token.
-- Tenant DB defaults to `hosp-ac224699` (override with header `X-Tenant-ID: hosp-ac224699`).
-- Actor recorded on writes is `dev-unauthenticated`.
-
-Re-enable auth before any shared/staging deployment.
+JWT + role checks are enforced on every ward endpoint (see the endpoint cheat
+sheet in section 3). Tenant is resolved from the caller's token — pass a real
+Bearer token from `/api/v1/auth/login` for a user with an appropriate role.
 
 1. Stack running (`hospital-ward-service` healthy).
 2. Tenant migrations applied through **`0016_ward_module_tables`**:
@@ -230,10 +226,13 @@ Re-discharge → **400**.
 | GET | `/admissions/{id}` | nurse, doctor, clinician, hospital_admin |
 | GET | `/admissions/{id}/los` | nurse, doctor, clinician, hospital_admin, cashier |
 | POST | `/admissions/{id}/discharge` | doctor, clinician |
+| PATCH | `/admissions/{id}/condition` | nurse, doctor, clinician |
 | POST/GET/PATCH | `/admissions/{id}/orders` | doctor/clinician (write); nurse can PATCH |
 | POST/GET | `/admissions/{id}/nursing-notes` | nurse, doctor, clinician |
+| GET/POST | `/visitors`, `/visitors/active`, `/visitors/{id}/checkout` | nurse, doctor, clinician |
+| GET/POST | `/handovers` | nurse, doctor, clinician |
 
-`hospital_admin` is allowed on all endpoints via the shared role check.
+`hospital_admin` (and `super_admin`) is allowed on all endpoints via the shared role check (`require_any_role`).
 
 ---
 
