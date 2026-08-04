@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.schemas import (
     AdjustInventoryRequest,
     AdjustInventoryResponse,
+    CreateInventoryRequest,
     InventoryDetailResponse,
     InventoryListItem,
     InventoryListResponse,
@@ -258,3 +259,56 @@ async def get_low_stock_alerts(db: AsyncSession) -> LowStockAlertsResponse:
         for row in rows
     ]
     return LowStockAlertsResponse(alert_count=len(alerts), alerts=alerts)
+
+
+async def create_inventory_item(
+    db: AsyncSession,
+    body: CreateInventoryRequest,
+    user: TokenPayload,
+) -> InventoryListItem:
+    existing = await db.execute(
+        select(DrugInventory).where(
+            DrugInventory.drug_code.ilike(body.drug_code.strip()),
+            DrugInventory.is_active.is_(True),
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise ConflictError(f"Drug with SKU/code '{body.drug_code}' already exists")
+
+    now = datetime.now(timezone.utc)
+    new_item = DrugInventory(
+        inventory_id=uuid4(),
+        drug_name=body.drug_name.strip(),
+        brand_name=body.brand_name.strip() if body.brand_name else None,
+        drug_code=body.drug_code.strip(),
+        category=body.category.strip(),
+        unit=body.unit.strip(),
+        quantity_in_stock=body.quantity_in_stock,
+        reorder_level=body.reorder_level,
+        unit_cost=Decimal(str(body.unit_cost)),
+        unit_price=Decimal(str(body.unit_price)),
+        location=body.location.strip() if body.location else None,
+        is_active=True,
+        last_restocked_at=now if body.quantity_in_stock > 0 else None,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(new_item)
+
+    if body.quantity_in_stock > 0:
+        tx = DrugInventoryTransaction(
+            inventory_id=new_item.inventory_id,
+            transaction_type="restock",
+            quantity_change=body.quantity_in_stock,
+            quantity_before=0,
+            quantity_after=body.quantity_in_stock,
+            notes="Initial stock intake on item onboarding",
+            performed_by=user.sub or "unknown",
+            performed_by_name=_pharmacist_name(user),
+        )
+        db.add(tx)
+
+    await db.commit()
+    await db.refresh(new_item)
+    return _to_list_item(new_item)
+

@@ -8,11 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.schemas import (
     AdjustInventoryRequest,
     AdjustInventoryResponse,
+    CreateInventoryRequest,
     DispenseRequest,
     DispenseResponse,
     DispenseSummaryResponse,
     InteractionCheckResponse,
     InventoryDetailResponse,
+    InventoryListItem,
     InventoryListResponse,
     LabelGenerateRequest,
     LabelGenerateResponse,
@@ -125,6 +127,15 @@ async def adjust_inventory(
     db: AsyncSession = Depends(get_tenant_db),
 ) -> AdjustInventoryResponse:
     return await inventory_service.adjust_inventory(db, body, user)
+
+
+@router.post("/inventory", response_model=InventoryListItem, status_code=201, tags=["Inventory"])
+async def create_inventory_item(
+    body: CreateInventoryRequest,
+    user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> InventoryListItem:
+    return await inventory_service.create_inventory_item(db, body, user)
 
 
 @router.get("/inventory", response_model=InventoryListResponse, tags=["Inventory"])
