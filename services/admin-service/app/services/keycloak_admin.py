@@ -324,6 +324,7 @@ def create_local_user(
     department_id=None,
     phone: str | None = None,
     password_expires_at=None,
+    mfa_enabled: bool = False,
 ) -> User:
     existing = db.query(User).filter(User.keycloak_sub == keycloak_sub).first()
     if existing:
@@ -342,6 +343,8 @@ def create_local_user(
             existing.phone = phone
         if password_expires_at is not None:
             existing.password_expires_at = password_expires_at
+        if mfa_enabled is not None:
+            existing.mfa_enabled = mfa_enabled
         db.commit()
         db.refresh(existing)
         return existing
@@ -357,6 +360,7 @@ def create_local_user(
         department_id=department_id,
         phone=phone,
         password_expires_at=password_expires_at,
+        mfa_enabled=mfa_enabled,
     )
     db.add(user)
     db.commit()
@@ -389,6 +393,7 @@ def update_local_user(
     department_id=None,
     phone: str | None = None,
     password_expires_at=None,
+    mfa_enabled: bool | None = None,
     deleted_at=None,
     clear_deleted: bool = False,
 ) -> User | None:
@@ -415,6 +420,8 @@ def update_local_user(
         user.phone = phone
     if password_expires_at is not None:
         user.password_expires_at = password_expires_at
+    if mfa_enabled is not None:
+        user.mfa_enabled = mfa_enabled
     if deleted_at is not None:
         user.deleted_at = deleted_at
     if clear_deleted:

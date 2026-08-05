@@ -17,6 +17,7 @@ class HospitalUserCreate(BaseModel):
     role: str = Field(default="hospital_user", pattern=ALLOWED_HOSPITAL_ROLES)
     department_id: UUID | None = None
     phone: str | None = Field(default=None, max_length=20)
+    mfa_enabled: bool = False
 
     @field_validator("password")
     @classmethod
@@ -39,6 +40,7 @@ class HospitalUserUpdate(BaseModel):
     force_password_change: bool | None = None
     department_id: UUID | None = None
     phone: str | None = Field(default=None, max_length=20)
+    mfa_enabled: bool | None = None
     reason: str | None = Field(default=None, max_length=500)
 
     @field_validator("password")

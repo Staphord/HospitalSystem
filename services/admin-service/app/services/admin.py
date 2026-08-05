@@ -174,6 +174,7 @@ async def create_user(
     actor_sub: str,
     department_id: uuid.UUID | None = None,
     phone: str | None = None,
+    mfa_enabled: bool = False,
     ip_address: str | None = None,
 ) -> User:
     validate_assignable_role(role)
@@ -223,6 +224,7 @@ async def create_user(
         department_id=department_id,
         phone=phone,
         password_expires_at=expires,
+        mfa_enabled=mfa_enabled,
     )
 
     audit_service.log_change(
@@ -253,6 +255,7 @@ async def update_user(
     force_password_change: bool | None = None,
     department_id: uuid.UUID | None = None,
     phone: str | None = None,
+    mfa_enabled: bool | None = None,
     reason: str | None = None,
     ip_address: str | None = None,
 ) -> User:
@@ -297,6 +300,7 @@ async def update_user(
         force_password_change=force_password_change,
         department_id=department_id,
         phone=phone,
+        mfa_enabled=mfa_enabled,
     )
     assert updated is not None
 
