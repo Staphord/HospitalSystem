@@ -176,6 +176,7 @@ async def create_hospital_user(
         actor_sub=ctx.user_sub,
         department_id=body.department_id,
         phone=body.phone,
+        mfa_enabled=body.mfa_enabled,
         ip_address=_client_ip(request),
     )
     try:
@@ -224,6 +225,7 @@ async def update_hospital_user(
         force_password_change=body.force_password_change,
         department_id=body.department_id,
         phone=body.phone,
+        mfa_enabled=body.mfa_enabled,
         reason=body.reason,
         ip_address=_client_ip(request),
     )
