@@ -56,8 +56,11 @@ from app.services.brute_force import (
 )
 from app.services.tenant_service import is_tenant_suspended
 
+
+
 public_router = APIRouter()
 router = APIRouter(dependencies=[Depends(get_current_active_user)])
+
 
 
 @public_router.post("/signup", response_model=SignupResponse, status_code=201)
@@ -566,6 +569,7 @@ async def login(
     # Decode access token to check role — super_admins must use the superadmin portal
     login_user_sub = result.get("user_sub") or ""
     login_tenant_id_claim = None
+    roles: list[str] = []  # Always initialize before the try block to prevent NameError
     try:
         from jose import jwt as _jwt
         token = result["access_token"]
@@ -618,6 +622,8 @@ async def login(
     except Exception:
         pass
 
+
+
     # ── MFA Challenge Gate ──────────────────────────────────────────────────
     # After Keycloak authenticates the user, check whether MFA is enabled in
     # the tenant database. If it is, return a 202 challenge token instead of
@@ -632,36 +638,41 @@ async def login(
             _tdb = get_tenant_db_session(_tenant_id)
             try:
                 from app.models.user import User as _User
+                from sqlalchemy import text
                 _user_rec = _tdb.query(_User).filter(_User.keycloak_sub == _keycloak_sub).first()
-                if (
-                    _user_rec
-                    and _user_rec.mfa_enabled
-                    and auth_service.is_valid_totp_secret(_user_rec.mfa_secret)
-                    and _user_rec.backup_codes
-                ):
-                    # Issue a signed, short-lived challenge token that wraps
-                    # the full token set — only /mfa/verify-login can unwrap it.
-                    import json as _json
-                    _challenge_payload = {
-                        "sub": _keycloak_sub,
-                        "tenant_id": _tenant_id,
-                        "mfa_challenge": True,
-                        "exp": (datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp(),
-                        "tokens": _json.dumps(result),
-                    }
-                    _challenge_token = _jwt.encode(
-                        _challenge_payload, settings.secret_key, algorithm="HS256"
-                    )
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=202,
-                        content={"mfa_required": True, "challenge_token": _challenge_token},
-                    )
+
+                if _user_rec:
+                    # MFA Challenge Gate only — department check already done above
+                    if (
+                        _user_rec.mfa_enabled
+                        and auth_service.is_valid_totp_secret(_user_rec.mfa_secret)
+                        and _user_rec.backup_codes
+                    ):
+                        # Issue a signed, short-lived challenge token that wraps
+                        # the full token set — only /mfa/verify-login can unwrap it.
+                        import json as _json
+                        _challenge_payload = {
+                            "sub": _keycloak_sub,
+                            "tenant_id": _tenant_id,
+                            "mfa_challenge": True,
+                            "exp": (datetime.now(timezone.utc) + timedelta(minutes=5)).timestamp(),
+                            "tokens": _json.dumps(result),
+                        }
+                        _challenge_token = _jwt.encode(
+                            _challenge_payload, settings.secret_key, algorithm="HS256"
+                        )
+                        from fastapi.responses import JSONResponse
+                        return JSONResponse(
+                            status_code=202,
+                            content={"mfa_required": True, "challenge_token": _challenge_token},
+                        )
             finally:
                 _tdb.close()
+    except HTTPException:
+        raise
     except Exception as _mfa_exc:
-        logger.debug("MFA gate check failed (non-fatal): %s", _mfa_exc)
-    # ── End MFA Challenge Gate ──────────────────────────────────────────────
+        logger.debug("MFA gate failed (non-fatal): %s", _mfa_exc)
+    # ── End MFA Challenge Gate ───────────────────────────────────────────────
 
     result["scope"] = "full"
     result["tenant_id"] = login_tenant_id
@@ -828,17 +839,29 @@ async def refresh(
         db=db,
     )
 
-    # Enforce tenant suspension lockout on token refresh.
+    # Enforce tenant suspension lockout & department status on token refresh.
     try:
         from jose import jwt as _jwt
         token = result["access_token"]
         unverified = _jwt.get_unverified_claims(token)
         refresh_tenant_id = unverified.get("tenant_id")
+        if not refresh_tenant_id:
+            try:
+                from app.models.master import Tenant as _TenantModel
+                _t_rec = db.query(_TenantModel).first()
+                if _t_rec:
+                    refresh_tenant_id = _t_rec.tenant_id
+            except Exception:
+                pass
+        refresh_sub = unverified.get("sub")
+        roles = unverified.get("realm_access", {}).get("roles", [])
         if refresh_tenant_id and await is_tenant_suspended(refresh_tenant_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"code": "TENANT_SUSPENDED", "message": "Tenant subscription is suspended"},
             )
+        if refresh_tenant_id and refresh_sub:
+            check_user_department_status(refresh_tenant_id, refresh_sub, roles)
     except HTTPException:
         raise
     except Exception:
@@ -1062,6 +1085,10 @@ async def mfa_verify_login(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid TOTP or backup code",
                 )
+
+        # Check department active status before completing MFA verification
+        if tenant_id and keycloak_sub:
+            check_user_department_status(tenant_id, keycloak_sub)
 
         tokens_raw = challenge.get("tokens")
         if not isinstance(tokens_raw, str):
