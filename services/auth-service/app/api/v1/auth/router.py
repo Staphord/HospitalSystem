@@ -57,48 +57,10 @@ from app.services.brute_force import (
 from app.services.tenant_service import is_tenant_suspended
 
 
-def check_user_department_status(tenant_id: str, keycloak_sub: str, roles: list[str] | None = None) -> None:
-    """Check if the user belongs to a deactivated department in their tenant database.
-    Raises HTTPException(403) if deactivated.
-    Bypasses check for super_admin or hospital_admin roles.
-    """
-    if roles and ("super_admin" in roles or "hospital_admin" in roles):
-        return
-
-    from app.services.provision import get_tenant_db_session
-    from app.models.user import User as _User
-    from sqlalchemy import text
-
-    try:
-        _tdb = get_tenant_db_session(tenant_id)
-    except Exception as exc:
-        logger.warning("Could not obtain tenant DB session for dept status check (%s): %s", tenant_id, exc)
-        return
-
-    try:
-        _user_rec = _tdb.query(_User).filter(_User.keycloak_sub == keycloak_sub).first()
-        if not _user_rec:
-            return
-
-        if _user_rec.role in ("hospital_admin", "super_admin"):
-            return
-
-        if _user_rec.department_id:
-            dept_status = _tdb.execute(
-                text("SELECT is_active FROM departments WHERE department_id::varchar = :dept_id"),
-                {"dept_id": str(_user_rec.department_id)}
-            ).scalar()
-            if dept_status is False:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail={"code": "DEPARTMENT_DEACTIVATED", "message": "Your department has been deactivated."}
-                )
-    finally:
-        _tdb.close()
-
 
 public_router = APIRouter()
 router = APIRouter(dependencies=[Depends(get_current_active_user)])
+
 
 
 @public_router.post("/signup", response_model=SignupResponse, status_code=201)
@@ -660,19 +622,7 @@ async def login(
     except Exception:
         pass
 
-    # ── Department Deactivation Check ────────────────────────────────────────
-    # This MUST run outside the MFA gate's broad except-Exception block so that
-    # the 403 HTTPException is never silently swallowed.
-    _dept_check_tenant_id = login_tenant_id_claim
-    _dept_check_sub = login_user_sub
-    if _dept_check_tenant_id and _dept_check_sub:
-        try:
-            check_user_department_status(_dept_check_tenant_id, _dept_check_sub, roles)
-        except HTTPException:
-            raise
-        except Exception as _dept_exc:
-            logger.error("Department status check encountered unexpected error: %s", _dept_exc)
-    # ── End Department Deactivation Check ────────────────────────────────────
+
 
     # ── MFA Challenge Gate ──────────────────────────────────────────────────
     # After Keycloak authenticates the user, check whether MFA is enabled in
@@ -895,6 +845,14 @@ async def refresh(
         token = result["access_token"]
         unverified = _jwt.get_unverified_claims(token)
         refresh_tenant_id = unverified.get("tenant_id")
+        if not refresh_tenant_id:
+            try:
+                from app.models.master import Tenant as _TenantModel
+                _t_rec = db.query(_TenantModel).first()
+                if _t_rec:
+                    refresh_tenant_id = _t_rec.tenant_id
+            except Exception:
+                pass
         refresh_sub = unverified.get("sub")
         roles = unverified.get("realm_access", {}).get("roles", [])
         if refresh_tenant_id and await is_tenant_suspended(refresh_tenant_id):
