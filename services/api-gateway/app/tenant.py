@@ -130,3 +130,43 @@ async def is_tenant_suspended(tenant_id: str) -> bool:
     except Exception:
         pass
     return False
+
+
+async def is_module_enabled(tenant_id: str, module_name: str) -> bool:
+    """Check if the given module is enabled in the tenant's active subscription plan."""
+    if not tenant_id:
+        return False
+
+    r = await _get_redis()
+    cache_key = f"tenant_modules:{tenant_id}"
+    try:
+        cached = await r.get(cache_key)
+        if cached:
+            modules = json.loads(cached)
+            return module_name in modules
+    except Exception:
+        pass
+
+    db = get_master_db()
+    try:
+        # Get active subscription and its plan's modules
+        stmt = text("""
+            SELECT p.modules_included
+            FROM subscriptions s
+            JOIN subscription_plans p ON s.plan_id = p.plan_id
+            WHERE s.tenant_id = :tid AND s.status IN ('trial', 'active', 'grace')
+        """)
+        row = db.execute(stmt, {"tid": tenant_id}).fetchone()
+        if not row:
+            modules = ["reception", "triage", "consultation", "billing", "ward"]
+        else:
+            modules = row[0] or []
+    finally:
+        db.close()
+
+    try:
+        await r.set(cache_key, json.dumps(modules), ex=300)
+    except Exception:
+        pass
+
+    return module_name in modules

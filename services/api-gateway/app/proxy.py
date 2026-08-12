@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request, Response
 
 from app.config import settings
 from app.rate_limit import limiter
-from app.tenant import get_tenant_db_url, is_tenant_suspended
+from app.tenant import get_tenant_db_url, is_tenant_suspended, is_module_enabled
 
 logger = logging.getLogger("api-gateway")
 proxy_router = APIRouter()
@@ -51,7 +51,7 @@ def _get_client() -> httpx.AsyncClient:
 
 
 @proxy_router.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-@limiter.limit("100/minute")
+@limiter.limit("500/minute")
 async def proxy(request: Request, full_path: str):
     path = f"/{full_path}"
     if path.startswith("/health"):
@@ -77,6 +77,19 @@ async def proxy(request: Request, full_path: str):
                 status.HTTP_403_FORBIDDEN,
                 detail={"code": "TENANT_SUSPENDED", "message": "Tenant subscription is suspended"},
             )
+
+        # TODO: Uncomment module plan permission check once subscription plan access controls are fully enabled
+        # for module in ("pharmacy", "laboratory", "radiology"):
+        #     if path.startswith(f"/api/v1/{module}"):
+        #         if not await is_module_enabled(tenant_id, module):
+        #             from fastapi import HTTPException, status
+        #             raise HTTPException(
+        #                 status.HTTP_403_FORBIDDEN,
+        #                 detail={
+        #                     "code": "MODULE_NOT_SUBSCRIBED",
+        #                     "message": f"Your current plan does not include the {module.capitalize()} module"
+        #                 },
+        #             )
 
     # Build target URL
     target = f"{target_url}{path}"

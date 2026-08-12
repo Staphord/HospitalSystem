@@ -25,8 +25,11 @@ from app.api.v1.schemas import (
     PharmacyQueueResponse,
     RestockRequest,
     RestockResponse,
+    UpdateInventoryRequest,
     VisitPrescriptionsResponse,
 )
+
+
 from app.core.security import TokenPayload, require_role
 from app.core.tenant_auth import get_current_tenant
 from app.dependencies import get_tenant_db
@@ -156,6 +159,16 @@ async def get_inventory_detail(
     db: AsyncSession = Depends(get_tenant_db),
 ) -> InventoryDetailResponse:
     return await inventory_service.get_inventory_detail(db, inventory_id)
+
+
+@router.patch("/inventory/{inventory_id}", response_model=InventoryListItem, tags=["Inventory"])
+async def update_inventory_item(
+    inventory_id: UUID,
+    body: UpdateInventoryRequest,
+    user: TokenPayload = Depends(require_role("pharmacist")),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> InventoryListItem:
+    return await inventory_service.update_inventory_item(db, inventory_id, body, user)
 
 
 # ── Labels ─────────────────────────────────────────────────────────────────────

@@ -52,7 +52,7 @@ def _get_tenant_id(user: TokenPayload) -> str:
 
 
 @router.get("/subscription", response_model=SubscriptionStateOut)
-@limiter.limit("30/minute")
+@limiter.limit("100/minute")
 async def get_my_subscription(
     request: Request,
     db: Session = Depends(get_db),

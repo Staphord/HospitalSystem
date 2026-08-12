@@ -11,17 +11,18 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 from datetime import datetime, timezone, date
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
+from decimal import Decimal
 from app.db.tenant import get_tenant_session
 from app.messaging.subscriber import start_consumer
-from app.models.pharmacy import Prescription, PrescriptionItem, Patient, Visit, Queue
+from app.models.pharmacy import Prescription, PrescriptionItem, Patient, Visit, Queue, DrugInventory, Bill, BillItem
 
 
 async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
     """
     Handle prescription.issued event.
-    Saves prescription and items into the tenant database.
+    Looks up prescription record in tenant database and calculates drug charges on the visit bill.
     """
     prescription_id_str = payload.get("prescription_id")
     if not prescription_id_str:
@@ -30,16 +31,21 @@ async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
     prescription_id = UUID(prescription_id_str)
 
     async for db in get_tenant_session(tenant_id):
-        # Check if already exists
-        existing = await db.get(Prescription, prescription_id)
-        if existing:
+        # Query prescription record created by consultation service
+        rx_stmt = select(Prescription).where(
+            or_(Prescription.prescription_id == prescription_id, Prescription.id == prescription_id)
+        )
+        rx_res = await db.execute(rx_stmt)
+        rx = rx_res.scalars().first()
+
+        visit_id_str = payload.get("visit_id") or (str(rx.visit_id) if rx else None)
+        patient_id_str = payload.get("patient_id") or (str(rx.patient_id) if rx else None)
+
+        if not visit_id_str or not patient_id_str:
             return
 
-        visit_id_str = payload.get("visit_id")
-        patient_id_str = payload.get("patient_id")
-
-        visit_id = UUID(visit_id_str) if visit_id_str else UUID("b2000002-0002-4002-8002-000000000002")
-        patient_id = UUID(patient_id_str) if patient_id_str else UUID("c3000003-0003-4003-8003-000000000003")
+        visit_id = UUID(visit_id_str)
+        patient_id = UUID(patient_id_str)
 
         # Ensure patient exists in the tenant db
         patient = await db.get(Patient, patient_id)
@@ -86,20 +92,41 @@ async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
             )
             db.add(queue)
 
-        # Create Prescription
-        rx = Prescription(
-            prescription_id=prescription_id,
-            visit_id=visit_id,
-            patient_id=patient_id,
-            prescribed_by=payload.get("prescribed_by", "Dr. Nguyen"),
-            prescribed_at=datetime.now(timezone.utc),
-            status="pending",
-        )
-        db.add(rx)
+        # Create Prescription if not already present
+        if not rx:
+            rx = Prescription(
+                prescription_id=prescription_id,
+                id=prescription_id,
+                visit_id=visit_id,
+                patient_id=patient_id,
+                prescribed_by=payload.get("prescribed_by", "Dr. Nguyen"),
+                prescribed_at=datetime.now(timezone.utc),
+                status="pending",
+            )
+            db.add(rx)
 
-        # Create items
+        # Extract items from payload or from existing rx database row
         items = payload.get("items")
-        if not items:
+        if not items and rx and rx.drug_name:
+            # Parse quantity prescribed from rx.dose (e.g. "30") or payload
+            calculated_qty = 1
+            if rx.dose and rx.dose.isdigit():
+                calculated_qty = int(rx.dose)
+            elif payload.get("quantity_prescribed"):
+                calculated_qty = int(payload["quantity_prescribed"])
+
+            items = [
+                {
+                    "prescription_item_id": str(rx.prescription_id or rx.id),
+                    "drug_name": rx.drug_name,
+                    "dose": rx.dose,
+                    "frequency": rx.frequency,
+                    "duration": rx.duration,
+                    "instructions": rx.instructions,
+                    "quantity_prescribed": calculated_qty,
+                }
+            ]
+        elif not items:
             items = [
                 {
                     "prescription_item_id": "d4000004-0004-4004-8004-000000000004",
@@ -109,32 +136,73 @@ async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
                     "duration": "7 days",
                     "instructions": "Take after meals",
                     "quantity_prescribed": 21,
-                },
-                {
-                    "prescription_item_id": "d4000004-0004-4004-8004-000000000005",
-                    "drug_name": "Ibuprofen",
-                    "dose": "400mg",
-                    "frequency": "As needed",
-                    "duration": "5 days",
-                    "instructions": None,
-                    "quantity_prescribed": 10,
                 }
             ]
 
+        # Open or retrieve existing patient Bill
+        bill_stmt = select(Bill).where(Bill.visit_id == visit_id)
+        bill_res = await db.execute(bill_stmt)
+        bill = bill_res.scalars().first()
+        if not bill:
+            bill = Bill(
+                bill_id=uuid4(),
+                visit_id=visit_id,
+                patient_id=patient_id,
+                total_amount=Decimal("0.00"),
+                status="open",
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(bill)
+            await db.flush()
+
         for item in items:
             item_id = UUID(item["prescription_item_id"]) if "prescription_item_id" in item else uuid4()
+            drug_name = item["drug_name"]
+            qty = int(item.get("quantity_prescribed") or 1)
+
+            actual_rx_id = rx.prescription_id if rx else prescription_id
             rx_item = PrescriptionItem(
                 prescription_item_id=item_id,
-                prescription_id=prescription_id,
-                drug_name=item["drug_name"],
+                prescription_id=actual_rx_id,
+                drug_name=drug_name,
                 dose=item.get("dose"),
                 frequency=item.get("frequency"),
                 duration=item.get("duration"),
                 instructions=item.get("instructions"),
-                quantity_prescribed=item.get("quantity_prescribed", 10),
+                quantity_prescribed=qty,
                 status="pending",
             )
             db.add(rx_item)
+
+            # Lookup unit price from drug_inventory if exists
+            inv_stmt = select(DrugInventory).where(DrugInventory.drug_name.ilike(f"%{drug_name}%"))
+            inv_res = await db.execute(inv_stmt)
+            inv_item = inv_res.scalars().first()
+
+            unit_price = Decimal(str(inv_item.unit_price)) if inv_item and inv_item.unit_price else Decimal("10.00")
+            line_total = Decimal(str(qty)) * unit_price
+
+            # Create BillItem for prescribed drug
+            bill_item = BillItem(
+                bill_item_id=uuid4(),
+                item_id=uuid4(),
+                bill_id=bill.bill_id,
+                item_code="DRUG",
+                item_type="drug",
+                description=f"Medication: {drug_name}",
+                quantity=qty,
+                unit_price=unit_price,
+                total_price=line_total,
+                line_total=line_total,
+                source_ref=f"rx_{item_id.hex[:8]}",
+                reference_id=item_id,
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(bill_item)
+            bill.total_amount = Decimal(str(bill.total_amount or 0)) + line_total
+
+        # Set visit billing_cleared to False so patient clears bill before dispensing
+        visit.billing_cleared = False
 
         await db.commit()
 
