@@ -24,7 +24,9 @@ class Bill(Base):
     patient_id = Column(UUID(as_uuid=True), nullable=False)
     status = Column(String(32), nullable=False, default="open")
     total_amount = Column(Numeric(12, 2), nullable=False, default=0)
-    currency = Column(String(5), nullable=False, default="USD")
+    paid_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    discount_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    currency = Column(String(5), nullable=False, default="TZS")
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
@@ -46,6 +48,19 @@ class BillItem(Base):
     __table_args__ = (
         UniqueConstraint("bill_id", "item_code", "source_ref", name="uq_bill_items_idempotent"),
     )
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    payment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bill_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    amount_paid = Column(Numeric(12, 2), nullable=False)
+    payment_method = Column(String(32), nullable=False, default="Cash")
+    receipt_number = Column(String(64), nullable=False, unique=True)
+    cashier_id = Column(String(100), nullable=True)
+    notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
 class FeeSchedule(Base):
