@@ -83,6 +83,8 @@ def upgrade() -> None:
             sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"),
             sa.Column("effective_from", sa.Date(), nullable=False, server_default=sa.text("CURRENT_DATE")),
             sa.Column("effective_to", sa.Date(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         )
         op.create_index("idx_fee_schedules_item_code", "fee_schedules", ["item_code"])
 

@@ -109,6 +109,7 @@ async def add_bill_item(
     source_ref = f"manual_{uuid4().hex[:8]}"
 
     bill_item = BillItem(
+        bill_item_id=uuid4(),
         item_id=uuid4(),
         bill_id=bill_id,
         item_code=item_in.item_code,
@@ -117,6 +118,7 @@ async def add_bill_item(
         quantity=item_in.quantity,
         unit_price=item_in.unit_price,
         line_total=line_total,
+        total_price=line_total,
         source_ref=source_ref
     )
     db.add(bill_item)

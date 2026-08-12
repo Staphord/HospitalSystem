@@ -174,6 +174,19 @@ class CreateInventoryRequest(BaseModel):
     location: Optional[str] = None
 
 
+class UpdateInventoryRequest(BaseModel):
+    drug_name: Optional[str] = None
+    brand_name: Optional[str] = None
+    drug_code: Optional[str] = None
+    category: Optional[str] = None
+    unit: Optional[str] = None
+    reorder_level: Optional[int] = Field(None, ge=0)
+    unit_cost: Optional[float] = Field(None, ge=0.0)
+    unit_price: Optional[float] = Field(None, ge=0.0)
+    location: Optional[str] = None
+
+
+
 class InventoryListItem(BaseModel):
     inventory_id: UUID
     drug_name: str
