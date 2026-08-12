@@ -554,8 +554,11 @@ cp .env.example .env
 
 ### 2. Start the full infrastructure stack
 
+Compose commands are run from the `infrastructure/` directory:
+
 ```bash
-docker-compose -f infrastructure/docker-compose.yml up -d
+cd infrastructure
+docker compose up -d
 ```
 
 This starts: PostgreSQL (Master DB on port 5432), Redis (port 6379), RabbitMQ (AMQP on 5672, management UI on 15672).
@@ -580,7 +583,7 @@ Run each service in its own terminal, or use the provided docker-compose service
 
 ```bash
 # Option A: Docker Compose (all services)
-docker-compose -f infrastructure/docker-compose.yml up
+docker compose up
 
 # Option B: Individual service (for active development)
 cd services/auth-service

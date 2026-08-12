@@ -61,32 +61,33 @@ ALLOWED_ORIGINS=http://localhost:8000,http://localhost:8501
 
 ### 4. Keycloak Setup
 
-1. Start Keycloak:
+Keycloak is started by the infrastructure Compose stack. Run every Compose command
+from the `infrastructure/` directory:
 ```bash
-docker run -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin \
-  quay.io/keycloak/keycloak:24.0 start-dev
+cd infrastructure
+docker compose up -d keycloak
 ```
 
-2. Create a realm: `hospital-realm`
-3. Create a client: `hospital-api` (confidential, OIDC)
-4. Set valid redirect URIs: `http://localhost:8000/*`
-5. Create realm roles: `super_admin`, `hospital_admin`, `hospital_user`, `nurse`, `clinician`, `doctor`, `patient`
-6. Create a test superadmin user: `superadmin` / `superadmin123`
-7. Assign `super_admin` role to the superadmin user
+The base realm, client, and base roles are imported from `keycloak/realm-export.json`
+when the Keycloak volume is first created. Test users remain part of the existing
+manual development setup in `setup_keycloak.py`.
 
 ## Docker Compose Deployment
 
 ### Development Stack
 
+All commands below assume you are inside `infrastructure/`:
+
 ```bash
 cd infrastructure
-docker compose -p hospital_flow -f docker-compose.yml up -d
+docker compose up --build -d
 ```
 
 This starts:
 - PostgreSQL Master (port 5432)
 - Redis (port 6380)
 - RabbitMQ (port 5672 + 15672 for management)
+- Keycloak (port 8080)
 - API Gateway (port 8000)
 - Auth Service (port 8001)
 - Master Service (port 8002)
@@ -97,27 +98,28 @@ This starts:
 ### Verify Services
 
 ```bash
-docker compose -p hospital_flow ps
+docker compose ps
 ```
 
-All containers should show `healthy` status.
+All containers should be running or healthy. The approved Compose stack does not add
+separate database-migration bootstrap containers.
 
 ### View Logs
 
 ```bash
-docker compose -p hospital_flow logs -f <service-name>
+docker compose logs -f <service-name>
 ```
 
 ### Stop Stack
 
 ```bash
-docker compose -p hospital_flow down
+docker compose down
 ```
 
 ### Full Reset (DANGER: deletes all data)
 
 ```bash
-docker compose -p hospital_flow down -v
+docker compose down -v
 docker volume prune -f
 ```
 
@@ -237,8 +239,12 @@ docker compose exec redis redis-cli ping
 
 ### Migration Failures
 ```bash
-docker compose exec auth-service python -m alembic -c migrations/tenant/alembic.ini upgrade head
+docker compose logs master-service
+docker compose exec master-service python -m alembic -c /app/migrations/master/alembic.ini heads
 ```
+
+Do not stamp a revision or add idempotency guards merely to bypass a failure. Capture
+the migration graph/schema error and have the migration chain reviewed first.
 
 ## Health Endpoints
 

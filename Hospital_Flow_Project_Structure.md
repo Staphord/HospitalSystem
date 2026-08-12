@@ -24,7 +24,6 @@ hospital_flow/
 ├── .env.example                  # Template for .env — safe to commit, shows required variables
 ├── .gitignore                    # Excludes .env, __pycache__, .venv, migrations/versions/*.pyc
 ├── requirements.txt              # All Python dependencies
-├── docker-compose.yml            # PostgreSQL + Redis + FastAPI app containers for local development
 ├── Dockerfile                    # Container definition for the FastAPI application
 ├── alembic.ini                   # Alembic migration tool configuration
 ├── README.md                     # Setup, run, and deployment instructions

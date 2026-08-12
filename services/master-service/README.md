@@ -24,10 +24,11 @@ The **Master Service** is the super-admin portal for the Hospital Flow SaaS plat
 
 ## Running Locally (Docker)
 
-From the project root:
+From the `infrastructure/` directory:
 
 ```bash
-docker compose -p hospital_flow -f infrastructure/docker-compose.yml up -d --build master-service
+cd infrastructure
+docker compose up -d --build master-service
 ```
 
 The service runs on port `8002` and is exposed through the API Gateway at `http://localhost:8000/api/v1/superadmin`.

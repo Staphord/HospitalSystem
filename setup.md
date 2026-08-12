@@ -33,24 +33,22 @@ The system is split into **16 independent microservices** orchestrated by Docker
 | postgres-master | 5432 | Global PostgreSQL (tenants, super_admins, audit logs) |
 | redis | 6380 | Caching, tenant DSN cache, rate-limit storage |
 | rabbitmq | 5672 / 15672 | Async messaging between services |
+| keycloak | 8080 | OIDC authentication; the base realm/client are imported on a fresh volume |
 
 ---
 
 ## Prerequisites
 
 1. **Docker Desktop** installed and running (Windows / macOS / Linux)
-2. **Keycloak** running on the host at `http://localhost:8080`
-   - Realm: `hospital-realm`
-   - Client: `hospital-api`
-   - Make sure the client secret matches your environment config
-3. **No other services** on ports **5432**, **6380**, **5672**, **15672**, or **8000–8020**
+2. **No other services** on ports **5432**, **6380**, **5672**, **15672**, **8080**, or **8000–8020**
    - If you have a local Redis on port 6379, the Docker Compose now maps Redis to **6380** to avoid the conflict.
 
 ---
 
 ## Quick Start (Docker Compose)
 
-> All Docker commands below must be run from the **`infrastructure/`** directory:
+> All Docker commands below must be run from the **`infrastructure/`** directory,
+> which holds the only approved Compose file:
 > ```bash
 > cd infrastructure
 > ```
@@ -63,15 +61,14 @@ docker compose up --build -d
 
 This will:
 - Build all 16 service images
-- Start `postgres-master`, `redis`, and `rabbitmq`
+- Start `postgres-master`, `redis`, `rabbitmq`, and Keycloak
+- Import the base `hospital-realm`, OIDC client, and base roles on first startup
 - Wait for infrastructure health checks to pass
 - Start all microservices in dependency order
 
 ### 2. Check service health
 
 ```bash
-cd infrastructure
-
 # Gateway
 curl http://localhost:8000/health
 
@@ -126,8 +123,6 @@ All should return: `{"status":"ok","service":"..."}`
 ### 3. Watch logs
 
 ```bash
-cd infrastructure
-
 # All services
 docker compose logs -f
 
@@ -140,16 +135,12 @@ docker compose logs -f master-service
 ### 4. Stop everything
 
 ```bash
-cd infrastructure
-
 docker compose down
 ```
 
-To also remove the PostgreSQL volume (wipe data):
+To remove all development volumes, including PostgreSQL and Keycloak data (full reset):
 
 ```bash
-cd infrastructure
-
 docker compose down -v
 ```
 
@@ -277,21 +268,20 @@ GET/POST http://localhost:8000/api/v1/reports/...
 
 ## Database Setup
 
-### Master Database (auto-created)
+### Master Database
 
-The `master-service` and `auth-service` automatically create tables on startup using their lifespan hooks. You do **not** need to run `alembic` manually before the first `docker-compose up`.
-
-However, if you want to run migrations manually against the Docker Postgres:
+This Compose change does not alter Alembic files and does not add automatic migration
+gate containers. The master service retains the migration behaviour already present in
+the pulled repository. Check its startup log before testing data-dependent pages:
 
 ```bash
-cd infrastructure
-
-# Master migrations
-docker compose exec master-service alembic -c /app/migrations/master/alembic.ini upgrade head
-
-# Tenant migrations (run after a tenant is created)
-docker compose exec master-service alembic -c /app/migrations/tenant/alembic.ini upgrade head
+docker compose logs master-service
 ```
+
+If Alembic reports multiple heads, missing columns, or an existing table/column, do not
+stamp a revision or edit old migrations just to bypass the error. Record the error for
+migration-chain review. Existing-tenant migration remains available through the
+repository's `scripts/migrate_existing_tenants.py` workflow.
 
 ### Tenant Database Provisioning
 
@@ -306,7 +296,7 @@ When a new hospital signs up:
 
 ## Environment Variables (Docker)
 
-The `docker-compose.yml` already contains the correct **Docker-network** values for all services. You do **not** need a `.env` file to run the Docker stack.
+`infrastructure/docker-compose.yml` contains the Docker-network values for all services. You do **not** need a `.env` file to run the Docker stack.
 
 Key overridden values:
 
@@ -315,7 +305,7 @@ Key overridden values:
 | `DATABASE_URL` | `postgresql://postgres:postgres@postgres-master:5432/hospital_master` | Internal Docker DNS |
 | `REDIS_URL` | `redis://redis:6379/0` | Internal Docker DNS |
 | `RABBITMQ_URL` | `amqp://guest:guest@rabbitmq:5672/` | Internal Docker DNS |
-| `KEYCLOAK_URL` | `http://host.docker.internal:8080` | Reach host Keycloak from inside containers |
+| `KEYCLOAK_URL` | `http://keycloak:8080` | Reach Compose-managed Keycloak over Docker DNS |
 | `DB_ADMIN_URL` | `postgresql://postgres:postgres@postgres-master:5432/postgres` | Internal Docker DNS |
 | `TENANT_DB_TEMPLATE` | `postgresql://postgres:postgres@postgres-master:5432/tenant_{tenant_id}` | Internal Docker DNS |
 | `AUTH_SERVICE_URL` | `http://auth-service:8001` | Gateway → service internal routing |
@@ -324,7 +314,7 @@ Key overridden values:
 | `PATIENT_SERVICE_URL` | `http://patient-service:8005` | Gateway → service internal routing |
 | ... | ... | ... |
 
-If you want to tweak secrets or passwords, edit the `environment` blocks in `docker-compose.yml` directly.
+If you want to tweak local secrets or passwords, edit the `environment` blocks in `infrastructure/docker-compose.yml` directly.
 
 ---
 
@@ -350,21 +340,22 @@ netstat -ano | findstr :PORT
 lsof -i :PORT
 ```
 
-### Container cannot reach Keycloak
+### Keycloak is not healthy
 
-Make sure Keycloak is running on the **host** at `http://localhost:8080`.  
-Docker containers use `host.docker.internal` to reach the host. On Windows this works automatically; on Linux you may need to add it to `/etc/hosts`:
+Keycloak is managed by the same Compose stack. Check its status and startup log:
 
+```bash
+docker compose ps keycloak
+docker compose logs --tail 100 keycloak
 ```
-127.0.0.1 host.docker.internal
-```
+
+The admin console is available at `http://localhost:8080` (`admin` / `admin` in development). The application containers reach it through `http://keycloak:8080`.
 
 ### Service unhealthy / stuck
 
 If a service keeps restarting, check its logs:
 
 ```bash
-cd infrastructure
 docker compose logs --tail 50 <service-name>
 ```
 
@@ -375,18 +366,27 @@ Common causes:
 
 ### Database tables not created
 
-Run the initialization manually inside the container:
+Do not run a manual schema initializer or stamp an Alembic revision just to bypass the
+error. Capture the master-service log and current Alembic heads for review:
 
 ```bash
-cd infrastructure
-docker compose exec master-service python -c "from app.core.database import init_db; init_db()"
+docker compose logs master-service
+docker compose exec master-service python -m alembic -c /app/migrations/master/alembic.ini heads
 ```
 
 ---
 
 ## Test Users
 
-`setup_keycloak.py` creates three test users in **Keycloak** automatically:
+Compose does not automatically create the three test users or register the proposed
+`tenant_id` user-profile field. The pulled repository's existing setup script performs
+that optional local setup:
+
+```bash
+python setup_keycloak.py
+```
+
+That script creates:
 
 | Username | Password | Role | Portal |
 |----------|----------|------|--------|
@@ -396,7 +396,7 @@ docker compose exec master-service python -c "from app.core.database import init
 
 > **Note**: All users (including superadmins) authenticate through **Keycloak**. The superadmin login endpoint (`/api/v1/auth/superadmin/login`) verifies the `super_admin` realm role before issuing a token.
 >
-> `setup_keycloak.py` only creates Keycloak users. To create a fully synced superadmin (Keycloak + local DB record), use `scripts/create_superuser.py`:
+> `setup_keycloak.py` is the existing manual development setup path. To create another fully synced superadmin (Keycloak + local DB record), use `scripts/create_superuser.py`:
 
 ```bash
 python scripts/create_superuser.py \
@@ -409,7 +409,6 @@ python scripts/create_superuser.py \
 You can also create a super admin inside the Docker container:
 
 ```bash
-cd infrastructure
 docker compose exec master-service python scripts/create_superuser.py \
   --username=superadmin2 \
   --password=superadmin123 \
@@ -455,7 +454,7 @@ Make sure your local `.env` points to `localhost` for Postgres, Redis, and Keycl
 
 | File | Purpose |
 |------|---------|
-| `infrastructure/docker-compose.yml` | Root Docker Compose stack (use this from `infrastructure/`) |
+| `infrastructure/docker-compose.yml` | Canonical local development stack; run `docker compose` from inside `infrastructure/` |
 | `services/<service>/Dockerfile` | Individual service image build |
 | `services/<service>/app/main.py` | FastAPI entry point |
 | `services/<service>/app/api/v1/...` | Business routes |

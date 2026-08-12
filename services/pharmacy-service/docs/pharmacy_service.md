@@ -143,13 +143,14 @@ All **14 endpoints** are implemented with Pydantic schemas, OpenAPI tags, `requi
 
 ### Docker (recommended)
 
-From `HospitalSystem/infrastructure`:
+From the `HospitalSystem/infrastructure` directory:
 
 ```powershell
+cd infrastructure
 docker compose up -d --build pharmacy-service
 ```
 
-**Important:** After code changes, rebuild — `docker compose restart` is not enough.
+**Important:** After code changes, rebuild with the command above; restarting a container is not enough.
 
 Health check:
 
@@ -298,6 +299,8 @@ Migration file: `migrations/tenant/versions/0007_add_pharmacy_inventory.py`
 
 ### Verify tables and seed data in psql
 
+Run from the `infrastructure/` directory:
+
 ```powershell
 docker compose exec -it postgres-master psql -U postgres
 ```
@@ -398,6 +401,8 @@ See `.env.example` in this folder and `infrastructure/docker-compose.yml` for Do
 
 ### Useful commands
 
+All Compose commands are run from `infrastructure/`:
+
 ```powershell
 # Service logs
 docker compose logs -f pharmacy-service
@@ -416,7 +421,7 @@ SELECT current_database();
 
 ## Quick Start Checklist for New Developers
 
-1. Clone repo and start stack: `docker compose up -d` from `infrastructure/`
+1. Clone repo, `cd infrastructure`, and start the stack with `docker compose up -d`.
 2. Sign up a hospital via auth API **or** use existing tenant `hosp-citygeneral`
 3. Confirm tenant DB exists: `\l` in psql → `tenant_hosp-citygeneral`
 4. Confirm pharmacy tables: `\dt drug_*` and 2 seed rows in `drug_inventory`

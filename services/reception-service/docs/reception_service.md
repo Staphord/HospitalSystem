@@ -77,8 +77,9 @@ The reception module utilizes an orchestrator proxy pattern. The frontend talks 
 
 ### Docker compose
 
-From `HospitalSystem/infrastructure`:
+From the `HospitalSystem/infrastructure` directory:
 ```bash
+cd infrastructure
 docker compose up -d --build reception-service visit-service
 ```
 
