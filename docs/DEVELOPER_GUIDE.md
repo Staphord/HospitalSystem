@@ -16,31 +16,27 @@ git clone <repository-url>
 cd hospital-flow
 ```
 
-### 2. Start Infrastructure
+### 2. Start the complete development stack
+
+> All Docker commands in this guide are run from the **`infrastructure/`** directory:
+> ```bash
+> cd infrastructure
+> ```
 
 ```bash
-cd infrastructure
-docker compose -p hospital_flow -f docker-compose.yml up -d postgres-master redis rabbitmq
+docker compose up --build -d
 ```
 
-### 3. Start Keycloak
+### 3. Keycloak
 
 ```bash
-docker run -p 8080:8080 -e KEYCLOAK_ADMIN=admin -e KEYCLOAK_ADMIN_PASSWORD=admin \
-  quay.io/keycloak/keycloak:26.6.2 start-dev
+docker compose ps keycloak
 ```
 
-Configure Keycloak (initial setup — per-tenant realms are created automatically):
-1. Open http://localhost:8080/admin
-2. Login: `admin` / `admin`
-3. Create realm: `hospital-realm` (used as the default fallback realm)
-4. Ensure `master` realm exists (built-in, used for superadmin auth)
-5. Create client in `hospital-realm`: `hospital-api` (confidential)
-6. Add redirect URI: `http://localhost:8000/*`
-7. Create roles in `hospital-realm`: `super_admin`, `hospital_admin`, `hospital_user`, `nurse`, `clinician`, `doctor`, `patient`
-8. Create user in `hospital-realm`: `superadmin` with password `superadmin123`
-9. Assign `super_admin` role to `superadmin`
-10. Create user in `master` realm: `superadmin` with password `superadmin123` and assign `super_admin` role (optional — login falls back to `hospital-realm` if `master` fails)
+Compose imports the base realm, client, and base roles on the first startup of a fresh
+Keycloak volume. Use the repository's existing `setup_keycloak.py` when test users are
+required. The admin console is available at http://localhost:8080 (`admin` / `admin`
+in development). Per-tenant realms are still created during tenant provisioning.
 
 ### Multi-Realm Architecture
 
@@ -218,17 +214,17 @@ curl http://localhost:8000/api/v1/admin/users \
 
 ### Service Logs
 ```bash
-docker compose -p hospital_flow logs -f <service-name>
+docker compose logs -f <service-name>
 ```
 
 ### Database Queries
 ```bash
-docker compose -p hospital_flow exec postgres-master psql -U postgres -d hospital_master
+docker compose exec postgres-master psql -U postgres -d hospital_master
 ```
 
 ### Redis
 ```bash
-docker compose -p hospital_flow exec redis redis-cli
+docker compose exec redis redis-cli
 ```
 
 ### RabbitMQ
@@ -266,7 +262,7 @@ export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 ### Database Connection Issues
 Check if PostgreSQL is running:
 ```bash
-docker compose -p hospital_flow ps postgres-master
+docker compose ps postgres-master
 ```
 
 ### Keycloak Token Issues
@@ -290,7 +286,7 @@ If login fails with "Failed to query Keycloak for realm" in logs, verify:
 ### Rate Limit Blocks
 Wait 1 minute or restart Redis:
 ```bash
-docker compose -p hospital_flow restart redis
+docker compose restart redis
 ```
 
 ## Contributing

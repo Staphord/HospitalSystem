@@ -474,10 +474,10 @@ docker cp scripts/migrate_existing_tenants.py hospital-master-service:/tmp/migra
 docker exec -w /app hospital-master-service python /tmp/migrate_existing_tenants.py
 ```
 
-Or recreate master-service so `/app/scripts` is mounted, then:
+Or recreate master-service so `/app/scripts` is mounted, then (from `infrastructure/`):
 
 ```text
-docker compose -f infrastructure/docker-compose.yml up -d master-service
+docker compose up -d master-service
 docker exec -w /app hospital-master-service python /app/scripts/migrate_existing_tenants.py
 ```
 

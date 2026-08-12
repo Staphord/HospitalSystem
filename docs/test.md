@@ -369,14 +369,17 @@ Available at `http://localhost:8001/docs` (auth-service).
 
 ## 6. Running the stack
 
+Run Compose commands from the `infrastructure/` directory:
+
 ```bash
-docker compose -f infrastructure/docker-compose.yml up --build -d
+cd infrastructure
+docker compose up --build -d
 ```
 
 After changes, rebuild specific services:
 ```bash
-docker compose -f infrastructure/docker-compose.yml build patient-service
-docker compose -f infrastructure/docker-compose.yml up -d patient-service
+docker compose build patient-service
+docker compose up -d patient-service
 ```
 
 For unit tests:

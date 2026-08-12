@@ -8,7 +8,7 @@
       "name": "Hospital API",
       "protocol": "openid-connect",
       "publicClient": false,
-      "secret": "hospital-api-secret",
+      "secret": "Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ",
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
       "serviceAccountsEnabled": false,

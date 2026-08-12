@@ -152,9 +152,10 @@ All **13 endpoints** are fully implemented with real DB queries, Pydantic schema
 
 ### Docker (recommended)
 
-From `HospitalSystem/infrastructure`:
+From the `HospitalSystem/infrastructure` directory:
 
 ```bash
+cd infrastructure
 docker compose up -d --build laboratory-service
 ```
 
@@ -214,7 +215,7 @@ Copy `.env.example` to `.env` and set `DATABASE_URL`, Keycloak config, and `TENA
 If you are developing locally and want to test endpoints end-to-end, you can seed mock patients, visits, consultations, and requests inside the Dockerized PostgreSQL database.
 
 ### Step 1: Access the PostgreSQL Shell
-Connect to the master database cluster inside the Docker container:
+Connect to the master database cluster inside the Docker container (run from `infrastructure/`):
 ```bash
 docker compose exec -it postgres-master psql -U postgres
 ```
@@ -322,7 +323,7 @@ When a new hospital signs up, the tenant DB is created and migrated automaticall
 ### Running Migrations Manually
 If you add a new tenant migration and existing databases need upgrading:
 
-From `HospitalSystem/infrastructure`:
+From the `HospitalSystem/infrastructure` directory:
 
 ```bash
 docker compose exec master-service python -c "

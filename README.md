@@ -174,7 +174,7 @@ hospital-flow/
 │   ├── notification-service/     # Port 8019
 │   └── report-service/           # Port 8020
 ├── infrastructure/
-│   ├── docker-compose.yml        # Full local dev stack
+│   ├── docker-compose.yml        # Canonical local development stack
 │   ├── docker-compose.test.yml
 │   ├── k8s/
 │   │   └── {service-name}/
@@ -234,32 +234,31 @@ cp .env.example .env
 
 ### 2. Start the full infrastructure stack
 
+All Docker commands are run from the `infrastructure/` directory:
+
 ```bash
-docker-compose up -d
+cd infrastructure
+docker compose up --build -d
 ```
 
 This starts:
 - PostgreSQL (Master DB on port 5432)
 - Redis (port 6379)
 - RabbitMQ (AMQP on 5672, management UI on 15672)
-- All 14 services on their respective ports
+- Keycloak (port 8080), with the base development realm imported on a fresh volume
+- All 16 application services on their respective ports
 
-### 3. Run Master DB migrations
+The Compose stack does not add or rewrite database migrations. Master and tenant
+migration files remain managed through the existing Alembic workflow described below.
 
-```bash
-cd migrations/master
-alembic upgrade head
-cd ../..
-```
-
-### 4. Seed development data
+### 3. Seed development data
 
 ```bash
 python scripts/seed_dev.py
 # Creates 2 test hospitals, a super admin, and staff accounts for each
 ```
 
-### 5. Verify
+### 4. Verify
 
 ```bash
 curl http://localhost:8000/health
@@ -281,11 +280,11 @@ alembic downgrade -1
 alembic revision --autogenerate -m "your change description"
 ```
 
-> **Troubleshooting**: If the database was created outside Alembic (e.g., via SQLAlchemy `create_all()`), the `alembic_version` table may be stamped at an old revision while columns from later migrations already exist. To fix, stamp to the correct revision and upgrade:
-> ```bash
-> alembic stamp 0004_announcement_creator_null
-> alembic upgrade head
-> ```
+> **Troubleshooting**: If Alembic reports multiple heads or an existing table/column,
+> do not stamp a revision merely to bypass the error. Capture `alembic heads`, the
+> database's recorded revision, and the service log for migration-chain review. Before
+> the first deployment, validate the complete chain against an empty disposable
+> database.
 
 **Tenant DB** (all clinical tables — applied per hospital):
 
@@ -483,10 +482,10 @@ All event consumers are **idempotent** — processing the same event twice produ
 
 ### Manual smoke test
 
-Start RabbitMQ locally (or via Docker Compose):
+Start RabbitMQ locally (or via Docker Compose, from `infrastructure/`):
 
 ```bash
-docker-compose up -d rabbitmq
+docker compose up -d rabbitmq
 ```
 
 Run the built-in test script:

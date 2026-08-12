@@ -18,7 +18,10 @@ Creates visit records, handles payment type selection and insurance verification
 
 ## Build & Run
 
+From the `infrastructure/` directory:
+
 ```bash
+cd infrastructure
 docker compose build visit-service
 docker compose up -d visit-service
 ```
