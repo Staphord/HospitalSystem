@@ -21,8 +21,44 @@ from app.api.v1.schemas import (
     LowStockAlertsResponse,
     RestockRequest,
     RestockResponse,
+    UpdateInventoryRequest,
 )
 from app.core.security import TokenPayload
+
+
+async def update_inventory_item(
+    db: AsyncSession,
+    inventory_id: UUID,
+    body: UpdateInventoryRequest,
+    user: TokenPayload,
+) -> InventoryListItem:
+    item = await _get_inventory_or_404(db, inventory_id)
+    now = datetime.now(timezone.utc)
+
+    if body.drug_name is not None:
+        item.drug_name = body.drug_name.strip()
+    if body.brand_name is not None:
+        item.brand_name = body.brand_name.strip() if body.brand_name else None
+    if body.drug_code is not None:
+        item.drug_code = body.drug_code.strip()
+    if body.category is not None:
+        item.category = body.category.strip()
+    if body.unit is not None:
+        item.unit = body.unit.strip()
+    if body.reorder_level is not None:
+        item.reorder_level = body.reorder_level
+    if body.unit_cost is not None:
+        item.unit_cost = Decimal(str(body.unit_cost))
+    if body.unit_price is not None:
+        item.unit_price = Decimal(str(body.unit_price))
+    if body.location is not None:
+        item.location = body.location.strip() if body.location else None
+
+    item.updated_at = now
+    await db.commit()
+    await db.refresh(item)
+    return _to_list_item(item)
+
 from app.exceptions import ConflictError, NotFoundError
 from app.models.pharmacy import DrugInventory, DrugInventoryTransaction
 
