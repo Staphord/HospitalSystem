@@ -2,7 +2,7 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 
@@ -39,6 +39,28 @@ def run_migrations_offline() -> None:
     )
     with context.begin_transaction():
         context.run_migrations()
+
+
+def _ensure_version_table_capacity(connection) -> None:
+    """Keep Alembic's version table wide enough for this project's revisions.
+
+    Recent Alembic releases create version_num as VARCHAR(32) regardless of
+    version_table_col_length, while some revision identifiers are longer.
+    """
+    connection.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS alembic_version ("
+            "version_num VARCHAR(64) NOT NULL, "
+            "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)"
+            ")"
+        )
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE alembic_version "
+            "ALTER COLUMN version_num TYPE VARCHAR(64)"
+        )
+    )
 
 
 def run_migrations_online() -> None:

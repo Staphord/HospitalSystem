@@ -5,15 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.config import settings
-from app.core.database import get_session_local
-from app.db.base import Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    SessionLocal = get_session_local()
-    engine = SessionLocal.kw["bind"]
-    Base.metadata.create_all(bind=engine)
     yield
 
 

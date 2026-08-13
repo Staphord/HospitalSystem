@@ -47,89 +47,6 @@ def _find_migrations_dir() -> str | None:
     return None
 
 
-def _stamp_existing_schema_if_needed(migrations_dir: str) -> None:
-    """Bootstrap alembic for databases created outside alembic.
-
-    If the database already has the tenants table but no alembic_version record,
-    detect whether the schema looks like 0001 or head and stamp the appropriate
-    revision so that subsequent upgrades only apply real deltas.
-    """
-    import os
-    import subprocess
-    import sys
-
-    from sqlalchemy import create_engine, text
-    from sqlalchemy.exc import SQLAlchemyError
-
-    engine = create_engine(settings.database_url, pool_pre_ping=True)
-    try:
-        with engine.connect() as conn:
-            alembic_exists = conn.execute(
-                text(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = 'alembic_version'"
-                )
-            ).scalar()
-            if alembic_exists:
-                return
-
-            tenants_exists = conn.execute(
-                text(
-                    "SELECT 1 FROM information_schema.tables "
-                    "WHERE table_schema = 'public' AND table_name = 'tenants'"
-                )
-            ).scalar()
-            if not tenants_exists:
-                # Fresh database; alembic upgrade will create everything.
-                return
-
-            # Detect which migration revision best matches the existing schema
-            # to prevent skipping migrations (e.g. 0003 adds country/city, 0002 adds subscription_status)
-            has_country = conn.execute(
-                text(
-                    "SELECT 1 FROM information_schema.columns "
-                    "WHERE table_schema = 'public' AND table_name = 'tenants' "
-                    "AND column_name = 'country'"
-                )
-            ).scalar()
-            has_sub_status = conn.execute(
-                text(
-                    "SELECT 1 FROM information_schema.columns "
-                    "WHERE table_schema = 'public' AND table_name = 'tenants' "
-                    "AND column_name = 'subscription_status'"
-                )
-            ).scalar()
-
-            if has_country:
-                target_revision = "0003_add_saas_schema"
-            elif has_sub_status:
-                target_revision = "0002_add_subscription_lifecycle"
-            else:
-                target_revision = "0001_initial_master_schema"
-
-            logger.info("Bootstrapping alembic revision for existing schema: %s", target_revision)
-            result = subprocess.run(
-                [sys.executable, "-m", "alembic", "stamp", target_revision],
-                cwd=migrations_dir,
-                capture_output=True,
-                text=True,
-                check=True,
-                env={**dict(os.environ), "DATABASE_URL": settings.database_url},
-            )
-            if result.stdout:
-                logger.debug(result.stdout)
-    except subprocess.CalledProcessError as exc:
-        logger.error("Failed to stamp existing schema: %s\n%s", exc.stderr, exc.stdout)
-        if settings.environment == "prod":
-            raise
-    except SQLAlchemyError as exc:
-        logger.error("Database connectivity error during migration bootstrap: %s", exc)
-        if settings.environment == "prod":
-            raise
-    finally:
-        engine.dispose()
-
-
 def _run_migrations() -> None:
     """Run Alembic migrations for the master database on startup.
 
@@ -142,10 +59,7 @@ def _run_migrations() -> None:
 
     migrations_dir = _find_migrations_dir()
     if not migrations_dir:
-        logger.warning("Master migrations directory not found; skipping alembic")
-        return
-
-    _stamp_existing_schema_if_needed(migrations_dir)
+        raise RuntimeError("Master migrations directory not found; refusing to start")
 
     try:
         result = subprocess.run(
@@ -161,9 +75,7 @@ def _run_migrations() -> None:
             logger.debug(result.stdout)
     except subprocess.CalledProcessError as exc:
         logger.error("Master DB migration failed: %s\n%s", exc.stderr, exc.stdout)
-        # Do not crash the app in development, but log loudly.
-        if settings.environment == "prod":
-            raise
+        raise
 
 
 @asynccontextmanager
