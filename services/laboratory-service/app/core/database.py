@@ -26,55 +26,9 @@ def get_session_local() -> sessionmaker:
     return _SessionLocal
 
 
-def _migrate_user_table() -> None:
-    from sqlalchemy import inspect, text
-    from app.db.base import Base
-
-    inspector = inspect(_engine)
-    columns = [c["name"] for c in inspector.get_columns("users")]
-    with _engine.connect() as conn:
-        if "username" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR"))
-        if "role" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR"))
-        if "full_name" not in columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR"))
-        conn.commit()
-
-
-def _migrate_super_admins_table() -> None:
-    from sqlalchemy import inspect, text
-
-    inspector = inspect(_engine)
-    tables = inspector.get_table_names()
-    if "super_admins" not in tables:
-        with _engine.connect() as conn:
-            conn.execute(text("""
-                CREATE TABLE super_admins (
-                    super_admin_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    username VARCHAR(50) UNIQUE NOT NULL,
-                    email VARCHAR(150) UNIQUE NOT NULL,
-                    password_hash VARCHAR(255) NOT NULL,
-                    full_name VARCHAR(200) NOT NULL,
-                    role VARCHAR(50) NOT NULL DEFAULT 'super_admin',
-                    mfa_secret VARCHAR(100) NOT NULL,
-                    is_active BOOLEAN NOT NULL DEFAULT true,
-                    last_login_at TIMESTAMP,
-                    created_at TIMESTAMP NOT NULL DEFAULT now()
-                )
-            """))
-            conn.commit()
-
-
 def init_db() -> None:
-    from app.db.base import Base
-    import app.models
-
+    """Initialize the SQLAlchemy engine; Alembic owns master schema changes."""
     _init_engine()
-    from shared.db import create_schema_if_missing
-    create_schema_if_missing(_engine, Base.metadata)
-    _migrate_user_table()
-    _migrate_super_admins_table()
 
 
 class DatabaseRouter(ABC):

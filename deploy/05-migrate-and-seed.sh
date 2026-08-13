@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs the master-DB Alembic migrations and creates the first super_admin user.
+# Runs the master-DB Alembic migrations and provisions the initial superadmin.
 # Run this AFTER 04-generate-env-and-systemd.sh (needs common.env + Keycloak up).
 #
 # You do NOT need to manually provision a tenant/hospital database: once you
@@ -27,18 +27,13 @@ cd "${BACKEND_DIR}/services/master-service"
 venv/bin/python -m alembic -c migrations/master/alembic.ini upgrade head
 
 echo
-read -rp "Super admin username [superadmin]: " SU_USER
-SU_USER="${SU_USER:-superadmin}"
-read -rp "Super admin email: " SU_EMAIL
-read -rsp "Super admin password: " SU_PASS
-echo
-
-echo "== Creating super admin (Keycloak + master DB) =="
+echo "== Provisioning super admin (Keycloak + master DB) =="
 cd "${BACKEND_DIR}"
-scripts/venv/bin/python scripts/create_superuser.py \
-  --username "${SU_USER}" --password "${SU_PASS}" --email "${SU_EMAIL}" --role super_admin
+scripts/venv/bin/python scripts/bootstrap.py \
+  --interactive --env-file "${ENV_FILE}"
 
 echo
-echo "Done. Log into the frontend's /master/login as '${SU_USER}' and create"
+echo "Done. Log into the frontend's /master/login with the credentials stored in"
+echo "${ENV_FILE} and create"
 echo "your first hospital tenant from there — the tenant's database and"
 echo "Alembic schema are provisioned automatically by master-service."

@@ -5,19 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.config import settings
-from app.db.base import Base
-from app.core.database import get_session_local
 
 
 import asyncio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    SessionLocal = get_session_local()
-    engine = SessionLocal.kw["bind"]
-    from shared.db import create_schema_if_missing
-    create_schema_if_missing(engine, Base.metadata)
-
     consumer_task = None
     try:
         from app.events import subscriber as _sub

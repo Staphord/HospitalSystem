@@ -37,28 +37,7 @@ async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
         pool_recycle=3600,
         echo=settings.environment == "dev",
     )
-    async with engine.begin() as conn:
-        from app.db.base import Base
-        import app.models  # noqa
-        from shared.db import create_schema_if_missing
-        await conn.run_sync(lambda c: create_schema_if_missing(c, Base.metadata))
-
-        def _migrate_columns(sync_conn):
-            from sqlalchemy import inspect, text
-            inspector = inspect(sync_conn)
-            if "lab_results" in inspector.get_table_names():
-                cols = [c["name"] for c in inspector.get_columns("lab_results")]
-                if "specimen_label" not in cols:
-                    sync_conn.execute(text("ALTER TABLE lab_results ADD COLUMN specimen_label VARCHAR(50)"))
-                if "critical_notified_at" not in cols:
-                    sync_conn.execute(text("ALTER TABLE lab_results ADD COLUMN critical_notified_at TIMESTAMPTZ"))
-                if "created_at" not in cols:
-                    sync_conn.execute(text("ALTER TABLE lab_results ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW()"))
-                if "updated_at" not in cols:
-                    sync_conn.execute(text("ALTER TABLE lab_results ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW()"))
-
-        await conn.run_sync(_migrate_columns)
-
+    # Alembic owns tenant schema changes; this only initializes the engine.
     factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     _async_engine_cache[tenant_id] = factory
     _async_engine_instances[tenant_id] = engine

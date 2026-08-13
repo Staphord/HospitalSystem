@@ -1,8 +1,8 @@
-"""Merge remaining tenant heads
+"""Merge tenant migration heads.
 
 Revision ID: 0023_merge_tenant_heads
 Revises: 0021_add_insurance_provider_contact_person_and_policies, 0022_radiology_request_fk
-Create Date: 2026-08-13 18:20:00.000000+00:00
+Create Date: 2026-08-13 00:00:00.000000+00:00
 """
 
 from typing import Sequence, Union
