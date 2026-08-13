@@ -157,7 +157,7 @@ jobs:
           PYTHONPATH: .:services/master-service:shared
         run: |
           if [ -f migrations/master/alembic.ini ]; then
-            alembic -c migrations/master/alembic.ini upgrade head
+            alembic -c migrations/master/alembic.ini upgrade heads
           else
             echo "No master alembic config found, skipping."
           fi

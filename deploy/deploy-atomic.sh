@@ -34,7 +34,7 @@ deploy_release() {
   # 3. Apply DB migrations via temporary runner container
   echo "Executing Alembic database migrations..."
   if [ -f "${BASE_DIR}/migrations/master/alembic.ini" ]; then
-    docker compose -f "${COMPOSE_FILE}" run --rm master-service alembic -c /app/migrations/master/alembic.ini upgrade head || true
+    docker compose -f "${COMPOSE_FILE}" run --rm master-service alembic -c /app/migrations/master/alembic.ini upgrade heads || true
   fi
 
   # 4. Spin up container updates with zero-downtime recreation
