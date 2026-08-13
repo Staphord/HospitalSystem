@@ -13,7 +13,8 @@ from app.db.base import Base
 async def lifespan(app: FastAPI):
     SessionLocal = get_session_local()
     engine = SessionLocal.kw["bind"]
-    Base.metadata.create_all(bind=engine)
+    from shared.db import create_schema_if_missing
+    create_schema_if_missing(engine, Base.metadata)
     yield
 
 

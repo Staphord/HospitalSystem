@@ -74,7 +74,8 @@ async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
     async with engine.begin() as conn:
         from app.db.base import Base
         import app.models  # noqa
-        await conn.run_sync(Base.metadata.create_all)
+        from shared.db import create_schema_if_missing
+        await conn.run_sync(lambda c: create_schema_if_missing(c, Base.metadata))
         await conn.run_sync(_migrate_consultation_columns)
 
     factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)

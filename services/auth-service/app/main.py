@@ -36,16 +36,6 @@ async def lifespan(app: FastAPI):
     from app.core.database import init_db
     init_db()
 
-    from app.db.master import get_master_db
-    from app.models.master import Tenant, GlobalAuditLog
-    from app.db.base import Base
-
-    master_db = get_master_db()
-    try:
-        Base.metadata.create_all(bind=master_db.connection())
-    finally:
-        master_db.close()
-
     # Ensure Keycloak master realm has a superadmin-login client
     try:
         from app.services.keycloak_admin import ensure_superadmin_client

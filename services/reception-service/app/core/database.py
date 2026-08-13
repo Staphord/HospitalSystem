@@ -90,7 +90,8 @@ def init_db() -> None:
     import app.models
 
     _init_engine()
-    Base.metadata.create_all(bind=_engine)
+    from shared.db import create_schema_if_missing
+    create_schema_if_missing(_engine, Base.metadata)
     _migrate_user_table()
     _migrate_super_admins_table()
 

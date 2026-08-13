@@ -40,7 +40,8 @@ async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
     async with engine.begin() as conn:
         from app.db.base import Base
         import app.models  # noqa
-        await conn.run_sync(Base.metadata.create_all)
+        from shared.db import create_schema_if_missing
+        await conn.run_sync(lambda c: create_schema_if_missing(c, Base.metadata))
 
         def _migrate_columns(sync_conn):
             from sqlalchemy import inspect, text

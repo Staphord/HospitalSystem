@@ -697,8 +697,24 @@ async def create_tenant(
         except Exception as e:
             logger.error(f"Saga Rollback: Failed to drop database for {tenant_id}: {e}")
             
-        # Rollback 2: Hard delete Tenant record
+        # Rollback 2: Hard delete Tenant record (child rows first — FKs)
         try:
+            from sqlalchemy import text as sql_text
+
+            for table in (
+                "subscription_audit_log",
+                "saas_payments",
+                "invoices",
+                "subscriptions",
+                "tenant_roles",
+                "tenant_system_roles",
+                "super_admin_audit_log",
+                "incidents",
+            ):
+                db.execute(
+                    sql_text(f"DELETE FROM {table} WHERE tenant_id = :tid"),
+                    {"tid": tenant_id},
+                )
             db.delete(tenant)
             db.commit()
             logger.info(f"Saga Rollback: Hard deleted tenant record {tenant_id}")

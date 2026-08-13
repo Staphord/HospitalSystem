@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: 12345678
       POSTGRES_DB: hospital_master
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-master-data:/var/lib/postgresql/data
     networks:
@@ -28,7 +28,7 @@ services:
     image: redis:7-alpine
     container_name: hospital-redis
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     networks:
       - hospital-network
     healthcheck:
@@ -45,8 +45,8 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
       RABBITMQ_ERLANG_COOKIE: hospital-flow-cookie
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
     networks:
@@ -65,8 +65,9 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - keycloak-data:/opt/keycloak/data
       - ../keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
@@ -85,7 +86,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-api-gateway
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       ENVIRONMENT: dev
       MASTER_DB_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -96,7 +97,7 @@ services:
       KEYCLOAK_CLIENT_ID: hospital-api
       KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       AUTH_SERVICE_URL: http://auth-service:8001
       MASTER_SERVICE_URL: http://master-service:8002
@@ -139,7 +140,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-auth-service
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -152,7 +153,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       DB_ADMIN_URL: postgresql://postgres:12345678@postgres-master:5432/postgres
@@ -193,7 +194,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-master-service
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -206,7 +207,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       DB_ADMIN_URL: postgresql://postgres:12345678@postgres-master:5432/postgres
@@ -265,7 +266,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-reception-service
     ports:
-      - "8010:8010"
+      - "127.0.0.1:8010:8010"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -278,7 +279,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -311,7 +312,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-patient-service
     ports:
-      - "8005:8005"
+      - "127.0.0.1:8005:8005"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -324,7 +325,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -349,7 +350,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-visit-service
     ports:
-      - "8006:8006"
+      - "127.0.0.1:8006:8006"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -362,7 +363,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
     depends_on:
@@ -386,7 +387,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-triage-service
     ports:
-      - "8011:8011"
+      - "127.0.0.1:8011:8011"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -399,7 +400,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -413,6 +414,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -427,7 +430,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-consultation-service
     ports:
-      - "8012:8012"
+      - "127.0.0.1:8012:8012"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -440,7 +443,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -453,6 +456,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -467,7 +472,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-laboratory-service
     ports:
-      - "8013:8013"
+      - "127.0.0.1:8013:8013"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -480,7 +485,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -493,6 +498,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -507,7 +514,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-radiology-service
     ports:
-      - "8014:8014"
+      - "127.0.0.1:8014:8014"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -520,7 +527,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -547,7 +554,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-pharmacy-service
     ports:
-      - "8015:8015"
+      - "127.0.0.1:8015:8015"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -560,7 +567,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -587,7 +594,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-billing-service
     ports:
-      - "8016:8016"
+      - "127.0.0.1:8016:8016"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -600,7 +607,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -627,7 +634,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-ward-service
     ports:
-      - "8017:8017"
+      - "127.0.0.1:8017:8017"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -640,7 +647,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: hosp-ac224699
       DEV_TENANT_ID: hosp-ac224699
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
@@ -668,7 +675,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-admin-service
     ports:
-      - "8018:8018"
+      - "127.0.0.1:8018:8018"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -681,13 +688,19 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       BACKUP_ROOT: /var/backups/hospital
       BACKUP_RETENTION_DAYS: "30"
       BACKUP_CHECK_INTERVAL: "21600"
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      FRONTEND_URL: https://gilgali.com/login
     depends_on:
       keycloak:
         condition: service_healthy
@@ -714,7 +727,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-notification-service
     ports:
-      - "8019:8019"
+      - "127.0.0.1:8019:8019"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -727,7 +740,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
@@ -754,7 +767,7 @@ services:
       dockerfile: Dockerfile
     container_name: hospital-report-service
     ports:
-      - "8020:8020"
+      - "127.0.0.1:8020:8020"
     environment:
       ENVIRONMENT: dev
       DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
@@ -767,7 +780,7 @@ services:
       KEYCLOAK_ADMIN_USERNAME: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501,https://gilgali.com,http://gilgali.com
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
