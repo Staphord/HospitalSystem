@@ -16,7 +16,7 @@ ACTION="${1:-stage}"
 RELEASE_TAG="${2:-$(date +%Y%m%d%H%M%S)}"
 
 BASE_DIR="/var/www/hospital-backend"
-COMPOSE_FILE="${BASE_DIR}/docker-compose.yml"
+COMPOSE_FILE="${BASE_DIR}/infrastructure/docker-compose.yml"
 PREVIOUS_TAG_FILE="${BASE_DIR}/previous_release_tag"
 CURRENT_TAG_FILE="${BASE_DIR}/current_release_tag"
 
