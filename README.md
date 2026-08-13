@@ -38,17 +38,19 @@ Multi-tenant hospital patient flow system decomposed into **14 microservices** w
 | `triage-service` | 8011 | ✅ Complete | Triage assessments, vitals, category suggestion |
 | `consultation-service` | 8012 | ✅ Complete | Consultations, diagnoses, investigation requests, encounter view |
 | `radiology-service` | 8014 | ✅ Complete | Radiology reports CRUD, modality/status enums |
-| `pharmacy-service` | 8015 | 🟡 Partial | Inventory (real DB-backed), queue/prescriptions/dispensing (Phase 1 stubs — returns mock data) |
+| `pharmacy-service` | 8015 | ✅ Complete | Inventory, prescriptions, dispensing (real DB-backed); charges the visit bill exclusively via the `drug.dispensed` event — no longer writes bill rows directly (see [Billing Ownership](#billing-ownership-note)) |
 | `reception-service` | 8010 | ✅ Complete | Orchestration layer — patient registration, visit orchestration, queue lookup, and insurance verification |
 | `laboratory-service` | 8013 | ✅ Complete | Specimen collection, result validation, worklists, and test history |
-| `billing-service` | 8016 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
-| `ward-service` | 8017 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
-| `notification-service` | 8019 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+| `billing-service` | 8016 | ✅ Complete | Bills, bill items, payments, ward LOS + drug dispensing charges via events. Sole owner of the `bills`/`bill_items` schema (see [Billing Ownership](#billing-ownership-note)) |
+| `ward-service` | 8017 | ✅ Complete | Bed board, admissions, discharge, inpatient orders, nursing notes, visitor/handover logs |
+| `notification-service` | 8019 | ✅ Complete | In-system notification broadcast, preferences |
 | `report-service` | 8020 | 🔴 Empty | Placeholder only — no endpoints, no models, no business logic |
+
+> The status table above was significantly stale as of 2026-08-12 (it listed billing/ward/notification as empty placeholders when all three had already been built out with real models, endpoints, and tests). Verify against `services/<name>/app/api/v1/router.py` before trusting a status here — this table is hand-maintained and drifts.
 
 ### Database Schema Coverage
 
-The target schema defines **32 tenant DB tables** and **8 master DB tables**. Current tenant migration coverage:
+Current tenant migration coverage, verified against `migrations/tenant/versions/` and each service's models (last checked 2026-08-13):
 
 | Module | Tables in Schema | Migration Created | Endpoint Logic |
 |--------|:-:|:-:|:-:|
@@ -59,32 +61,35 @@ The target schema defines **32 tenant DB tables** and **8 master DB tables**. Cu
 | Reception — `appointments` | — | ✅ (extra) | ❌ |
 | Triage — `triage_assessments` | ✅ | ✅ | ✅ |
 | Consultation — `consultations` | ✅ | ✅ | ✅ |
-| Consultation — `diagnoses` | ✅ | ❌ | ✅ (in code) |
-| Consultation — `investigation_requests` | ✅ | ❌ | ✅ (in code) |
-| Consultation — `prescriptions` | ✅ | ❌ | ❌ |
-| Lab — `lab_results` | ✅ | ❌ | ❌ |
-| Lab — `specimens` | ✅ | ❌ | ❌ |
+| Consultation — `diagnoses` | ✅ | ✅ | ✅ |
+| Consultation — `investigation_requests` | ✅ | ✅ | ✅ |
+| Consultation — `prescriptions` | ✅ | ✅ | ✅ |
+| Lab — `lab_results` | ✅ | ✅ | ✅ |
+| Lab — `specimens` | ✅ | ✅ | ✅ |
 | Radiology — `radiology_reports` | ✅ | ✅ | ✅ |
 | Pharmacy — `drug_inventory` | ✅ | ✅ | ✅ |
 | Pharmacy — `drug_inventory_transactions` | ✅ | ✅ | ✅ |
-| Pharmacy — `dispensing_records` | ✅ | ❌ | ❌ |
-| Billing — `bills` | ✅ | ❌ | ❌ |
-| Billing — `bill_items` | ✅ | ❌ | ❌ |
-| Billing — `payments` | ✅ | ❌ | ❌ |
+| Pharmacy — `dispensing_records` | ✅ | ✅ | ✅ |
+| Billing — `bills` | ✅ | ✅ (see note below) | ✅ |
+| Billing — `bill_items` | ✅ | ✅ (see note below) | ✅ |
+| Billing — `payments` | ✅ | ✅ | ✅ |
 | Billing — `insurance_claims` | ✅ | ❌ | ❌ |
-| Ward — `beds` | ✅ | ❌ | ❌ |
-| Ward — `admissions` | ✅ | ❌ | ❌ |
-| Ward — `inpatient_orders` | ✅ | ❌ | ❌ |
-| Ward — `nursing_notes` | ✅ | ❌ | ❌ |
+| Ward — `beds` | ✅ | ✅ | ✅ |
+| Ward — `admissions` | ✅ | ✅ | ✅ |
+| Ward — `inpatient_orders` | ✅ | ✅ | ✅ |
+| Ward — `nursing_notes` | ✅ | ✅ | ✅ |
 | Admin — `users` | ✅ | ✅ | ✅ |
-| Admin — `departments` | ✅ | ❌ | ❌ |
-| Admin — `fee_schedules` | ✅ | ❌ | ❌ |
-| Admin — `password_reset_tokens` | ✅ | ❌ | ❌ |
-| Admin — `refresh_tokens` | ✅ | ❌ | ❌ |
-| Notifications — `notifications` | ✅ | ❌ | ❌ |
-| Admin — `audit_logs` | ✅ | ❌ | ❌ |
+| Admin — `departments` | ✅ | ✅ | ✅ |
+| Admin — `fee_schedules` | ✅ | ✅ | ✅ |
+| Master — `password_reset_tokens` | ✅ | ✅ (master DB, not tenant) | ✅ |
+| Master — `refresh_tokens` | ✅ | ✅ (master DB, not tenant) | ✅ |
+| Notifications — `notifications` | ✅ | ✅ | ✅ |
+| Admin — `audit_logs` | ✅ | ✅ | ✅ |
 
-**Key gap**: Tables like `diagnoses`, `investigation_requests`, `prescriptions`, `lab_results`, `specimens`, `bills`, `payments`, `beds`, `admissions`, `inpatient_orders`, `nursing_notes`, `departments`, `fee_schedules`, `password_reset_tokens`, `refresh_tokens`, `notifications`, and `audit_logs` exist in the service SQLAlchemy models or are referenced in code but **do not have tenant migration scripts** yet.
+**Remaining gap**: `insurance_claims` has no migration and no code — it is not referenced by any service yet, so there's nothing to reconcile; it's simply unbuilt.
+
+<a id="billing-ownership-note"></a>
+**Billing ownership note**: `bills`/`bill_items` were historically created by two independent, parallel migration branches (`0015_update_consultation_schema.py` and `0016_ward_module_tables.py`) with incompatible column sets — including different names for the `bill_items` primary key. Depending on migration order, a given tenant could end up with either shape, and pharmacy-service additionally maintained its own competing `Bill`/`BillItem` ORM models that wrote into the same tables on `prescription.issued` (double-charging ahead of the actual dispense). `billing-service` is now the sole owner of this schema and the only service with `Bill`/`BillItem` models; migration `0024_reconcile_billing_schema.py` normalizes any tenant to that shape regardless of which historical branch it started from, and `0025_add_payments_table.py` fills the parallel gap where `billing-service`'s `Payment` model had no backing table at all. Both existing migration files were left untouched rather than edited in place — see [Migration Discipline](#migration-discipline).
 
 ### Radiology `request_id` Note
 
@@ -298,6 +303,16 @@ python scripts/migrate_all_tenants.py
 # Check migration status across all tenants
 python scripts/migrate_all_tenants.py --dry-run
 ```
+
+<a id="migration-discipline"></a>
+### Migration Discipline
+
+The tenant migration chain has repeatedly fragmented into multiple heads (six `merge_heads` revisions exist in `migrations/tenant/versions/` — `0006`, `0009`, `0010`, `0016`, `0020`, `0023`) because multiple contributors branched off the same head in parallel and reused revision numbers. In one case (`0015_update_consultation_schema.py` and `0016_ward_module_tables.py`) two branches independently created the same `bills`/`bill_items` tables with incompatible column sets, which only surfaced when the schema was audited directly — CI never applied the tenant chain to a database, so nothing caught it. `backend-ci.yml`'s `migration-check` job now enforces two things on every PR:
+
+1. **Tenant migrations are applied to a disposable Postgres DB** via `alembic upgrade head` (singular — this fails loudly instead of silently succeeding when the chain has diverged into multiple heads, unlike `upgrade heads`). `alembic heads` is also asserted to return exactly one line before the upgrade runs, with a pointer to `alembic merge heads` in the error.
+2. A separate `migration-immutability-check` job diffs `migrations/*/versions/*.py` against the PR's base branch and fails if any file that already exists on the base is modified, renamed, or deleted — only new files are allowed. Once a migration is merged, a tenant DB may already be stamped past it, so an in-place edit (as happened to `0015_update_consultation_schema.py` when two columns were added to it after the fact in commit `c529f4d`) silently never applies to any tenant provisioned before the edit landed.
+
+If a PR needs to change something an already-merged migration got wrong, write a new migration that alters the table — don't edit the old file, even if it feels like it "should have been in there from the start."
 
 ---
 
