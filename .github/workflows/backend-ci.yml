@@ -154,7 +154,7 @@ jobs:
       - name: Validate Master DB Migrations
         env:
           DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_master_test
-          PYTHONPATH: .
+          PYTHONPATH: .:services/master-service:shared
         run: |
           if [ -f migrations/master/alembic.ini ]; then
             alembic -c migrations/master/alembic.ini upgrade head
