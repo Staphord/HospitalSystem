@@ -24,9 +24,6 @@ jobs:
   code-quality:
     name: Code Quality & Linting
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -53,9 +50,6 @@ jobs:
   test-matrix:
     name: Run Unit & Integration Tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     strategy:
       fail-fast: false
       matrix:
@@ -113,9 +107,6 @@ jobs:
   docker-build-check:
     name: Validate Docker Containers Build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -130,9 +121,6 @@ jobs:
   migration-check:
     name: Validate Alembic Migrations
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     services:
       postgres:
         image: postgres:16-alpine
