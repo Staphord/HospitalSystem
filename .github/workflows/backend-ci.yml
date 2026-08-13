@@ -1,8 +1,8 @@
-name: Backend CI Pipeline
+xname: Backend CI Pipeline
 
 on:
   push:
-    branches: [ main, develop, joseph ]
+    branches: [ main, joseph ]
     paths:
       - 'services/**'
       - 'shared/**'
@@ -11,7 +11,7 @@ on:
       - 'docker-compose.yml'
       - '.github/workflows/backend-ci.yml'
   pull_request:
-    branches: [ main, develop, joseph ]
+    branches: [ main, joseph ]
     paths:
       - 'services/**'
       - 'shared/**'
@@ -24,6 +24,9 @@ jobs:
   code-quality:
     name: Code Quality & Linting
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -50,6 +53,9 @@ jobs:
   test-matrix:
     name: Run Unit & Integration Tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     strategy:
       fail-fast: false
       matrix:
@@ -107,6 +113,9 @@ jobs:
   docker-build-check:
     name: Validate Docker Containers Build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -121,6 +130,9 @@ jobs:
   migration-check:
     name: Validate Alembic Migrations
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     services:
       postgres:
         image: postgres:16-alpine
@@ -154,10 +166,10 @@ jobs:
       - name: Validate Master DB Migrations
         env:
           DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_master_test
+          PYTHONPATH: .
         run: |
           if [ -f migrations/master/alembic.ini ]; then
-            cd migrations/master
-            alembic upgrade head
+            alembic -c migrations/master/alembic.ini upgrade head
           else
             echo "No master alembic config found, skipping."
           fi
