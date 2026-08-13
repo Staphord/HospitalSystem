@@ -1,0 +1,74 @@
+name: Backend CD Deployment & Rollback Pipeline
+
+on:
+  workflow_run:
+    workflows: ["Backend CI Pipeline"]
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy-vps:
+    name: Docker Container Deployment & Cross-Repo Sync
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Release Version Tag
+        id: vars
+        run: echo "RELEASE_TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      - name: Deploy Docker Containers to Production VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /var/www/hospital-backend || exit 1
+            git pull origin main
+            sudo ./deploy/deploy-atomic.sh deploy "${{ env.RELEASE_TAG }}"
+
+      - name: Synthetic Health Check Verification
+        id: health_check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Running synthetic health probe against Gateway and Microservices..."
+            for i in {1..10}; do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/health || echo "500")
+              if [ "$STATUS" -eq 200 ]; then
+                echo "Gateway health probe PASSED (200 OK)."
+                exit 0
+              fi
+              echo "Attempt $i: Gateway returning $STATUS, retrying in 3s..."
+              sleep 3
+            done
+            echo "Gateway health probe FAILED after 30 seconds!"
+            exit 1
+
+      - name: Trigger Frontend Deployment (Cross-Repo Handshake)
+        if: ${{ success() }}
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: Mwaka/HospitalSystem-FrontEnd
+          event-type: backend-deployment-success
+          client-payload: '{"release_tag": "${{ env.RELEASE_TAG }}", "sha": "${{ github.sha }}"}'
+
+      - name: Automatic Rollback on Failure
+        if: ${{ failure() && steps.health_check.outcome == 'failure' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "ALERT: Deployment failure detected! Initiating immediate automated container rollback..."
+            sudo /var/www/hospital-backend/deploy/deploy-atomic.sh rollback
