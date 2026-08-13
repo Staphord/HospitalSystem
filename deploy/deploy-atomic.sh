@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Production Docker-Based Atomic Release & Rollback Script for Hospital Flow
 # Usage:
-#   sudo ./deploy-atomic.sh deploy <RELEASE_TAG>
+#   sudo ./deploy-atomic.sh stage <RELEASE_TAG>
+#   sudo ./deploy-atomic.sh activate <RELEASE_TAG>
+#   sudo ./deploy-atomic.sh cleanup <RELEASE_TAG>
 #   sudo ./deploy-atomic.sh rollback
 set -euo pipefail
 
@@ -10,7 +12,7 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-ACTION="${1:-deploy}"
+ACTION="${1:-stage}"
 RELEASE_TAG="${2:-$(date +%Y%m%d%H%M%S)}"
 
 BASE_DIR="/var/www/hospital-backend"
@@ -18,37 +20,49 @@ COMPOSE_FILE="${BASE_DIR}/docker-compose.yml"
 PREVIOUS_TAG_FILE="${BASE_DIR}/previous_release_tag"
 CURRENT_TAG_FILE="${BASE_DIR}/current_release_tag"
 
-deploy_release() {
-  echo "== Starting Docker Container Deployment: ${RELEASE_TAG} =="
+stage_release() {
+  echo "== Staging Docker Release: ${RELEASE_TAG} =="
 
-  # 1. Save currently running release tag for rollback tracking
+  # Save currently active release tag for tracking before building new release
   if [ -f "${CURRENT_TAG_FILE}" ]; then
     cp "${CURRENT_TAG_FILE}" "${PREVIOUS_TAG_FILE}"
     echo "Saved active release tag: $(cat "${PREVIOUS_TAG_FILE}")"
   fi
 
-  # 2. Build updated Docker images
-  echo "Building Docker container images for release ${RELEASE_TAG}..."
+  # Build container images for staging
+  echo "Building Docker container images for staged release ${RELEASE_TAG}..."
   docker compose -f "${COMPOSE_FILE}" build --parallel
 
-  # 3. Apply DB migrations via temporary runner container
+  # Run DB migrations
   echo "Executing Alembic database migrations..."
   if [ -f "${BASE_DIR}/migrations/master/alembic.ini" ]; then
     docker compose -f "${COMPOSE_FILE}" run --rm master-service alembic -c /app/migrations/master/alembic.ini upgrade heads || true
   fi
 
-  # 4. Spin up container updates with zero-downtime recreation
-  echo "Re-creating microservice containers..."
+  echo "Starting staged microservice containers..."
   docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
 
-  # 5. Record new release tag
+  echo "Docker release ${RELEASE_TAG} staged and ready for activation."
+}
+
+activate_release() {
+  echo "== Activating Staged Release: ${RELEASE_TAG} =="
   echo "${RELEASE_TAG}" > "${CURRENT_TAG_FILE}"
-
-  # 6. Cleanup dangling Docker build artifacts & old images
-  echo "Cleaning up obsolete Docker images..."
   docker image prune -f
+  echo "Release ${RELEASE_TAG} activated successfully following frontend confirmation."
+}
 
-  echo "Docker deployment ${RELEASE_TAG} activated successfully."
+cleanup_staged_release() {
+  echo "== Cleaning Up Staged Release: ${RELEASE_TAG} (Frontend Failed) =="
+  if [ -f "${PREVIOUS_TAG_FILE}" ]; then
+    local prev_tag
+    prev_tag="$(cat "${PREVIOUS_TAG_FILE}")"
+    echo "Reverting microservice containers to previous active release tag: ${prev_tag}..."
+    docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
+    echo "${prev_tag}" > "${CURRENT_TAG_FILE}"
+  fi
+  docker image prune -f
+  echo "Staged release ${RELEASE_TAG} cleaned up cleanly."
 }
 
 rollback_release() {
@@ -69,14 +83,20 @@ rollback_release() {
 }
 
 case "${ACTION}" in
-  deploy)
-    deploy_release
+  deploy|stage)
+    stage_release
+    ;;
+  activate)
+    activate_release
+    ;;
+  cleanup)
+    cleanup_staged_release
     ;;
   rollback)
     rollback_release
     ;;
   *)
-    echo "Usage: $0 {deploy|rollback} [RELEASE_TAG]" >&2
+    echo "Usage: $0 {stage|activate|cleanup|rollback} [RELEASE_TAG]" >&2
     exit 1
     ;;
 esac

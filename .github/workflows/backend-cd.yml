@@ -1,6 +1,7 @@
-name: Backend CD Deployment & Rollback Pipeline
+name: Backend CD Deployment & Synchronized Activation Pipeline
 
 on:
+  # 1. Triggers after Backend CI passes on main branch
   workflow_run:
     workflows: ["Backend CI Pipeline"]
     types:
@@ -8,11 +9,17 @@ on:
     branches:
       - main
 
+  # 2. Triggers when Frontend CI/CD notifies Backend of frontend success or failure
+  repository_dispatch:
+    types:
+      - frontend-deployment-success
+      - frontend-deployment-failed
+
 jobs:
-  deploy-vps:
-    name: Docker Container Deployment & Cross-Repo Sync
+  stage-backend:
+    name: Stage Backend Release & Handshake Frontend
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -21,7 +28,7 @@ jobs:
         id: vars
         run: echo "RELEASE_TAG=$(date +%Y%m%d%H%M%S)-${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      - name: Deploy Docker Containers to Production VPS
+      - name: Stage Docker Containers on Production VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_IP }}
@@ -30,7 +37,7 @@ jobs:
           script: |
             cd /var/www/hospital-backend || exit 1
             git pull origin main
-            sudo ./deploy/deploy-atomic.sh deploy "${{ env.RELEASE_TAG }}"
+            sudo ./deploy/deploy-atomic.sh stage "${{ env.RELEASE_TAG }}"
 
       - name: Synthetic Health Check Verification
         id: health_check
@@ -40,7 +47,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "Running synthetic health probe against Gateway and Microservices..."
+            echo "Running synthetic health probe against Gateway..."
             for i in {1..10}; do
               STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/health || echo "500")
               if [ "$STATUS" -eq 200 ]; then
@@ -58,11 +65,11 @@ jobs:
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.CROSS_REPO_PAT }}
-          repository: Mwaka/HospitalSystem-FrontEnd
-          event-type: backend-deployment-success
+          repository: Staphord/HospitalSystem-FrontEnd
+          event-type: backend-staged-success
           client-payload: '{"release_tag": "${{ env.RELEASE_TAG }}", "sha": "${{ github.sha }}"}'
 
-      - name: Automatic Rollback on Failure
+      - name: Automatic Rollback on Staging Gateway Failure
         if: ${{ failure() && steps.health_check.outcome == 'failure' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -70,5 +77,35 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            echo "ALERT: Deployment failure detected! Initiating immediate automated container rollback..."
+            echo "ALERT: Staging health check failure detected! Cleaning up staged containers..."
             sudo /var/www/hospital-backend/deploy/deploy-atomic.sh rollback
+
+  activate-backend:
+    name: Activate Backend Release (Post-Frontend Success Confirmation)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'frontend-deployment-success' }}
+    steps:
+      - name: Activate Staged Release on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Frontend deployment confirmed SUCCESS. Activating backend release..."
+            sudo /var/www/hospital-backend/deploy/deploy-atomic.sh activate "${{ github.event.client_payload.release_tag }}"
+
+  cleanup-staged-backend:
+    name: Clean Up Staged Release (Post-Frontend Failure Notification)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'repository_dispatch' && github.event.action == 'frontend-deployment-failed' }}
+    steps:
+      - name: Clean Up Staged Release on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            echo "Frontend deployment reported FAILURE. Cleaning up staged backend release..."
+            sudo /var/www/hospital-backend/deploy/deploy-atomic.sh cleanup "${{ github.event.client_payload.release_tag }}"
