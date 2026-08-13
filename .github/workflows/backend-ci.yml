@@ -116,7 +116,7 @@ jobs:
 
       - name: Build All Microservice Docker Images
         run: |
-          docker compose build --parallel
+          docker compose -f docker-compose.yml build --parallel
 
   migration-check:
     name: Validate Alembic Migrations
