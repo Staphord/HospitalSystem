@@ -70,12 +70,24 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        with connection.begin():
-            _ensure_version_table_capacity(connection)
+        from sqlalchemy import text
+        connection.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS alembic_version ("
+                "version_num VARCHAR(128) NOT NULL PRIMARY KEY"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS alembic_version "
+                "ALTER COLUMN version_num TYPE VARCHAR(128)"
+            )
+        )
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            version_table_col_length=64,
+            version_table_col_length=128,
         )
         with context.begin_transaction():
             context.run_migrations()
