@@ -96,7 +96,7 @@ services:
       KEYCLOAK_CLIENT_ID: hospital-api
       KEYCLOAK_CLIENT_SECRET: Wl55s8b84G7FnO7cOlW0T6hXhs3aMGdZ
       KEYCLOAK_INTROSPECT: "false"
-      ALLOWED_ORIGINS: http://localhost:8000,http://localhost:8501
+      ALLOWED_ORIGINS: http://localhost:5173
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       AUTH_SERVICE_URL: http://auth-service:8001
       MASTER_SERVICE_URL: http://master-service:8002
@@ -115,6 +115,8 @@ services:
       REPORT_SERVICE_URL: http://report-service:8020
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
+      bootstrap:
+        condition: service_completed_successfully
       master-service:
         condition: service_healthy
       keycloak:
@@ -170,6 +172,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
     depends_on:
+      bootstrap:
+        condition: service_completed_successfully
       master-service:
         condition: service_healthy
       keycloak:
@@ -262,6 +266,30 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
+  bootstrap:
+    build:
+      context: ../services/master-service
+      dockerfile: Dockerfile
+    container_name: hospital-bootstrap
+    command: ["python", "/app/scripts/bootstrap.py"]
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql://postgres:12345678@postgres-master:5432/hospital_master
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      master-service:
+        condition: service_healthy
+    volumes:
+      - ../scripts:/app/scripts:ro
+    networks:
+      - hospital-network
+    restart: "no"
 
   reception-service:
     build:
