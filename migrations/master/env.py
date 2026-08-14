@@ -91,6 +91,12 @@ def run_migrations_online() -> None:
         )
         with context.begin_transaction():
             context.run_migrations()
+        # SQLAlchemy 2.0 + Alembic require explicit commit when running
+        # migrations via subprocess or programmatic API (same fix already
+        # applied in migrations/tenant/env.py) — without this, everything
+        # above, including the alembic_version table itself, silently rolls
+        # back when the connection closes.
+        connection.commit()
 
 
 if context.is_offline_mode():
