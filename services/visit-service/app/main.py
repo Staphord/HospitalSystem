@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,7 +10,22 @@ from app.config import settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    consumer_task = None
+    try:
+        from app.events import subscriber as _sub
+        if hasattr(_sub, "start_subscriber"):
+            consumer_task = asyncio.create_task(_sub.start_subscriber())
+    except Exception:
+        pass
+
     yield
+
+    if consumer_task:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
 
 
 tags_metadata = [

@@ -9,7 +9,7 @@ from typing import Any, Awaitable, Callable
 
 import aio_pika
 
-from shared.messaging.connection import declare_exchange, get_connection
+from app.messaging.connection import declare_exchange, get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +21,7 @@ async def start_consumer(
     routing_keys: list[str],
     handler: Handler,
 ) -> None:
-    """Start a durable topic consumer for this service.
-
-    Args:
-        service_name: Used to build the queue name, e.g. "triage-service"
-        routing_keys: List of routing key patterns to bind, e.g. ["visit.created"]
-        handler: Async callback receiving (routing_key, payload_dict)
-    """
+    """Start a durable topic consumer for this service."""
     connection = await get_connection()
     channel = await connection.channel()
     await channel.set_qos(prefetch_count=10)
@@ -54,10 +48,7 @@ async def run_consumer_task(
     routing_keys: list[str],
     handler: Handler,
 ) -> asyncio.Task:
-    """Return an asyncio.Task running the consumer loop.
-
-    Use this in a FastAPI lifespan to start / cancel the consumer.
-    """
+    """Return an asyncio.Task running the consumer loop."""
     return asyncio.create_task(
         start_consumer(service_name, routing_keys, handler),
         name=f"rabbitmq-consumer-{service_name}",

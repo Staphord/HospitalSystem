@@ -65,6 +65,23 @@ def create(
             registered_by=registered_by,
             insurance_id=str(body.insurance_id) if body.insurance_id else None,
         )
+
+        try:
+            import asyncio
+            from app.events.publisher import publish_visit_created
+            coro = publish_visit_created(
+                visit_id=str(result["visit"].visit_id),
+                patient_id=str(result["visit"].patient_id),
+                tenant_id=tenant_id,
+            )
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(coro)
+            except RuntimeError:
+                asyncio.run(coro)
+        except Exception as evt_err:
+            logger.warning("Failed to publish visit.created event: %s", evt_err)
+
         return VisitCreateResponse(
             visit=result["visit"],
             queue=QueueSummary.model_validate(result["queue"]),

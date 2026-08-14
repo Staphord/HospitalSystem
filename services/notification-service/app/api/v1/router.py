@@ -91,7 +91,7 @@ async def mark_all_notifications_read(
     )
 
 
-@router.post("", response_model=NotificationItemResponse, status_code=210, tags=["Notifications"])
+@router.post("", response_model=NotificationItemResponse, status_code=201, tags=["Notifications"])
 async def create_notification(
     payload: NotificationCreateRequest,
     db: AsyncSession = Depends(get_tenant_db),

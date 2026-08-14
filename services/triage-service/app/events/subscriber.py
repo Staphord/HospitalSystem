@@ -2,13 +2,16 @@
 Event Subscriber for Triage Service.
 
 Consumes:
-- visit.created: Triggers triage workflow when a visit is created.
+- visit.created: No action taken. Triage assessment creation is driven
+  entirely by the triage nurse through the UI (see
+  app/services/triage.py::record_triage_assessment), not by this event.
+  Kept subscribed so the queue exists if a future workflow needs it.
 """
 
 from app.messaging.subscriber import start_consumer
 
 async def handle_visit_created(visit_id: str, tenant_id: str) -> None:
-    """Placeholder: Handle visit.created event."""
+    """No-op: triage workflow is driven by direct API calls, not this event."""
     pass
 
 async def _dispatch(routing_key: str, payload: dict) -> None:

@@ -11,7 +11,12 @@ from sqlalchemy import create_engine, text
 def get_tenant_dsn(tenant_id: str) -> str:
     from cryptography.fernet import Fernet
     master_db_url = os.getenv("MASTER_DB_URL", "postgresql://postgres:postgres@localhost:5432/hospital_master")
-    encryption_key = os.getenv("TENANT_DB_ENCRYPTION_KEY", "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=")
+    encryption_key = os.getenv("TENANT_DB_ENCRYPTION_KEY")
+    if not encryption_key:
+        raise SystemExit(
+            "TENANT_DB_ENCRYPTION_KEY is not set. This must match the key the "
+            "services were provisioned with — there is no safe default."
+        )
     cipher = Fernet(encryption_key.encode())
 
     engine = create_engine(master_db_url)

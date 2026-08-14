@@ -20,9 +20,7 @@ async def get_connection() -> aio_pika.RobustConnection:
     """Return a shared robust connection to RabbitMQ."""
     global _connection
     if _connection is None or _connection.is_closed:
-        url = os.environ.get(
-            "RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"
-        )
+        url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
         _connection = await aio_pika.connect_robust(url)
         logger.info("RabbitMQ connection established")
     return _connection

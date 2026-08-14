@@ -8,18 +8,13 @@ from typing import Any
 
 import aio_pika
 
-from shared.messaging.connection import declare_exchange, get_channel
+from app.messaging.connection import declare_exchange, get_channel
 
 logger = logging.getLogger(__name__)
 
 
 async def publish_event(routing_key: str, payload: dict[str, Any]) -> None:
-    """Publish a JSON event to the hospital_events topic exchange.
-
-    Args:
-        routing_key: e.g. "visit.created", "triage.completed"
-        payload: JSON-serialisable dict (should match shared/schemas/events.py models)
-    """
+    """Publish a JSON event to the hospital_events topic exchange."""
     try:
         channel = await get_channel()
         exchange = await declare_exchange(channel)
@@ -33,5 +28,4 @@ async def publish_event(routing_key: str, payload: dict[str, Any]) -> None:
         logger.exception("Failed to publish event %s: %s", routing_key, exc)
 
 
-# Alias for convenience
 publish = publish_event
