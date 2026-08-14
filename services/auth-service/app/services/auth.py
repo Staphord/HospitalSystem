@@ -100,10 +100,10 @@ async def refresh_access_token(refresh_token: str, db: Session) -> Dict[str, Any
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(_keycloak_token_endpoint(), data=data)
 
-    if response.status_code == 401:
+    if response.status_code in (400, 401):
         db_record.is_revoked = True
         db.commit()
-        raise UnauthorizedError("Invalid refresh token")
+        raise UnauthorizedError("Refresh token expired or invalid")
 
     if not response.is_success:
         raise BadRequestError("Token refresh service unavailable")
