@@ -172,6 +172,7 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
+      FRONTEND_URL: https://gilgali.com
     depends_on:
       bootstrap:
         condition: service_completed_successfully
