@@ -13,10 +13,9 @@ from datetime import datetime, timezone, date
 
 from sqlalchemy import select, or_
 
-from decimal import Decimal
 from app.db.tenant import get_tenant_session
 from app.messaging.subscriber import start_consumer
-from app.models.pharmacy import Prescription, PrescriptionItem, Patient, Visit, Queue, DrugInventory, Bill, BillItem
+from app.models.pharmacy import Prescription, PrescriptionItem, Patient, Visit, Queue
 
 
 async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
@@ -139,22 +138,14 @@ async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
                 }
             ]
 
-        # Open or retrieve existing patient Bill
-        bill_stmt = select(Bill).where(Bill.visit_id == visit_id)
-        bill_res = await db.execute(bill_stmt)
-        bill = bill_res.scalars().first()
-        if not bill:
-            bill = Bill(
-                bill_id=uuid4(),
-                visit_id=visit_id,
-                patient_id=patient_id,
-                total_amount=Decimal("0.00"),
-                status="open",
-                created_at=datetime.now(timezone.utc),
-            )
-            db.add(bill)
-            await db.flush()
-
+        # Billing is owned exclusively by billing-service, which charges the
+        # visit bill when pharmacy later publishes `drug.dispensed` (see
+        # dispense_prescription() in app/services/pharmacy.py and
+        # billing-service's apply_drug_charge()). Do not write Bill/BillItem
+        # rows here — this used to duplicate that charge at prescription-issue
+        # time (before the drug was actually dispensed) using a divergent
+        # schema, racing against billing-service's own writes to the same
+        # tenant tables.
         for item in items:
             item_id = UUID(item["prescription_item_id"]) if "prescription_item_id" in item else uuid4()
             drug_name = item["drug_name"]
@@ -173,33 +164,6 @@ async def handle_prescription_issued(payload: dict, tenant_id: str) -> None:
                 status="pending",
             )
             db.add(rx_item)
-
-            # Lookup unit price from drug_inventory if exists
-            inv_stmt = select(DrugInventory).where(DrugInventory.drug_name.ilike(f"%{drug_name}%"))
-            inv_res = await db.execute(inv_stmt)
-            inv_item = inv_res.scalars().first()
-
-            unit_price = Decimal(str(inv_item.unit_price)) if inv_item and inv_item.unit_price else Decimal("10.00")
-            line_total = Decimal(str(qty)) * unit_price
-
-            # Create BillItem for prescribed drug
-            bill_item = BillItem(
-                bill_item_id=uuid4(),
-                item_id=uuid4(),
-                bill_id=bill.bill_id,
-                item_code="DRUG",
-                item_type="drug",
-                description=f"Medication: {drug_name}",
-                quantity=qty,
-                unit_price=unit_price,
-                total_price=line_total,
-                line_total=line_total,
-                source_ref=f"rx_{item_id.hex[:8]}",
-                reference_id=item_id,
-                created_at=datetime.now(timezone.utc),
-            )
-            db.add(bill_item)
-            bill.total_amount = Decimal(str(bill.total_amount or 0)) + line_total
 
         # Set visit billing_cleared to False so patient clears bill before dispensing
         visit.billing_cleared = False

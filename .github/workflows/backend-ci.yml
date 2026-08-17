@@ -157,7 +157,61 @@ jobs:
           PYTHONPATH: .:services/master-service:shared
         run: |
           if [ -f migrations/master/alembic.ini ]; then
-            alembic -c migrations/master/alembic.ini upgrade heads
+            # Singular "head" fails loudly if the chain has diverged into
+            # multiple heads, instead of silently applying to all of them.
+            alembic -c migrations/master/alembic.ini upgrade head
           else
             echo "No master alembic config found, skipping."
           fi
+
+      - name: Create Tenant Test Database
+        run: |
+          PGPASSWORD=postgrespassword psql -h localhost -U postgres -c "CREATE DATABASE hospital_tenant_test;"
+
+      - name: Validate Tenant DB Migrations
+        env:
+          TENANT_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_tenant_test
+          PYTHONPATH: .:services/patient-service:shared
+        run: |
+          if [ -f migrations/tenant/alembic.ini ]; then
+            HEAD_COUNT=$(alembic -c migrations/tenant/alembic.ini heads | grep -c '(head)')
+            if [ "$HEAD_COUNT" -ne 1 ]; then
+              echo "::error::migrations/tenant/versions has $HEAD_COUNT heads (expected exactly 1)."
+              echo "Run 'alembic -c migrations/tenant/alembic.ini merge heads' to reconcile before merging."
+              alembic -c migrations/tenant/alembic.ini heads -v
+              exit 1
+            fi
+            # Applying the full chain to a disposable tenant DB is what
+            # catches divergent branches that redefine the same table
+            # (e.g. the historical "bills" table collision) before merge.
+            alembic -c migrations/tenant/alembic.ini upgrade head
+          else
+            echo "No tenant alembic config found, skipping."
+          fi
+
+  migration-immutability-check:
+    name: Prevent Editing Shipped Migrations
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reject changes to already-merged migration files
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=50
+          BASE_SHA=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          CHANGED=$(git diff --name-status "$BASE_SHA" HEAD -- 'migrations/*/versions/*.py')
+          echo "$CHANGED"
+          BAD=$(echo "$CHANGED" | awk '$1 != "A" && $1 != "" {print}')
+          if [ -n "$BAD" ]; then
+            echo "::error::Already-shipped Alembic migration files were modified, renamed, or deleted."
+            echo "Once a migration file is merged it must be treated as immutable — a tenant DB may"
+            echo "already be stamped past it, so edits silently never apply to that DB. Add a new"
+            echo "revision instead."
+            echo "$BAD"
+            exit 1
+          fi
+          echo "OK — no existing migration files were modified."

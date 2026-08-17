@@ -6,14 +6,14 @@ from decimal import Decimal
 from pydantic import BaseModel
 
 class BillItemOut(BaseModel):
-    item_id: UUID
+    item_id: UUID | None = None
     bill_id: UUID
-    item_code: str
-    item_type: str
+    item_code: str = "SERVICE"
+    item_type: str = "service"
     description: str
-    quantity: Decimal
-    unit_price: Decimal
-    line_total: Decimal
+    quantity: Decimal = Decimal("1.0")
+    unit_price: Decimal = Decimal("0.0")
+    line_total: Decimal = Decimal("0.0")
     created_at: datetime
 
     class Config:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 import httpx
@@ -8,6 +9,24 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.user import User
+
+# Keycloak user-profile "person-name-prohibited-characters" rejects (), /, etc.
+_PERSON_NAME_KEEP = re.compile(r"[^\w\s'.\-]", flags=re.UNICODE)
+
+
+def _person_name(value: str | None, fallback: str) -> str:
+    cleaned = _PERSON_NAME_KEEP.sub(" ", value or "")
+    cleaned = cleaned.replace("_", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .-")
+    return cleaned[:255] if cleaned else fallback
+
+
+def _keycloak_error(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+        return str(body.get("errorMessage") or body.get("error") or body)
+    except Exception:
+        return (response.text or response.reason_phrase)[:500]
 
 
 async def _get_admin_token() -> str:
@@ -45,8 +64,8 @@ async def create_keycloak_user(
     url = f"{_admin_api_url(realm)}/users"
 
     name_parts = (full_name or username).strip().split(None, 1)
-    first_name = name_parts[0].capitalize() if name_parts else username.capitalize()
-    last_name = name_parts[1].capitalize() if len(name_parts) > 1 else "User"
+    first_name = _person_name(name_parts[0] if name_parts else username, "Staff")
+    last_name = _person_name(name_parts[1] if len(name_parts) > 1 else "", "User")
 
     payload = {
         "username": username,
@@ -84,6 +103,8 @@ async def create_keycloak_user(
             await set_user_password(user_id, password, realm=realm)
             await assign_user_roles(user_id, roles, realm=realm)
             return user_id
+        if r.status_code >= 400:
+            raise Exception(_keycloak_error(r))
         r.raise_for_status()
         user_id = r.headers.get("location", "").rsplit("/", 1)[-1]
         if not user_id:
@@ -200,8 +221,8 @@ async def update_keycloak_user(
             cleaned = full_name.strip()
             if cleaned:
                 name_parts = cleaned.split(None, 1)
-                data["firstName"] = name_parts[0].capitalize()
-                data["lastName"] = name_parts[1].capitalize() if len(name_parts) > 1 else ""
+                data["firstName"] = _person_name(name_parts[0], "Staff")
+                data["lastName"] = _person_name(name_parts[1] if len(name_parts) > 1 else "", "User")
             else:
                 data.setdefault("firstName", "")
                 data.setdefault("lastName", "")

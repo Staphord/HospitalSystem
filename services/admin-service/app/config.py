@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     backup_retention_days: int = Field(default=30, alias="BACKUP_RETENTION_DAYS")
     backup_check_interval: int = Field(default=21600, alias="BACKUP_CHECK_INTERVAL")
 
+    smtp_host: str = Field(default="smtp.gmail.com", alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str | None = Field(default=None, alias="SMTP_USER")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_from: str = Field(default="noreply@hospitalflow.org", alias="SMTP_FROM")
+    frontend_url: str = Field(default="https://gilgali.com/login", alias="FRONTEND_URL")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

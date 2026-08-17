@@ -69,53 +69,57 @@ This will:
 ### 2. Check service health
 
 ```bash
-# Gateway
-curl http://localhost:8000/health
 
-# Auth
-curl http://localhost:8001/health
+#!/bin/bash
+clear
 
-# Master
-curl http://localhost:8002/health
+echo ""
+echo "🏥 ============================================"
+echo "🏥        SERVICE HEALTH CHECK"
+echo "🏥 ============================================"
+echo ""
 
-# Reception
-curl http://localhost:8010/health
+check_service() {
+    local name="$1"
+    local url="$2"
 
-# Triage
-curl http://localhost:8011/health
+    printf "🔍 %-15s " "$name"
 
-# Consultation
-curl http://localhost:8012/health
+    start=$(date +%s%3N)
+    response=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$url")
+    end=$(date +%s%3N)
 
-# Laboratory
-curl http://localhost:8013/health
+    elapsed=$((end - start))
 
-# Radiology
-curl http://localhost:8014/health
+    if [ "$response" = "200" ]; then
+        echo "✅ HEALTHY   | HTTP $response | ${elapsed}ms"
+    else
+        echo "❌ UNHEALTHY | HTTP $response | ${elapsed}ms"
+    fi
+}
 
-# Pharmacy
-curl http://localhost:8015/health
+check_service "Gateway"       "http://localhost:8000/health"
+check_service "Auth"          "http://localhost:8001/health"
+check_service "Master"        "http://localhost:8002/health"
+check_service "Reception"     "http://localhost:8010/health"
+check_service "Triage"        "http://localhost:8011/health"
+check_service "Consultation"  "http://localhost:8012/health"
+check_service "Laboratory"    "http://localhost:8013/health"
+check_service "Radiology"     "http://localhost:8014/health"
+check_service "Pharmacy"      "http://localhost:8015/health"
+check_service "Billing"       "http://localhost:8016/health"
+check_service "Ward"          "http://localhost:8017/health"
+check_service "Patient"       "http://localhost:8005/health"
+check_service "Visit"         "http://localhost:8006/health"
+check_service "Admin"         "http://localhost:8018/health"
+check_service "Notification"  "http://localhost:8019/health"
+check_service "Report"        "http://localhost:8020/health"
 
-# Billing
-curl http://localhost:8016/health
-
-# Ward
-curl http://localhost:8017/health
-
-# Patient
-curl http://localhost:8005/health
-
-# Visit
-curl http://localhost:8006/health
-
-# Admin
-curl http://localhost:8018/health
-
-# Notification
-curl http://localhost:8019/health
-
-# Report
-curl http://localhost:8020/health
+echo ""
+echo "🏥 ============================================"
+echo "🏥        HEALTH CHECK COMPLETE"
+echo "🏥 ============================================"
+echo ""
 ```
 
 All should return: `{"status":"ok","service":"..."}`

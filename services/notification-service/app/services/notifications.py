@@ -182,20 +182,29 @@ async def mark_all_notifications_read(
     db: AsyncSession,
     tenant_id: str,
     recipient_id: str,
-    recipient_role: str | None = None,
+    recipient_role: list[str] | str | None = None,
 ) -> MarkReadResponse:
     """Mark all unread notifications as read for a recipient."""
-    recipient_filter = or_(
-        Notification.recipient_id == recipient_id,
-        and_(Notification.recipient_id.is_(None), Notification.recipient_role == recipient_role),
-        and_(Notification.recipient_id.is_(None), Notification.recipient_role.is_(None)),
-    )
+    recipient_filter = _build_recipient_filter(recipient_id, recipient_role)
 
-    stmt = select(Notification).where(
-        Notification.tenant_id == tenant_id,
-        recipient_filter,
-        Notification.status == "unread",
-    )
+    roles = []
+    if isinstance(recipient_role, str):
+        roles = [recipient_role.lower()]
+    elif isinstance(recipient_role, (list, tuple, set)):
+        roles = [str(r).lower() for r in recipient_role if r]
+
+    is_super = "superadmin" in roles or "super_admin" in roles
+
+    if is_super or tenant_id == "default":
+        conditions = [recipient_filter, Notification.status == "unread"]
+    else:
+        conditions = [
+            Notification.tenant_id == tenant_id,
+            recipient_filter,
+            Notification.status == "unread",
+        ]
+
+    stmt = select(Notification).where(*conditions)
     res = await db.execute(stmt)
     unread_items = res.scalars().all()
 
@@ -208,6 +217,7 @@ async def mark_all_notifications_read(
         await db.commit()
 
     return MarkReadResponse(notification_id=None, marked_count=len(unread_items), status="read")
+
 
 
 async def create_notification(

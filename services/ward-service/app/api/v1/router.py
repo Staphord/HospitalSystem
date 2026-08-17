@@ -139,7 +139,6 @@ async def create_admission(
         admitting_diagnosis=body.admitting_diagnosis,
         doctor_sub=ctx.user_sub,
         tenant_id=ctx.tenant_id,
-        require_disposition=False,
     )
     await publish_patient_admitted(
         admission_id=str(adm.admission_id),

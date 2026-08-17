@@ -8,10 +8,8 @@ from app.api.v1.schemas import (
     ImagingRequestDetailResponse,
     ImagingRequestListResponse,
     PerformImagingRequest,
-    RadiologyReportCreate,
     RadiologyReportListResponse,
     RadiologyReportResponse,
-    RadiologyReportUpdate,
     ScheduleImagingRequest,
 )
 from app.core.limiter import limiter
@@ -178,18 +176,12 @@ async def verify_report(
     return await radiology_service.verify_report(db, report_id, user, tenant_id=ctx.tenant_id)
 
 
-# ── Report CRUD ─────────────────────────────────────────────────────────────────
-
-@router.post("/reports", response_model=RadiologyReportResponse, status_code=201, tags=["Reports"])
-@limiter.limit("30/minute")
-async def create_report(
-    request: Request,
-    body: RadiologyReportCreate,
-    db: AsyncSession = Depends(get_tenant_db),
-    _user: TokenPayload = Depends(require_role("radiographer")),
-):
-    return await radiology_service.create_report(db, body.model_dump())
-
+# ── Report reads ────────────────────────────────────────────────────────────────
+# Reports are created/updated only through the schedule -> perform -> report ->
+# verify workflow endpoints above. Direct create/update endpoints used to exist
+# here and could write a report at any status without going through that state
+# machine (e.g. creating one already "verified"); removed since nothing in the
+# app called them. Reads remain since they're safe and used by the worklist.
 
 @router.get(
     "/reports/{report_id}",
@@ -227,16 +219,6 @@ async def list_reports(
         limit=limit,
     )
     return RadiologyReportListResponse(reports=reports, total=total)
-
-
-@router.put("/reports/{report_id}", response_model=RadiologyReportResponse, tags=["Reports"])
-async def update_report(
-    report_id: UUID,
-    body: RadiologyReportUpdate,
-    db: AsyncSession = Depends(get_tenant_db),
-    _user: TokenPayload = Depends(require_role("radiographer")),
-):
-    return await radiology_service.update_report(db, report_id, body.model_dump(exclude_unset=True))
 
 
 @router.delete("/reports/{report_id}", status_code=204, tags=["Reports"])

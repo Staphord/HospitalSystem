@@ -359,9 +359,8 @@ async def schedule_imaging(
         )
         db.add(report)
 
-    # Keep request pending until exam starts; scheduling does not use specimen_collected
-    if req.status == "pending":
-        pass
+    # Request stays "pending" until perform_imaging transitions it — scheduling
+    # only creates/updates the report row above.
 
     await db.commit()
     await db.refresh(report)

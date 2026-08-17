@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -5,16 +6,26 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.config import settings
-from app.core.database import get_session_local
-from app.db.base import Base
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    SessionLocal = get_session_local()
-    engine = SessionLocal.kw["bind"]
-    Base.metadata.create_all(bind=engine)
+    consumer_task = None
+    try:
+        from app.events import subscriber as _sub
+        if hasattr(_sub, "start_subscriber"):
+            consumer_task = asyncio.create_task(_sub.start_subscriber())
+    except Exception:
+        pass
+
     yield
+
+    if consumer_task:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
 
 
 tags_metadata = [

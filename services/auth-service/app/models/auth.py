@@ -21,6 +21,7 @@ class RefreshToken(Base):
     )
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(Text, nullable=True)
+    keycloak_realm = Column(String(255), nullable=True)
 
 
 class PasswordResetToken(Base):

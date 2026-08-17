@@ -7,7 +7,7 @@ Install deps (no root requirements.txt in this repo):
 Examples (PowerShell):
     # If Postgres runs in Docker (compose password):
     $env:MASTER_DB_URL = "postgresql://postgres:12345678@localhost:5432/hospital_master"
-    $env:TENANT_DB_ENCRYPTION_KEY = "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0="
+    $env:TENANT_DB_ENCRYPTION_KEY = "<the Fernet key services were provisioned with>"
     python scripts/migrate_all_tenants.py --dry-run
     python scripts/migrate_all_tenants.py
 
@@ -38,10 +38,13 @@ def _master_db_url() -> str:
 
 
 def _encryption_key() -> str:
-    return os.getenv(
-        "TENANT_DB_ENCRYPTION_KEY",
-        "RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=",
-    )
+    key = os.getenv("TENANT_DB_ENCRYPTION_KEY")
+    if not key:
+        raise SystemExit(
+            "TENANT_DB_ENCRYPTION_KEY is not set. This must match the key the "
+            "services were provisioned with — there is no safe default."
+        )
+    return key
 
 
 def _rewrite_dsn_for_host(dsn: str) -> str:

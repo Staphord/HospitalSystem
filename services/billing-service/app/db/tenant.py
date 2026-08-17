@@ -37,6 +37,18 @@ async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
         pool_recycle=3600,
         echo=settings.environment == "dev",
     )
+
+    from app.db.base import Base
+    from sqlalchemy import text
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(
+            "ALTER TABLE bills ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(12,2) DEFAULT 0 NOT NULL;"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE bills ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(12,2) DEFAULT 0 NOT NULL;"
+        ))
+
     factory = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     _async_engine_cache[tenant_id] = factory
     _async_engine_instances[tenant_id] = engine

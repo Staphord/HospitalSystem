@@ -34,15 +34,6 @@ async def lifespan(app: FastAPI):
     from app.core.database import init_db
     init_db()
 
-    from app.db.master import get_master_db
-    from app.db.base import Base
-
-    master_db = get_master_db()
-    try:
-        Base.metadata.create_all(bind=master_db.connection())
-    finally:
-        master_db.close()
-
     logger.info("Admin service started")
 
     consumer_task = None

@@ -6,7 +6,9 @@ import json
 import logging
 from typing import Any
 
-from app.messaging.connection import declare_exchange, get_channel
+import aio_pika
+
+from shared.messaging.connection import declare_exchange, get_channel
 
 logger = logging.getLogger(__name__)
 

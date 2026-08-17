@@ -9,7 +9,7 @@ from typing import Any, Awaitable, Callable
 
 import aio_pika
 
-from app.messaging.connection import declare_exchange, get_connection
+from shared.messaging.connection import declare_exchange, get_connection
 
 logger = logging.getLogger(__name__)
 

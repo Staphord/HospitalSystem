@@ -4,7 +4,7 @@ import logging
 from datetime import date, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ from app.services.keycloak_admin import (
 )
 from app.services.roles import SYSTEM_ROLES
 from app.events.publisher import publish_user_created, publish_user_deactivated
+from app.services.mail import login_url_from_request, send_staff_welcome_email
 from app.models.master import Tenant, TenantRole as TenantRoleModel
 
 from app.api.v1.admin.schemas import (
@@ -156,6 +157,7 @@ async def get_hospital_user(
 async def create_hospital_user(
     request: Request,
     body: HospitalUserCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_tenant_db_for_request),
     master_db: Session = Depends(get_db),
     ctx: TenantContext = Depends(get_current_tenant),
@@ -187,6 +189,20 @@ async def create_hospital_user(
         )
     except Exception:
         logger.exception("Failed to publish user.created")
+
+    if user.email:
+        tenant = master_db.query(Tenant).filter(Tenant.tenant_id == ctx.tenant_id).first()
+        hospital_name = tenant.hospital_name if tenant else "Hospital"
+        background_tasks.add_task(
+            send_staff_welcome_email,
+            email=user.email,
+            full_name=user.full_name or "",
+            username=user.username or body.username,
+            password=body.password,
+            role=user.role or body.role,
+            hospital_name=hospital_name,
+            login_url=login_url_from_request(request),
+        )
     return _user_out(user)
 
 
@@ -1025,9 +1041,27 @@ async def report_bed_occupancy(
 @limiter.limit("30/minute")
 async def report_revenue(
     request: Request,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    db: Session = Depends(get_tenant_db_for_request),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> dict:
-    return reports_svc.revenue_summary()
+    return reports_svc.revenue_summary(db, from_date, to_date)
+
+
+@router.get("/reports/operational-activity", tags=["Reports"])
+@limiter.limit("30/minute")
+async def report_operational(
+    request: Request,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    department: str | None = None,
+    db: Session = Depends(get_tenant_db_for_request),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> dict:
+    return reports_svc.operational_activity(db, from_date, to_date, department)
+
+
 
 
 @router.get("/reports/dashboard", tags=["Reports"])

@@ -124,7 +124,7 @@ class Queue(Base):
 
 
 class Prescription(Base):
-    __tablename__ = "prescriptions"
+    __tablename__ = "pharmacy_prescriptions"
 
     prescription_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     id = Column(UUID(as_uuid=True), nullable=True)
@@ -150,10 +150,11 @@ class Prescription(Base):
 
 
 class PrescriptionItem(Base):
-    __tablename__ = "prescription_items"
+    __tablename__ = "pharmacy_prescription_items"
 
     prescription_item_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    prescription_id = Column(UUID(as_uuid=True), ForeignKey("prescriptions.prescription_id"), nullable=False)
+    prescription_id = Column(UUID(as_uuid=True), ForeignKey("pharmacy_prescriptions.prescription_id"), nullable=False)
+
     drug_name = Column(String(200), nullable=False)
     dose = Column(String(100), nullable=True)
     frequency = Column(String(100), nullable=True)
@@ -170,8 +171,9 @@ class DispensingRecord(Base):
     __tablename__ = "dispensing_records"
 
     dispensing_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    prescription_item_id = Column(UUID(as_uuid=True), ForeignKey("prescription_items.prescription_item_id"), nullable=False)
+    prescription_item_id = Column(UUID(as_uuid=True), ForeignKey("pharmacy_prescription_items.prescription_item_id"), nullable=False)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=False)
+
     inventory_id = Column(UUID(as_uuid=True), ForeignKey("drug_inventory.inventory_id"), nullable=True)
     quantity_dispensed = Column(Integer, nullable=False)
     unit = Column(String(50), nullable=True)
@@ -185,32 +187,4 @@ class DispensingRecord(Base):
     )
 
     prescription_item = relationship("PrescriptionItem", back_populates="dispensing_record")
-
-
-class Bill(Base):
-    __tablename__ = "bills"
-    bill_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id", ondelete="CASCADE"), nullable=False)
-    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
-    total_amount = Column(Numeric(12, 2), nullable=False, default=0.0)
-    status = Column(String(50), nullable=False, default="open")
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-
-
-class BillItem(Base):
-    __tablename__ = "bill_items"
-    bill_item_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    item_id = Column(UUID(as_uuid=True), default=uuid.uuid4)
-    bill_id = Column(UUID(as_uuid=True), ForeignKey("bills.bill_id", ondelete="CASCADE"), nullable=False)
-    item_code = Column(String(50), nullable=True, default="DRUG")
-    item_type = Column(String(50), nullable=False)
-    description = Column(String(200), nullable=False)
-    quantity = Column(Integer, nullable=False, default=1)
-    unit_price = Column(Numeric(12, 2), nullable=False, default=0.0)
-    total_price = Column(Numeric(12, 2), nullable=False, default=0.0)
-    line_total = Column(Numeric(12, 2), nullable=True, default=0.0)
-    source_ref = Column(String(100), nullable=True)
-    reference_id = Column(UUID(as_uuid=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
-
 

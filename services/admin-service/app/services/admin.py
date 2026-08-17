@@ -194,6 +194,21 @@ async def create_user(
     if dup:
         raise HTTPException(status.HTTP_409_CONFLICT, detail="Username or email already exists")
 
+    # Hard-delete any lingering soft-deleted user row with the same username or email
+    # so that new creation doesn't collide on unique database constraints.
+    old_deleted = (
+        db.query(User)
+        .filter(
+            User.hospital_id == tenant_id,
+            User.deleted_at.is_not(None),
+            or_(User.username == username, User.email == email),
+        )
+        .first()
+    )
+    if old_deleted:
+        db.delete(old_deleted)
+        db.commit()
+
     try:
         kc_sub = await create_keycloak_user(
             username=username,
