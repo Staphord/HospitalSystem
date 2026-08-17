@@ -21,6 +21,10 @@ from app.models.admin import SuperAdmin
 from app.models.auth import PasswordResetToken, RefreshToken
 from app.models.user import User
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _keycloak_token_endpoint(realm: str | None = None) -> str:
     realm = realm or settings.keycloak_realm
@@ -61,6 +65,7 @@ async def login(username: str, password: str, db: Session, realm: str | None = N
         session_id=session_state,
         refresh_token=token_data["refresh_token"],
         expires_in=token_data.get("refresh_expires_in", 1800),
+        keycloak_realm=realm or settings.keycloak_realm,
         ip_address=ip_address,
         user_agent=user_agent,
     )
@@ -77,39 +82,106 @@ async def login(username: str, password: str, db: Session, realm: str | None = N
     }
 
 
-async def refresh_access_token(refresh_token: str, db: Session) -> Dict[str, Any]:
+async def refresh_access_token(
+    refresh_token: str,
+    db: Session,
+    request_id: str | None = None,
+) -> Dict[str, Any]:
+    token_hash = _hash_token(refresh_token)
     db_record = db.query(RefreshToken).filter(
-        RefreshToken.refresh_token_hash == _hash_token(refresh_token),
-        RefreshToken.is_revoked == False,
+        RefreshToken.refresh_token_hash == token_hash,
     ).first()
 
     if not db_record:
+        logger.warning(
+            "Refresh failed [req_id=%s]: Record not found in database",
+            request_id or "N/A",
+        )
+        raise UnauthorizedError("Refresh token not found or revoked")
+
+    if db_record.is_revoked:
+        logger.warning(
+            "Refresh failed [req_id=%s, session_id=%s]: Token is already revoked",
+            request_id or "N/A",
+            db_record.session_id,
+        )
         raise UnauthorizedError("Refresh token not found or revoked")
 
     if db_record.expires_at < datetime.now(timezone.utc):
+        logger.warning(
+            "Refresh failed [req_id=%s, session_id=%s]: Token database record expired at %s",
+            request_id or "N/A",
+            db_record.session_id,
+            db_record.expires_at,
+        )
         db_record.is_revoked = True
         db.commit()
         raise UnauthorizedError("Refresh token expired")
 
+    # Reject legacy sessions missing keycloak_realm safely to prevent sending to wrong realm
+    target_realm = db_record.keycloak_realm
+    if not target_realm:
+        logger.error(
+            "Refresh failed [req_id=%s, session_id=%s]: Missing keycloak_realm on database record (legacy session)",
+            request_id or "N/A",
+            db_record.session_id,
+        )
+        db_record.is_revoked = True
+        db.commit()
+        raise UnauthorizedError("Session format outdated. Please sign in again.")
+
     data = {
         "grant_type": "refresh_token",
-        "client_id": settings.keycloak_client_id,
-        "client_secret": settings.keycloak_client_secret,
+        "client_id": "superadmin-login" if target_realm == "master" else settings.keycloak_client_id,
         "refresh_token": refresh_token,
     }
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.post(_keycloak_token_endpoint(), data=data)
+    if target_realm != "master":
+        data["client_secret"] = settings.keycloak_client_secret
+
+    endpoint = _keycloak_token_endpoint(target_realm)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(endpoint, data=data)
+    except (httpx.RequestError, httpx.TimeoutException) as net_err:
+        logger.error(
+            "Refresh network error [req_id=%s, realm=%s, session_id=%s]: %s",
+            request_id or "N/A",
+            target_realm,
+            db_record.session_id,
+            net_err,
+        )
+        # DO NOT revoke database token on network error / timeout
+        raise BadRequestError("Token refresh service temporarily unavailable. Please retry.")
 
     if response.status_code in (400, 401):
+        logger.warning(
+            "Refresh rejected by Keycloak [req_id=%s, realm=%s, status=%d, session_id=%s]: %s",
+            request_id or "N/A",
+            target_realm,
+            response.status_code,
+            db_record.session_id,
+            response.text,
+        )
+        # Only revoke when Keycloak explicitly confirms the token is invalid/expired
         db_record.is_revoked = True
         db.commit()
         raise UnauthorizedError("Refresh token expired or invalid")
 
     if not response.is_success:
-        raise BadRequestError("Token refresh service unavailable")
+        logger.error(
+            "Keycloak server error on refresh [req_id=%s, realm=%s, status=%d, session_id=%s]: %s",
+            request_id or "N/A",
+            target_realm,
+            response.status_code,
+            db_record.session_id,
+            response.text,
+        )
+        # DO NOT revoke database token on Keycloak 5xx / server error
+        raise BadRequestError("Token refresh service error. Please retry.")
 
     token_data = response.json()
 
+    # Success: Revoke old token record ONLY after successful Keycloak response
     db_record.is_revoked = True
     db.commit()
 
@@ -120,6 +192,17 @@ async def refresh_access_token(refresh_token: str, db: Session) -> Dict[str, Any
         session_id=session_state,
         refresh_token=token_data["refresh_token"],
         expires_in=token_data.get("refresh_expires_in", 1800),
+        keycloak_realm=target_realm, # Preserve exact same Keycloak realm on rotation
+        ip_address=db_record.ip_address,
+        user_agent=db_record.user_agent,
+    )
+
+    logger.info(
+        "Refresh success [req_id=%s, realm=%s, session_id=%s, sub=%s]",
+        request_id or "N/A",
+        target_realm,
+        session_id,
+        user_sub,
     )
 
     return {
@@ -139,21 +222,26 @@ async def logout(refresh_token: str, db: Session, realm: str | None = None) -> N
         RefreshToken.is_revoked == False,
     ).first()
 
+    target_realm = realm
     if db_record:
+        target_realm = target_realm or db_record.keycloak_realm
         db.query(RefreshToken).filter(
             RefreshToken.session_id == db_record.session_id,
             RefreshToken.keycloak_sub == db_record.keycloak_sub,
         ).update({"is_revoked": True})
         db.commit()
 
+    target_realm = target_realm or settings.keycloak_realm
     try:
         data = {
-            "client_id": settings.keycloak_client_id,
-            "client_secret": settings.keycloak_client_secret,
+            "client_id": "superadmin-login" if target_realm == "master" else settings.keycloak_client_id,
             "refresh_token": refresh_token,
         }
+        if target_realm != "master":
+            data["client_secret"] = settings.keycloak_client_secret
+
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(_keycloak_logout_endpoint(realm), data=data)
+            await client.post(_keycloak_logout_endpoint(target_realm), data=data)
     except httpx.RequestError:
         pass
 
@@ -184,6 +272,7 @@ def _store_refresh_token(
     session_id: str,
     refresh_token: str,
     expires_in: int,
+    keycloak_realm: str | None = None,
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> str:
@@ -196,6 +285,8 @@ def _store_refresh_token(
         record.refresh_token_hash = _hash_token(refresh_token)
         record.expires_at = expires_at
         record.is_revoked = False
+        if keycloak_realm is not None:
+            record.keycloak_realm = keycloak_realm
         if ip_address is not None:
             record.ip_address = ip_address
         if user_agent is not None:
@@ -207,6 +298,7 @@ def _store_refresh_token(
             refresh_token_hash=_hash_token(refresh_token),
             expires_at=expires_at,
             is_revoked=False,
+            keycloak_realm=keycloak_realm,
             ip_address=ip_address,
             user_agent=user_agent,
         )

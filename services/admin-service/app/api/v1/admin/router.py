@@ -1041,9 +1041,27 @@ async def report_bed_occupancy(
 @limiter.limit("30/minute")
 async def report_revenue(
     request: Request,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    db: Session = Depends(get_tenant_db_for_request),
     ctx: TenantContext = Depends(get_current_tenant),
 ) -> dict:
-    return reports_svc.revenue_summary()
+    return reports_svc.revenue_summary(db, from_date, to_date)
+
+
+@router.get("/reports/operational-activity", tags=["Reports"])
+@limiter.limit("30/minute")
+async def report_operational(
+    request: Request,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    department: str | None = None,
+    db: Session = Depends(get_tenant_db_for_request),
+    ctx: TenantContext = Depends(get_current_tenant),
+) -> dict:
+    return reports_svc.operational_activity(db, from_date, to_date, department)
+
+
 
 
 @router.get("/reports/dashboard", tags=["Reports"])

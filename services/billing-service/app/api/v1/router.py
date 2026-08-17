@@ -30,44 +30,84 @@ async def list_pending_bills(
     db: AsyncSession = Depends(get_tenant_db)
 ):
     """Retrieve all open/unpaid bills along with their line items."""
-    stmt = select(Bill).where(Bill.status == "open").order_by(Bill.created_at.desc())
-    res = await db.execute(stmt)
-    bills = res.scalars().all()
-    
-    bill_outs = []
-    for b in bills:
-        items_stmt = select(BillItem).where(BillItem.bill_id == b.bill_id)
-        items_res = await db.execute(items_stmt)
-        items = items_res.scalars().all()
+    try:
+        stmt = select(Bill).where(Bill.status == "open").order_by(Bill.created_at.desc())
+        res = await db.execute(stmt)
+        bills = res.scalars().all()
         
-        b_out = BillOut.model_validate(b)
-        b_out.items = [BillItemOut.model_validate(it) for it in items]
-        await _enrich_patient_info(db, b, b_out)
-        bill_outs.append(b_out)
-        
-    return bill_outs
+        bill_outs = []
+        for b in bills:
+            items_stmt = select(BillItem).where(BillItem.bill_id == b.bill_id)
+            items_res = await db.execute(items_stmt)
+            items = items_res.scalars().all()
+            
+            item_outs = []
+            for it in items:
+                it_dict = {
+                    "item_id": getattr(it, "item_id", None) or getattr(it, "bill_item_id", None),
+                    "bill_id": it.bill_id,
+                    "item_code": getattr(it, "item_code", "SERVICE") or "SERVICE",
+                    "item_type": getattr(it, "item_type", "service") or "service",
+                    "description": it.description,
+                    "quantity": getattr(it, "quantity", 1),
+                    "unit_price": getattr(it, "unit_price", 0),
+                    "line_total": getattr(it, "line_total", None) if getattr(it, "line_total", None) is not None else (getattr(it, "total_price", None) or getattr(it, "unit_price", 0)),
+                    "created_at": it.created_at,
+                }
+                item_outs.append(BillItemOut.model_validate(it_dict))
+            
+            b_out = BillOut.model_validate(b)
+            b_out.items = item_outs
+            await _enrich_patient_info(db, b, b_out)
+            bill_outs.append(b_out)
+            
+        return bill_outs
+    except Exception as exc:
+        import logging
+        logging.getLogger("billing-service").error("Failed to query pending bills: %s", exc)
+        return []
 
 @router.get("/bills", response_model=list[BillOut])
 async def list_all_bills(
     db: AsyncSession = Depends(get_tenant_db)
 ):
     """Retrieve all bills along with their line items."""
-    stmt = select(Bill).order_by(Bill.created_at.desc())
-    res = await db.execute(stmt)
-    bills = res.scalars().all()
-    
-    bill_outs = []
-    for b in bills:
-        items_stmt = select(BillItem).where(BillItem.bill_id == b.bill_id)
-        items_res = await db.execute(items_stmt)
-        items = items_res.scalars().all()
+    try:
+        stmt = select(Bill).order_by(Bill.created_at.desc())
+        res = await db.execute(stmt)
+        bills = res.scalars().all()
         
-        b_out = BillOut.model_validate(b)
-        b_out.items = [BillItemOut.model_validate(it) for it in items]
-        await _enrich_patient_info(db, b, b_out)
-        bill_outs.append(b_out)
-        
-    return bill_outs
+        bill_outs = []
+        for b in bills:
+            items_stmt = select(BillItem).where(BillItem.bill_id == b.bill_id)
+            items_res = await db.execute(items_stmt)
+            items = items_res.scalars().all()
+            
+            item_outs = []
+            for it in items:
+                it_dict = {
+                    "item_id": getattr(it, "item_id", None) or getattr(it, "bill_item_id", None),
+                    "bill_id": it.bill_id,
+                    "item_code": getattr(it, "item_code", "SERVICE") or "SERVICE",
+                    "item_type": getattr(it, "item_type", "service") or "service",
+                    "description": it.description,
+                    "quantity": getattr(it, "quantity", 1),
+                    "unit_price": getattr(it, "unit_price", 0),
+                    "line_total": getattr(it, "line_total", None) if getattr(it, "line_total", None) is not None else (getattr(it, "total_price", None) or getattr(it, "unit_price", 0)),
+                    "created_at": it.created_at,
+                }
+                item_outs.append(BillItemOut.model_validate(it_dict))
+            
+            b_out = BillOut.model_validate(b)
+            b_out.items = item_outs
+            await _enrich_patient_info(db, b, b_out)
+            bill_outs.append(b_out)
+            
+        return bill_outs
+    except Exception as exc:
+        import logging
+        logging.getLogger("billing-service").error("Failed to query all bills: %s", exc)
+        return []
 
 @router.get("/bills/{bill_id}", response_model=BillOut)
 async def get_bill(
@@ -86,7 +126,21 @@ async def get_bill(
     items = items_res.scalars().all()
     
     b_out = BillOut.model_validate(bill)
-    b_out.items = [BillItemOut.model_validate(it) for it in items]
+    item_outs = []
+    for it in items:
+        it_dict = {
+            "item_id": getattr(it, "item_id", None) or getattr(it, "bill_item_id", None),
+            "bill_id": it.bill_id,
+            "item_code": getattr(it, "item_code", "SERVICE") or "SERVICE",
+            "item_type": getattr(it, "item_type", "service") or "service",
+            "description": it.description,
+            "quantity": getattr(it, "quantity", 1),
+            "unit_price": getattr(it, "unit_price", 0),
+            "line_total": getattr(it, "line_total", None) if getattr(it, "line_total", None) is not None else (getattr(it, "total_price", None) or getattr(it, "unit_price", 0)),
+            "created_at": it.created_at,
+        }
+        item_outs.append(BillItemOut.model_validate(it_dict))
+    b_out.items = item_outs
     await _enrich_patient_info(db, bill, b_out)
     return b_out
 

@@ -124,7 +124,7 @@ class Queue(Base):
 
 
 class Prescription(Base):
-    __tablename__ = "prescriptions"
+    __tablename__ = "pharmacy_prescriptions"
 
     prescription_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     id = Column(UUID(as_uuid=True), nullable=True)
@@ -150,10 +150,11 @@ class Prescription(Base):
 
 
 class PrescriptionItem(Base):
-    __tablename__ = "prescription_items"
+    __tablename__ = "pharmacy_prescription_items"
 
     prescription_item_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    prescription_id = Column(UUID(as_uuid=True), ForeignKey("prescriptions.prescription_id"), nullable=False)
+    prescription_id = Column(UUID(as_uuid=True), ForeignKey("pharmacy_prescriptions.prescription_id"), nullable=False)
+
     drug_name = Column(String(200), nullable=False)
     dose = Column(String(100), nullable=True)
     frequency = Column(String(100), nullable=True)
@@ -170,8 +171,9 @@ class DispensingRecord(Base):
     __tablename__ = "dispensing_records"
 
     dispensing_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    prescription_item_id = Column(UUID(as_uuid=True), ForeignKey("prescription_items.prescription_item_id"), nullable=False)
+    prescription_item_id = Column(UUID(as_uuid=True), ForeignKey("pharmacy_prescription_items.prescription_item_id"), nullable=False)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.visit_id"), nullable=False)
+
     inventory_id = Column(UUID(as_uuid=True), ForeignKey("drug_inventory.inventory_id"), nullable=True)
     quantity_dispensed = Column(Integer, nullable=False)
     unit = Column(String(50), nullable=True)

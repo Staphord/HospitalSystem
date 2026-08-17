@@ -82,13 +82,13 @@ async def mark_all_notifications_read(
 ) -> MarkReadResponse:
     """Mark all unread notifications as read for current user."""
     tenant_id = ctx.tenant_id or "default"
-    recipient_role = ctx.roles[0] if ctx.roles else None
     return await notification_service.mark_all_notifications_read(
         db,
         tenant_id=tenant_id,
         recipient_id=ctx.user_sub,
-        recipient_role=recipient_role,
+        recipient_role=ctx.roles,
     )
+
 
 
 @router.post("", response_model=NotificationItemResponse, status_code=201, tags=["Notifications"])

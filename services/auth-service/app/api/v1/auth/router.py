@@ -761,7 +761,7 @@ async def first_login_change_password(
             if "UPDATE_PASSWORD" in req_actions:
                 req_actions.remove("UPDATE_PASSWORD")
             user_data["requiredActions"] = req_actions
-            
+
             # Update user profile in Keycloak
             update_resp = await client.put(user_url, json=user_data, headers=hdrs)
             update_resp.raise_for_status()
@@ -834,9 +834,11 @@ async def refresh(
     body: RefreshRequest,
     db: Session = Depends(get_db),
 ) -> dict:
+    req_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     result = await auth_service.refresh_access_token(
         refresh_token=body.refresh_token,
         db=db,
+        request_id=req_id,
     )
 
     # Enforce tenant suspension lockout & department status on token refresh.

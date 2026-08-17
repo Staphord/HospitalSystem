@@ -102,25 +102,29 @@ def _pharmacist_name(user: TokenPayload) -> str:
 
 async def get_pharmacy_queue(
     db: AsyncSession,
-    queue_date: date,
+    queue_date: date | None,
     status: str,
 ) -> PharmacyQueueResponse:
     if status not in ("waiting", "in_progress", "completed"):
         status = "waiting"
 
+    conditions = [
+        Queue.queue_type == "pharmacy",
+        Queue.status == status,
+    ]
+    if queue_date is not None:
+        conditions.append(func.date(Queue.created_at) == queue_date)
+
     stmt = (
         select(Queue, Visit, Patient)
         .join(Visit, Queue.visit_id == Visit.visit_id)
         .join(Patient, Visit.patient_id == Patient.id)
-        .where(
-            Queue.queue_type == "pharmacy",
-            Queue.status == status,
-            func.date(Queue.created_at) == queue_date,
-        )
+        .where(*conditions)
         .order_by(Queue.created_at.asc())
     )
     res = await db.execute(stmt)
     rows = res.all()
+
 
     queue_items = []
     for queue, visit, patient in rows:
@@ -154,7 +158,8 @@ async def get_pharmacy_queue(
             )
         )
 
-    return PharmacyQueueResponse(date=queue_date, queue=queue_items)
+    return PharmacyQueueResponse(date=queue_date or date.today(), queue=queue_items)
+
 
 
 async def call_queue_patient(db: AsyncSession, queue_id: UUID, user: TokenPayload) -> PharmacyQueueItem:

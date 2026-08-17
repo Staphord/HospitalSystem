@@ -49,10 +49,11 @@ router = APIRouter(
 @router.get("/queue", response_model=PharmacyQueueResponse, tags=["Queue"])
 async def get_pharmacy_queue(
     status: Literal["waiting", "in_progress", "completed"] = Query("waiting"),
-    queue_date: date = Query(default_factory=date.today, alias="date"),
+    queue_date: date | None = Query(None, alias="date"),
     db: AsyncSession = Depends(get_tenant_db),
 ) -> PharmacyQueueResponse:
     return await pharmacy_service.get_pharmacy_queue(db, queue_date, status)
+
 
 
 @router.patch("/queue/{queue_id}/call", response_model=PharmacyQueueItem, tags=["Queue"])
