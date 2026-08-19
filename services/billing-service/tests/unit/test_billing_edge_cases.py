@@ -432,8 +432,9 @@ async def test_remaining_small_helpers(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_billing_push_to_100_coverage(monkeypatch):
+async def test_billing_resilience_and_tenant_edge_cases(monkeypatch):
     from app import exceptions, main
+
     from app.core import database, limiter, middleware, security, tenant_auth
     from app.db import tenant as tenant_db
     from app.events import subscriber as event_sub
@@ -561,5 +562,64 @@ async def test_billing_push_to_100_coverage(monkeypatch):
     monkeypatch.setattr(tenant_service.httpx, "AsyncClient", MagicMock(side_effect=RuntimeError("client err")))
     await tenant_service._revoke_keycloak_sessions("t")
     db_none = MagicMock(); db_none.execute.return_value.scalar.return_value = None
+
+    # exact missing line target coverage
+    database._engine = None
+    monkeypatch.setattr(database, "create_engine", MagicMock())
+    database.init_db()
+
+
+    req_cl = MagicMock(client=MagicMock(host="10.0.0.1"))
+    assert limiter.get_remote_address(req_cl) == "10.0.0.1"
+
+    mw = middleware.AuditLogMiddleware(MagicMock())
+    req_mw = MagicMock(method="POST"); req_mw.url.path = "/test"; req_mw.state = MagicMock(user_sub="sub", tenant=MagicMock(tenant_id="t"))
+    call_mw = AsyncMock(return_value=MagicMock(headers={}, status_code=200))
+    await mw.dispatch(req_mw, call_mw)
+
+
+    monkeypatch.setattr(security, "_issuer", lambda *a: "http://iss")
+    security._introspection_cache.clear()
+    class Inactive:
+        def raise_for_status(self): pass
+        def json(self): return {"active": False}
+    class InstClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def post(self, *a, **k): return Inactive()
+    monkeypatch.setattr(security.httpx, "AsyncClient", lambda **k: InstClient())
+    with pytest.raises(Exception): await security._introspect_token("revoked")
+
+    with pytest.raises(Exception): await tenant_auth._decode_token("header.payload.sig")
+
+    mock_sess = AsyncMock()
+    mock_fac = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_sess), __aexit__=AsyncMock()))
+    monkeypatch.setattr(tenant_db, "_get_async_session_factory", AsyncMock(return_value=mock_fac))
+    async for s in tenant_db.get_tenant_session("t"): assert s is mock_sess
+
+    class ProcessContext:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+    class ExMessage:
+        body = b'{}'; routing_key = "k"
+        def process(self): return ProcessContext()
+    class ExIterator:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        def __aiter__(self): return self
+        async def __anext__(self):
+            if getattr(self, "d", False): raise StopAsyncIteration
+            self.d = True; return ExMessage()
+    ex_queue = MagicMock(name="billing_events"); ex_queue.name = "billing_events"; ex_queue.bind = AsyncMock(); ex_queue.iterator = lambda: ExIterator()
+    ex_channel = MagicMock(); ex_channel.set_qos = AsyncMock(); ex_channel.declare_queue = AsyncMock(return_value=ex_queue)
+    ex_conn = MagicMock(channel=AsyncMock(return_value=ex_channel)); monkeypatch.setattr(msg_sub, "get_connection", AsyncMock(return_value=ex_conn)); monkeypatch.setattr(msg_sub, "declare_exchange", AsyncMock(return_value=MagicMock()))
+    failing_handler = AsyncMock(side_effect=RuntimeError("handler fail"))
+    await msg_sub.start_consumer("billing_events", ["k"], failing_handler)
+
+    assert await tenant_service.is_tenant_suspended("t_none") is False
+    db_dsn_mock = MagicMock()
+    db_dsn_mock.execute.return_value.scalar.return_value = tenant_service.encrypt_dsn("postgresql://dsn")
+    assert await tenant_service.get_tenant_db_dsn(db_dsn_mock, "t") == "postgresql://dsn"
+
 
 
