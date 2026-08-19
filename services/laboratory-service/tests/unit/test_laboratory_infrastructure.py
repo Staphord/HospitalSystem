@@ -194,7 +194,7 @@ async def test_laboratory_service_and_router_remaining_branches(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_laboratory_push_to_100_coverage(monkeypatch):
+async def test_laboratory_service_domain_and_messaging_resilience(monkeypatch):
     from app import exceptions, main
     from app.core import database, limiter, middleware, security, tenant_auth
     from app.db import tenant as tenant_db
@@ -205,7 +205,6 @@ async def test_laboratory_push_to_100_coverage(monkeypatch):
     # exceptions
     for cls in [exceptions.TokenExpiredError, exceptions.MFARequiredError, exceptions.TenantSuspendedError, exceptions.ReadOnlyScopeError]:
         assert cls().status_code in (401, 403)
-
 
     # subscriber & limiter
     monkeypatch.setattr(event_sub, "start_consumer", AsyncMock())
@@ -228,11 +227,10 @@ async def test_laboratory_push_to_100_coverage(monkeypatch):
 
     async def call(_): return __import__("starlette.responses", fromlist=["Response"]).Response("ok")
     assert (await main.health())["status"] == "ok"
+    monkeypatch.setattr(main.settings, "allowed_origins", "http://localhost, http://example.com")
     monkeypatch.setattr(main.settings, "environment", "prod")
     res_prod = await main.security_headers(req, call)
     assert res_prod.headers["Content-Security-Policy"] == "default-src 'none'"
-
-
 
     # database & tenant_db
     monkeypatch.setattr(database, "_engine", None)
@@ -242,7 +240,6 @@ async def test_laboratory_push_to_100_coverage(monkeypatch):
 
     monkeypatch.setattr(database, "get_session_local", lambda: lambda: MagicMock())
     assert database.DefaultDatabaseRouter().get_session("h")
-
 
     class BadConn:
         async def run_sync(self, fn): raise RuntimeError("sync err")
@@ -255,18 +252,94 @@ async def test_laboratory_push_to_100_coverage(monkeypatch):
     with pytest.raises(Exception): await tenant_db._get_async_session_factory("bad_t")
 
     # security & tenant_auth
-    monkeypatch.setattr(security, "_fetch_jwks", AsyncMock(return_value={"keys": []}))
+    assert security._extract_realm_from_iss(jwt.encode({"iss": "http://other-issuer/realms/r"}, "s", algorithm="HS256")) is None
+
+    security._jwks_cache["jwks:r"] = {"keys": [{"kid": "k", "kty": "RSA", "n": "n", "e": "e"}]}
+    assert await security._fetch_jwks("r") == {"keys": [{"kid": "k", "kty": "RSA", "n": "n", "e": "e"}]}
+    security._introspection_cache["revoked"] = False
+    with pytest.raises(Exception): await security._introspect_token("revoked")
+
     with pytest.raises(Exception): await security._decode_token("invalid.token.structure")
     with pytest.raises(Exception): await tenant_auth._decode_token("invalid.token.structure")
     security._introspection_cache.clear()
     monkeypatch.setattr(security, "_fetch_jwks", AsyncMock(side_effect=RuntimeError("jwks down")))
     with pytest.raises(Exception): await security._decode_token(jwt.encode({"iss": f"{security.settings.keycloak_url}/realms/r"}, "s", algorithm="HS256", headers={"kid": "k"}))
 
+    # tenant_auth RS256 / HS256 decode exception paths
+    with pytest.raises(Exception):
+        await tenant_auth._decode_token(jwt.encode({"exp": 1}, tenant_auth.settings.secret_key, algorithm="HS256", headers={"kid": "impersonation-key"}))
+    with pytest.raises(Exception):
+        await tenant_auth._decode_token(jwt.encode({"exp": 1, "iss": f"{tenant_auth.settings.keycloak_url}/realms/r"}, "s", algorithm="HS256", headers={"kid": "k"}))
+
+    # security require_role forbidden
+    with pytest.raises(Exception):
+        await security.require_role("admin")(security.TokenPayload("u", None, None, {"roles": ["doctor"]}, {}))
+
+    # middleware audit log commit failure
+    bad_db = MagicMock(); bad_db.commit.side_effect = RuntimeError("commit fail")
+    monkeypatch.setattr(middleware, "get_session_local", lambda: lambda: bad_db)
+    req_post = Request({"type": "http", "method": "POST", "path": "/test", "headers": []})
+    await middleware.AuditLogMiddleware(MagicMock()).dispatch(req_post, call)
+
+    # limiter user_sub key
+    req_sub = Request({"type": "http", "headers": []})
+    req_sub.state.user_sub = "sub123"
+    assert limiter._rate_limit_key(req_sub) == "sub123"
+
+    # database router exception
+    class SubRouter(database.DatabaseRouter):
+        def get_session(self, hospital_id: str):
+            return super().get_session(hospital_id)
+    with pytest.raises(NotImplementedError): SubRouter().get_session("h")
+
+    database._engine = None; database.init_db()
+
+    # db tenant session generator
+    mock_factory = MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=MagicMock()), __aexit__=AsyncMock()))
+    monkeypatch.setattr(tenant_db, "_get_async_session_factory", AsyncMock(return_value=mock_factory))
+    async for s in tenant_db.get_tenant_session("t"): pass
+
+    # user name resolution fallback
+    u_mock = security.TokenPayload("s1", "Doctor", None, {}, {})
+    assert service._user_identifier(u_mock) == "Doctor"
+    u_mock2 = security.TokenPayload("s2", None, "doc@example.com", {}, {})
+    assert service._user_identifier(u_mock2) == "doc@example.com"
+
+
+
+    # update_lab_result amended critical and non-critical paths
+    db_res = AsyncMock()
+    lab_res = MagicMock(result_id=uuid4(), status="resulted", is_critical=False, critical_notified_at=None)
+    m_res = MagicMock(); m_res.scalar_one_or_none.return_value = lab_res
+    db_res.execute.return_value = m_res
+
+    class UpdBody1:
+        result_value = "10"; unit = "mg"; reference_range = "1-5"; result_notes = "n"; is_critical = True
+    await service.update_lab_result(db_res, uuid4(), UpdBody1(), user=security.TokenPayload("u", None, None, {}, {}))
+    assert lab_res.is_critical is True
+
+    class UpdBody2:
+        result_value = None; unit = None; reference_range = None; result_notes = None; is_critical = False
+    await service.update_lab_result(db_res, uuid4(), UpdBody2(), user=security.TokenPayload("u", None, None, {}, {}))
+    assert lab_res.is_critical is False
+
+
     # messaging connection & subscriber
     monkeypatch.setattr(connection.aio_pika, "connect_robust", AsyncMock(side_effect=RuntimeError("pika down")))
     connection._connection = None
     with pytest.raises(Exception): await connection.get_connection()
-    monkeypatch.setattr(msg_sub, "get_connection", AsyncMock(side_effect=RuntimeError("conn down")))
+    connection._connection = None
+    await connection.close_connection()
+
+    class DummyQueueIter:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def __anext__(self): raise StopAsyncIteration
+    dummy_queue = MagicMock(); dummy_queue.iterator = lambda: DummyQueueIter(); dummy_queue.bind = AsyncMock()
+    dummy_channel = MagicMock(); dummy_channel.declare_queue = AsyncMock(return_value=dummy_queue); dummy_channel.set_qos = AsyncMock()
+    dummy_conn = MagicMock(); dummy_conn.channel = AsyncMock(return_value=dummy_channel)
+    monkeypatch.setattr(msg_sub, "get_connection", AsyncMock(return_value=dummy_conn))
+    monkeypatch.setattr(msg_sub, "declare_exchange", AsyncMock())
     await msg_sub.run_consumer_task("queue", ["rk"], AsyncMock())
 
     # service lab & tenant_service edge branches
@@ -297,8 +370,17 @@ async def test_laboratory_push_to_100_coverage(monkeypatch):
     db.execute.side_effect = [m3, m4]
     await service.update_specimen_status(db, "s", MagicMock(status="processing", rejection_reason=None), user=security.TokenPayload("u", None, None, {}, {}))
 
-
-
+    # create_lab_result critical result handling failure fallback
+    db_crit = AsyncMock()
+    req_crit = MagicMock(status="specimen_collected", requested_by="doc", test_name="t")
+    r_crit = MagicMock(); r_crit.scalar_one_or_none.return_value = req_crit
+    r_exist = MagicMock(); r_exist.scalar_one_or_none.return_value = None
+    db_crit.execute.side_effect = [r_crit, r_exist]
+    monkeypatch.setattr("app.events.publisher.publish_lab_critical_value", AsyncMock(side_effect=RuntimeError("pub err")))
+    class CritBody:
+        test_name = "t"; result_value = "v"; reference_range = "r"; unit = "u"; is_abnormal = True; is_critical = True; remarks = "r"; result_notes = "n"; specimen_type = "blood"; specimen_label = "L1"
+    res_crit_created = await service.create_lab_result(db_crit, "r", CritBody(), user=security.TokenPayload("u", None, None, {}, {}))
+    assert res_crit_created.is_critical is True
 
     # get_visit_verified_results and get_dashboard_stats
     db.execute.side_effect = None
@@ -306,7 +388,6 @@ async def test_laboratory_push_to_100_coverage(monkeypatch):
     res_visit_mock.all.return_value = []
     db.execute.return_value = res_visit_mock
     assert await service.get_visit_verified_results(db, UUID("12345678-1234-5678-1234-567812345678")) == {"visit_id": UUID("12345678-1234-5678-1234-567812345678"), "results": []}
-
 
     db.execute.return_value.scalar.return_value = 5
     stats = await service.get_dashboard_stats(db)
@@ -321,9 +402,12 @@ async def test_laboratory_push_to_100_coverage(monkeypatch):
     with pytest.raises(Exception): await tenant_auth.get_current_tenant("invalid_token")
     with pytest.raises(Exception): await tenant_auth.get_current_tenant_ws(MagicMock(headers={}))
 
-    # tenant_service revoke & DSN cache
+    # tenant_service revoke & DSN fallback
     monkeypatch.setattr(tenant_service.httpx, "AsyncClient", MagicMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=MagicMock(post=AsyncMock(return_value=MagicMock(status_code=200)))), __aexit__=AsyncMock())))
     await tenant_service._revoke_keycloak_sessions("t")
+    db_none = MagicMock(); db_none.execute.return_value.scalar.return_value = None
+    assert await tenant_service.get_tenant_db_dsn(db_none, "t") is None
+
 
 
 
