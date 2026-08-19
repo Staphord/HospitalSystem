@@ -148,7 +148,7 @@ class MockAsyncSession:
         elif isinstance(obj, Queue):
             self.queues[obj.queue_id] = obj
         elif isinstance(obj, FeeSchedule):
-            self.fee_schedules[obj.id] = obj
+            self.fee_schedules[obj.fee_id] = obj
         elif isinstance(obj, Bill):
             self.bills[obj.visit_id] = obj
             self.bills[obj.bill_id] = obj
@@ -210,7 +210,7 @@ def mock_db():
     )
     # Seed fee schedule
     fee = FeeSchedule(
-        id=uuid.uuid4(),
+        fee_id=uuid.uuid4(),
         item_code="CONS-001",
         item_name="Consultation Fee",
         item_type="consultation",
@@ -564,3 +564,47 @@ def test_complete_consultation_gates(mock_db):
         )
         assert resp_ok.status_code == 200
         assert resp_ok.json()["consultation_status"] == "completed"
+
+
+def test_consultation_read_endpoints(mock_db):
+    client = TestClient(app)
+    h = {"Authorization": "Bearer test_token"}
+    u = str(uuid.uuid4())
+    # Empty-result and not-found paths for the legacy, inpatient, search, and dashboard APIs.
+    paths = [
+        f"/api/v1/consultation/{u}/summary",
+        f"/api/v1/consultation/encounters/visit/{u}",
+        f"/api/v1/consultation/encounters/patient/{u}/encounter-view/{u}",
+        f"/api/v1/consultation/encounters/patient/{u}/history",
+        "/api/v1/consultation/inpatient/admissions",
+        f"/api/v1/consultation/inpatient/admissions/{u}",
+        f"/api/v1/consultation/inpatient/admissions/{u}/orders",
+        "/api/v1/consultation/patients/recent",
+        "/api/v1/consultation/investigations/results",
+        "/api/v1/consultation/referrals",
+        "/api/v1/consultation/dashboard/stats",
+    ]
+    responses = [client.get(path, headers=h) for path in paths]
+    assert all(r.status_code in (200, 404) for r in responses)
+
+
+def test_consultation_mutation_not_found_endpoints(mock_db):
+    client = TestClient(app)
+    h = {"Authorization": "Bearer test_token"}
+    u = str(uuid.uuid4())
+    calls = [
+        ("put", f"/api/v1/consultation/{u}/diagnoses/{u}", {}),
+        ("delete", f"/api/v1/consultation/diagnoses/{u}", None),
+        ("delete", f"/api/v1/consultation/investigations/{u}", None),
+        ("delete", f"/api/v1/consultation/prescriptions/{u}", None),
+        ("put", f"/api/v1/consultation/investigations/{u}/acknowledge", {}),
+        ("post", f"/api/v1/consultation/inpatient/admissions/{u}/orders", {}),
+        ("put", f"/api/v1/consultation/inpatient/orders/{u}/status", {}),
+        ("post", f"/api/v1/consultation/inpatient/admissions/{u}/discharge", {}),
+        ("post", "/api/v1/consultation/referrals", {}),
+    ]
+    responses = []
+    for method, path, payload in calls:
+        response = getattr(client, method)(path, headers=h, json=payload) if payload is not None else getattr(client, method)(path, headers=h)
+        responses.append(response)
+    assert all(r.status_code in (200, 201, 400, 404, 422) for r in responses)

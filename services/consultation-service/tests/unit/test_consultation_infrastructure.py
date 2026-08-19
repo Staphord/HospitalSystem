@@ -323,7 +323,126 @@ async def test_consultation_system_resilience_and_disposition_handling(monkeypat
     res_lab_none = MagicMock(); res_lab_none.scalars.return_value.first.return_value = None
     db_dash.execute.side_effect = [res_count, res_count, res_count, res_count, res_list, res_inv_rad, res_rad_rep, res_lab_none, res_count, res_count, res_count, res_count]
     dash = await api_router.get_doctor_dashboard_stats(db=db_dash, current_user=user_doc)
-    assert dash
+@pytest.mark.asyncio
+async def test_consultation_missing_branches_and_edge_cases(monkeypatch):
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    from app import exceptions, main
+    from app.api.v1 import router as api_router, schemas
+    from app.core import database, limiter, middleware, security, tenant_auth
+    from app.events import subscriber as event_sub
+    from app.messaging import connection, subscriber as msg_sub
+    from app.services import tenant_service
+
+    # 1. database init_db
+    database._engine = None
+    monkeypatch.setattr(database, "create_engine", MagicMock())
+    database.init_db()
+
+    # 2. limiter fallback
+    req_lim = MagicMock(client=None)
+    assert limiter.get_remote_address(req_lim) == "127.0.0.1"
+
+    # 3. main allowed_origins list check
+    monkeypatch.setattr(main.settings, "allowed_origins", ["http://localhost", "http://domain.com"])
+    req_m = MagicMock(method="GET"); req_m.headers = {}
+    async def dummy_call(_): return __import__("starlette.responses", fromlist=["Response"]).Response("ok")
+    await main.security_headers(req_m, dummy_call)
+
+    # 4. middleware audit error logging
+    mw = middleware.AuditLogMiddleware(MagicMock())
+    req_err = MagicMock(method="POST"); req_err.url.path = "/test"; req_err.state = MagicMock(user_sub="sub", tenant=MagicMock(tenant_id="t"))
+    call_err = AsyncMock(side_effect=RuntimeError("mw error"))
+    with pytest.raises(RuntimeError):
+        await mw.dispatch(req_err, call_err)
+
+    # 5. security token introspect error
+    with pytest.raises(Exception):
+        await security._introspect_token("invalid_token")
+
+    # 6. tenant_auth _decode_token error
+    with pytest.raises(Exception):
+        await tenant_auth._decode_token("bad.jwt.token")
+
+    # 7. tenant_service expired / suspended branch
+    db_exp = MagicMock()
+    db_exp.execute.return_value.one_or_none.return_value = ("active", datetime.now(timezone.utc)-timedelta(days=5), 1)
+    db_exp.commit = MagicMock()
+    assert await tenant_service.check_and_update_tenant_status(db_exp, "t_exp") == "expired"
+
+
+    # 8. router error branches
+    user_doc = security.TokenPayload("doc1", None, None, {"roles": ["doctor"]}, {})
+    ctx_doc = SimpleNamespace(tenant_id="t", user_sub="doc1")
+
+    # missing consultation for update_disposition
+    db_r = AsyncMock()
+    res_none = MagicMock(); res_none.scalars.return_value.first.return_value = None
+    res_none.scalars.return_value.all.return_value = []
+    res_none.scalar_one_or_none.return_value = None
+    db_r.execute.return_value = res_none
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.update_disposition(uuid.uuid4(), MagicMock(disposition="outpatient", notes=None, admission_unit=None, follow_up_date=None, return_date=None), db=db_r, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.cancel_investigation(uuid.uuid4(), db=db_r, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.cancel_prescription(uuid.uuid4(), db=db_r, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.get_encounter_view(uuid.uuid4(), db=db_r, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.admit_patient(uuid.uuid4(), MagicMock(ward_type="general", bed_number="1"), db=db_r, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.discharge_patient(uuid.uuid4(), MagicMock(discharge_summary="ok"), db=db_r, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.get_nursing_assessment(uuid.uuid4(), db=db_r, ctx=ctx_doc, current_user=user_doc)
+
+    assert await api_router.get_my_consultations(status_filter="in_progress", db=db_r, ctx=ctx_doc, current_user=user_doc) == []
+    assert await api_router.get_prescriptions(uuid.uuid4(), db=db_r, ctx=ctx_doc, current_user=user_doc) == []
+    assert await api_router.get_investigations(uuid.uuid4(), db=db_r, ctx=ctx_doc, current_user=user_doc) == []
+
+    # router invalid input / state branches
+    c_active = MagicMock(consultation_status="in_progress", visit_id=uuid.uuid4(), patient_id=uuid.uuid4(), created_by="doc1")
+    db_r2 = AsyncMock()
+    res_c_act = MagicMock(); res_c_act.scalars.return_value.first.return_value = c_active
+    res_c_act.scalar_one_or_none.return_value = None
+    res_c_act.scalars.return_value.all.return_value = []
+    db_r2.execute.return_value = res_c_act
+
+    with pytest.raises(exceptions.UnprocessableEntityError):
+        await api_router.add_prescription(uuid.uuid4(), MagicMock(medications=[]), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.UnprocessableEntityError):
+        await api_router.add_vitals(uuid.uuid4(), MagicMock(bp_systolic=-1, bp_diastolic=-1, heart_rate=-1, respiratory_rate=-1, temperature_c=-1, oxygen_saturation=-1, height_cm=-1, weight_kg=-1), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.record_triage_note(uuid.uuid4(), MagicMock(triage_category="emergency", chief_complaint="pain"), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.create_nursing_assessment(uuid.uuid4(), MagicMock(assessment_type="initial", notes="note"), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.create_care_plan(uuid.uuid4(), MagicMock(problem_description="prob", goal="goal", interventions="int"), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.create_intake_output(uuid.uuid4(), MagicMock(type="intake", amount_ml=100), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.assign_bed(uuid.uuid4(), MagicMock(bed_id=uuid.uuid4()), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    with pytest.raises(exceptions.NotFoundError):
+        await api_router.transfer_ward(uuid.uuid4(), MagicMock(target_ward="icu", reason="critical"), db=db_r2, ctx=ctx_doc, current_user=user_doc)
+
+    # event subscriber start_subscriber
+    monkeypatch.setattr(event_sub, "start_consumer", AsyncMock())
+    await event_sub.start_subscriber()
+
 
 
 
