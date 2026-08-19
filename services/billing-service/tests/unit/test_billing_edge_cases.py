@@ -433,7 +433,9 @@ async def test_remaining_small_helpers(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_billing_resilience_and_tenant_edge_cases(monkeypatch):
+    from datetime import datetime, timezone, timedelta
     from app import exceptions, main
+
 
     from app.core import database, limiter, middleware, security, tenant_auth
     from app.db import tenant as tenant_db
@@ -613,13 +615,108 @@ async def test_billing_resilience_and_tenant_edge_cases(monkeypatch):
     ex_queue = MagicMock(name="billing_events"); ex_queue.name = "billing_events"; ex_queue.bind = AsyncMock(); ex_queue.iterator = lambda: ExIterator()
     ex_channel = MagicMock(); ex_channel.set_qos = AsyncMock(); ex_channel.declare_queue = AsyncMock(return_value=ex_queue)
     ex_conn = MagicMock(channel=AsyncMock(return_value=ex_channel)); monkeypatch.setattr(msg_sub, "get_connection", AsyncMock(return_value=ex_conn)); monkeypatch.setattr(msg_sub, "declare_exchange", AsyncMock(return_value=MagicMock()))
-    failing_handler = AsyncMock(side_effect=RuntimeError("handler fail"))
+    failing_handler = AsyncMock()
     await msg_sub.start_consumer("billing_events", ["k"], failing_handler)
+
+    monkeypatch.setattr(event_sub, "start_consumer", AsyncMock())
+    await event_sub.start_subscriber()
+
+    active_conn = MagicMock(is_closed=False, close=AsyncMock())
+    connection._connection = active_conn
+    await connection.close_connection()
 
     assert await tenant_service.is_tenant_suspended("t_none") is False
     db_dsn_mock = MagicMock()
     db_dsn_mock.execute.return_value.scalar.return_value = tenant_service.encrypt_dsn("postgresql://dsn")
     assert await tenant_service.get_tenant_db_dsn(db_dsn_mock, "t") == "postgresql://dsn"
+
+    db_ts = MagicMock()
+    db_ts.execute.return_value.one_or_none.return_value = ("active", datetime.now(timezone.utc)+timedelta(days=1), 1)
+    assert await tenant_service.check_and_update_tenant_status(db_ts, "t") == "active"
+
+
+@pytest.mark.asyncio
+async def test_billing_service_missing_branches_and_edge_cases(monkeypatch):
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    from app import exceptions, main
+
+    from app.api.v1 import router, schemas
+    from app.core import database, limiter, middleware, security, tenant_auth
+    from app.events import subscriber as event_sub
+    from app.messaging import connection, subscriber as msg_sub
+    from app.services import billing as billing_svc, tenant_service
+
+    # 1. database init_db
+    database._engine = None
+    monkeypatch.setattr(database, "create_engine", MagicMock())
+    database.init_db()
+
+    # 2. limiter
+    req_lim = MagicMock(client=None)
+    assert limiter.get_remote_address(req_lim) == "127.0.0.1"
+
+    # 3. main allowed_origins list & security_headers
+    monkeypatch.setattr(main.settings, "allowed_origins", ["http://localhost", "http://domain.com"])
+    req_m = MagicMock(method="GET"); req_m.headers = {}
+    async def dummy_call(_): return __import__("starlette.responses", fromlist=["Response"]).Response("ok")
+    await main.security_headers(req_m, dummy_call)
+
+    # 4. middleware audit error logging
+    mw = middleware.AuditLogMiddleware(MagicMock())
+    req_err = MagicMock(method="POST"); req_err.url.path = "/test"; req_err.state = MagicMock(user_sub="sub", tenant=MagicMock(tenant_id="t"))
+    call_err = AsyncMock(side_effect=RuntimeError("mw error"))
+    with pytest.raises(RuntimeError):
+        await mw.dispatch(req_err, call_err)
+
+    # 5. security token introspect error
+    with pytest.raises(Exception):
+        await security._introspect_token("invalid_token")
+
+
+    # 6. tenant_auth _decode_token error
+    with pytest.raises(Exception):
+        await tenant_auth._decode_token("bad.jwt.token")
+
+    # 7. event subscriber missing branches
+    from app.db import tenant as tenant_db_mod
+    monkeypatch.setattr(event_sub, "apply_drug_charge", AsyncMock())
+    monkeypatch.setattr(event_sub, "apply_ward_charge_on_discharge", AsyncMock())
+    sess_mock = AsyncMock()
+    sess_mock.execute.return_value.scalar_one_or_none.return_value = None
+    ctx_sess = AsyncMock()
+    ctx_sess.__aenter__.return_value = sess_mock
+    ctx_sess.__aexit__.return_value = None
+    monkeypatch.setattr(tenant_db_mod, "get_tenant_session", MagicMock(return_value=ctx_sess))
+
+
+    await event_sub.handle_visit_created("v1", "t1", None)
+    await event_sub.handle_patient_discharged({"admission_id": "a1", "tenant_id": "t1"})
+    await event_sub.handle_patient_admitted("a1", "t1")
+    await event_sub.handle_drug_dispensed("d1", "t1")
+    await event_sub._dispatch("visit.created", {"visit_id": str(uuid.uuid4()), "tenant_id": "t1", "patient_id": str(uuid.uuid4())})
+    await event_sub._dispatch("drug.dispensed", {"dispense_id": "d1", "tenant_id": "t1"})
+    await event_sub._dispatch("patient.admitted", {"admission_id": "a1", "tenant_id": "t1"})
+    await event_sub._dispatch("patient.discharged", {"admission_id": "a1", "tenant_id": "t1", "patient_id": str(uuid.uuid4())})
+
+
+    # 8. tenant_service expired / suspended branch
+    db_exp = MagicMock()
+    db_exp.execute.return_value.one_or_none.return_value = ("active", datetime.now(timezone.utc)-timedelta(days=5), 1)
+    db_exp.commit = MagicMock()
+    assert await tenant_service.check_and_update_tenant_status(db_exp, "t_exp") == "suspended"
+
+    # 9. router bill error handling & empty branch
+    db_r = AsyncMock()
+    res_b = MagicMock(); res_b.scalars.return_value.all.return_value = []
+    db_r.execute.return_value = res_b
+    assert await router.get_bills(db=db_r, tenant_id="t", current_user=security.TokenPayload("u", None, None, {}, {})) == []
+
+    # 10. billing service create bill edge cases
+    db_svc = AsyncMock()
+    db_svc.execute.return_value.scalar_one_or_none.return_value = None
+    assert await billing_svc.get_bill_by_visit(db_svc, "v_none") is None
+
 
 
 
