@@ -41,3 +41,22 @@ def test_require_any_role_rejects_non_matching_role():
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(dep(user=_payload(["nurse"])))
     assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_extract_realm_and_token_decoding_exceptions():
+    from app.core import security
+    from jose import jwt, ExpiredSignatureError
+
+    # Realm extraction invalid token
+    assert security._extract_realm_from_iss("invalid.jwt.token") is None
+
+    # Invalid header token decoding
+    with pytest.raises(HTTPException) as exc:
+        await security._decode_token("invalid.jwt.token")
+    assert exc.value.status_code == 401
+
+    # Missing credentials in get_current_active_user
+    with pytest.raises(HTTPException) as exc:
+        await security.get_current_active_user(request=None, credentials=None)
+    assert exc.value.status_code == 401
