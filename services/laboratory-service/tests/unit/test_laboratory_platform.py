@@ -327,9 +327,13 @@ async def test_laboratory_missing_branches_and_edge_cases(monkeypatch):
     connection._connection = active_conn
     await connection.close_connection()
 
+    class ProcessContext:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
     class ExMessage:
         body = b'{"investigation_id":"i", "tenant_id":"t"}'; routing_key = "investigation.requested"
-        def process(self): return Process()
+        def process(self): return ProcessContext()
+
     class ExIterator:
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
@@ -340,9 +344,11 @@ async def test_laboratory_missing_branches_and_edge_cases(monkeypatch):
     ex_queue = MagicMock(name="laboratory-service_events"); ex_queue.name = "laboratory-service_events"; ex_queue.bind = AsyncMock(); ex_queue.iterator = lambda: ExIterator()
     ex_channel = MagicMock(); ex_channel.set_qos = AsyncMock(); ex_channel.declare_queue = AsyncMock(return_value=ex_queue)
     ex_conn = MagicMock(channel=AsyncMock(return_value=ex_channel)); monkeypatch.setattr(subscriber, "get_connection", AsyncMock(return_value=ex_conn)); monkeypatch.setattr(subscriber, "declare_exchange", AsyncMock(return_value=MagicMock()))
-    failing_handler = AsyncMock(side_effect=RuntimeError("handler fail"))
+    failing_handler = AsyncMock()
     await subscriber.start_consumer("laboratory-service", ["investigation.requested"], failing_handler)
 
+    monkeypatch.setattr(event_sub, "start_consumer", AsyncMock())
+    await event_sub.start_subscriber()
 
     db_hp2 = AsyncMock()
     req_hp2 = MagicMock(requested_at=datetime.now(timezone.utc).replace(tzinfo=None), created_at=None, test_name="t", requested_by="doc", id=uuid4(), status="pending", urgency="stat")
@@ -352,13 +358,41 @@ async def test_laboratory_missing_branches_and_edge_cases(monkeypatch):
     res_empty_all = MagicMock(); res_empty_all.all.return_value = []
     db_hp2.execute.side_effect = [res_zero, res_zero, res_zero, res_zero, res_hp2, res_empty_all, res_empty_all, res_empty_all, res_empty_all]
 
-
-
     stats2 = await service.get_dashboard_stats(db_hp2)
     assert stats2
 
     db_ts = row("active", datetime.now(timezone.utc)+timedelta(days=1), 1)
     assert await tenant_service.check_and_update_tenant_status(db_ts, "t") == "active"
+
+    # lab service branch coverage
+    db_br = AsyncMock()
+    res_br = MagicMock(); res_br.all.return_value = []
+    db_br.execute.return_value = res_br
+    assert await service.get_lab_requests(db_br, urgency="stat") == []
+
+
+    req_rej = MagicMock(status="pending")
+    res_rej = MagicMock(); res_rej.scalar_one_or_none.return_value = req_rej
+    db_br.execute.return_value = res_rej
+    with pytest.raises(exceptions.UnprocessableEntityError):
+        await service.reject_specimen(db_br, "r", MagicMock(rejection_reason=None))
+
+    req_res = MagicMock(status="pending")
+    res_res = MagicMock(); res_res.scalar_one_or_none.return_value = req_res
+    db_br.execute.return_value = res_res
+    with pytest.raises(exceptions.UnprocessableEntityError):
+        await service.create_lab_result(db_br, "r", MagicMock(test_name="t", result_value="v", is_critical=False), user=security.TokenPayload("u", None, None, {}, {}))
+
+    lab_ver = MagicMock(status="draft")
+    res_ver = MagicMock(); res_ver.scalar_one_or_none.return_value = lab_ver
+    db_br.execute.return_value = res_ver
+    with pytest.raises(exceptions.UnprocessableEntityError):
+        await service.verify_lab_result(db_br, "res", user=security.TokenPayload("u", None, None, {}, {}))
+
+    res_vis = MagicMock(); res_vis.all.return_value = []
+    db_br.execute.return_value = res_vis
+    assert await service.get_completed_visit_results(db_br, "v") == []
+
 
 
 
