@@ -147,3 +147,96 @@ async def test_user_preferences_default_and_update(db_session: AsyncSession):
     )
     assert updated.sms_enabled is True
     assert "billing" in updated.categories_disabled
+
+
+@pytest.mark.asyncio
+async def test_notifications_are_isolated_by_tenant(db_session: AsyncSession):
+    await svc.create_notification(
+        db_session,
+        NotificationCreateRequest(
+            tenant_id=TEST_TENANT_ID,
+            recipient_id=TEST_USER_ID,
+            title="Tenant alert",
+            message="Visible to the owning tenant",
+        ),
+    )
+    await svc.create_notification(
+        db_session,
+        NotificationCreateRequest(
+            tenant_id="other-tenant",
+            recipient_id=TEST_USER_ID,
+            title="Other alert",
+            message="Must not leak",
+        ),
+    )
+
+    result = await svc.get_user_notifications(
+        db_session,
+        tenant_id=TEST_TENANT_ID,
+        recipient_id=TEST_USER_ID,
+    )
+
+    assert result.total == 1
+    assert result.items[0].title == "Tenant alert"
+
+
+@pytest.mark.asyncio
+async def test_role_and_broadcast_notifications_are_returned(db_session: AsyncSession):
+    await svc.create_notification(
+        db_session,
+        NotificationCreateRequest(
+            tenant_id=TEST_TENANT_ID,
+            recipient_role="Doctor",
+            title="Role alert",
+            message="For doctors",
+        ),
+    )
+    await svc.create_notification(
+        db_session,
+        NotificationCreateRequest(
+            tenant_id=TEST_TENANT_ID,
+            title="Broadcast",
+            message="For everyone",
+        ),
+    )
+
+    result = await svc.get_user_notifications(
+        db_session,
+        tenant_id=TEST_TENANT_ID,
+        recipient_id=TEST_USER_ID,
+        recipient_role=[TEST_USER_ROLE],
+    )
+
+    assert {item.title for item in result.items} == {"Role alert", "Broadcast"}
+
+
+@pytest.mark.asyncio
+async def test_read_and_unread_operations_enforce_tenant(db_session: AsyncSession):
+    created = await svc.create_notification(
+        db_session,
+        NotificationCreateRequest(
+            tenant_id="other-tenant",
+            recipient_id=TEST_USER_ID,
+            title="Protected",
+            message="Wrong tenant cannot mark this read",
+        ),
+    )
+
+    with pytest.raises(NotFoundError):
+        await svc.mark_notification_read(
+            db_session,
+            tenant_id=TEST_TENANT_ID,
+            notification_id=created.notification_id,
+        )
+
+    await svc.update_user_preferences(
+        db_session,
+        user_id=TEST_USER_ID,
+        payload=UpdatePreferenceRequest(in_app_enabled=False),
+    )
+    count = await svc.get_unread_count(
+        db_session,
+        tenant_id=TEST_TENANT_ID,
+        recipient_id=TEST_USER_ID,
+    )
+    assert count.unread_count == 0
