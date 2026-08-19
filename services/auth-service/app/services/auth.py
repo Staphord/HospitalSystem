@@ -107,7 +107,14 @@ async def refresh_access_token(
         )
         raise UnauthorizedError("Refresh token not found or revoked")
 
-    if db_record.expires_at < datetime.now(timezone.utc):
+    # SQLite (and some legacy database drivers) can return a naive datetime
+    # even though production records are stored as UTC. Normalize it before
+    # comparing so the refresh path behaves consistently across databases.
+    expires_at = db_record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
         logger.warning(
             "Refresh failed [req_id=%s, session_id=%s]: Token database record expired at %s",
             request_id or "N/A",
@@ -489,10 +496,10 @@ _totp_secrets: TTLCache[str, str] = TTLCache(maxsize=1024, ttl=600)
 
 
 def is_valid_totp_secret(secret: str | None) -> bool:
-    if not secret:
+    if not secret or len(secret.strip()) < 16:
         return False
     try:
-        pyotp.TOTP(secret).now()
+        pyotp.TOTP(secret.strip()).now()
         return True
     except Exception:
         return False
@@ -629,4 +636,3 @@ async def send_mfa_email_code(email: str, code: str) -> None:
         print(f"[SUCCESS] MFA verification email successfully sent to {email}")
     except Exception as e:
         print(f"[ERROR] Failed to send MFA email to {email}: {str(e)}")
-

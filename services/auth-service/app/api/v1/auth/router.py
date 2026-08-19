@@ -62,6 +62,34 @@ public_router = APIRouter()
 router = APIRouter(dependencies=[Depends(get_current_active_user)])
 
 
+def check_user_department_status(
+    tenant_id: str,
+    keycloak_sub: str,
+    roles: list[str] | None = None,
+) -> None:
+    """Reject disabled tenant accounts during token/session completion.
+
+    The auth service does not own the admin-service department tables, so it
+    cannot safely perform a department lookup here. It does own the tenant
+    user projection, however, and must at least enforce that projection's
+    active flag. Keeping this check synchronous also makes it usable from the
+    refresh and MFA completion paths without introducing a second async DB API.
+    """
+    from app.models.user import User
+    from app.services.provision import get_tenant_db_session
+
+    tenant_db = get_tenant_db_session(tenant_id)
+    try:
+        user_record = tenant_db.query(User).filter(User.keycloak_sub == keycloak_sub).first()
+        if user_record is not None and not getattr(user_record, "is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is inactive",
+            )
+    finally:
+        tenant_db.close()
+
+
 
 @public_router.post("/signup", response_model=SignupResponse, status_code=201)
 @limiter.limit("5/minute")
@@ -588,6 +616,7 @@ async def login(
     except Exception:
         pass
 
+    audit_db = None
     try:
         audit_db = get_session_local()()
         record = GlobalAuditLog(
@@ -889,6 +918,7 @@ async def mfa_email_send_login_code(
     from app.models.admin import SuperAdmin as _SuperAdmin
     from app.models.user import User as _User
     import pyotp
+    from uuid import UUID
 
     # Decode and verify challenge token
     try:
@@ -925,7 +955,11 @@ async def mfa_email_send_login_code(
     try:
         # Retrieve user record
         if is_superadmin:
-            user_record = mfa_db.query(_SuperAdmin).filter(_SuperAdmin.super_admin_id == super_admin_id).first()
+            try:
+                super_admin_key = UUID(str(super_admin_id))
+            except (ValueError, TypeError, AttributeError):
+                super_admin_key = super_admin_id
+            user_record = mfa_db.query(_SuperAdmin).filter(_SuperAdmin.super_admin_id == super_admin_key).first()
         else:
             keycloak_sub = challenge.get("sub")
             user_record = mfa_db.query(_User).filter(_User.keycloak_sub == keycloak_sub).first()
@@ -964,6 +998,7 @@ async def mfa_verify_login(
     db: Session = Depends(get_db),
 ) -> dict:
     import json
+    from uuid import UUID
 
     from jose import JWTError
     from jose import jwt as _jwt
@@ -1001,8 +1036,12 @@ async def mfa_verify_login(
                 detail="Invalid MFA challenge",
             )
 
+        try:
+            super_admin_key = UUID(str(super_admin_id))
+        except (ValueError, TypeError, AttributeError):
+            super_admin_key = super_admin_id
         user_record = db.query(_SuperAdmin).filter(
-            _SuperAdmin.super_admin_id == str(super_admin_id)
+            _SuperAdmin.super_admin_id == super_admin_key
         ).first()
         if (
             not user_record
@@ -1193,7 +1232,7 @@ async def mfa_setup(
     request: Request,
     user: TokenPayload = Depends(get_current_active_user),
 ) -> dict:
-    return auth_service.generate_mfa_secret(keycloak_sub=user.sub)
+    return auth_service.generate_mfa_secret(keycloak_sub=str(user.sub))
 
 
 @router.post("/mfa/email/send-setup-code", response_model=dict)
@@ -1235,7 +1274,7 @@ async def mfa_email_send_setup_code(
             raise BadRequestError("User email address not found")
 
         # Generate / get pending secret
-        res = auth_service.generate_mfa_secret(keycloak_sub=user.sub)
+        res = auth_service.generate_mfa_secret(keycloak_sub=str(user.sub))
         secret = res["secret"]
 
         # Calculate current TOTP token
@@ -1278,7 +1317,7 @@ async def mfa_verify(
         mfa_db = get_tenant_db_session(tenant_id)
 
     try:
-        pending_secret = auth_service.get_pending_mfa_secret(user.sub)
+        pending_secret = auth_service.get_pending_mfa_secret(str(user.sub))
         valid = auth_service.verify_mfa_totp(
             keycloak_sub=user.sub,
             totp_code=body.totp_code,
@@ -1309,7 +1348,7 @@ async def mfa_verify(
         user_record.mfa_enabled = True
         if pending_secret:
             user_record.mfa_secret = pending_secret
-            auth_service.clear_pending_mfa_secret(user.sub)
+            auth_service.clear_pending_mfa_secret(str(user.sub))
         user_record.backup_codes = json.dumps(hashed_codes)
         mfa_db.add(user_record)
         mfa_db.commit()
@@ -1359,7 +1398,8 @@ async def mfa_disable(
             raise BadRequestError("User record not found")
 
         user_record.mfa_enabled = False
-        user_record.mfa_secret = None
+        # Keep the configured secret so re-enabling MFA does not violate the
+        # non-null model constraint; the enabled flag controls enforcement.
         user_record.backup_codes = None
         mfa_db.add(user_record)
         mfa_db.commit()
