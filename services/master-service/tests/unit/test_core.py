@@ -291,8 +291,10 @@ def test_ensure_master_database_exists():
     with patch("app.db.master.create_engine", side_effect=mock_create_engine_side_effect):
         _ensure_master_database_exists()
 
+from unittest.mock import PropertyMock
+
 def test_ensure_master_database_exists_no_db_name():
-    with patch("app.config.settings.database_url", "postgresql://user:pass@host/"):
+    with patch.object(type(settings), "database_url", new_callable=PropertyMock, return_value="postgresql://user:pass@host/"):
         with patch("app.db.master.create_engine", side_effect=OperationalError("no db", {}, None)):
             with pytest.raises(ValueError, match="Cannot determine database name"):
                 _ensure_master_database_exists()
