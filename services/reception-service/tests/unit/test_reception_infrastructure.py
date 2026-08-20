@@ -1007,9 +1007,8 @@ from app.core import security as sec_mod
 
 
 def _hs256_token(payload: dict) -> str:
-    import os
-    key = os.environ.get("SECRET_KEY", "ci-test-secret-key-for-testing-purposes-only")
-    return jwt.encode(payload, key, algorithm="HS256")
+    from app.core.config import settings
+    return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 
 @pytest.mark.asyncio
@@ -1050,11 +1049,10 @@ async def test_tenant_auth_decodes_valid_hs256_token():
 
 @pytest.mark.asyncio
 async def test_tenant_auth_decodes_impersonation_key_token():
-    import os
-    key = os.environ.get("SECRET_KEY", "ci-test-secret-key-for-testing-purposes-only")
+    from app.core.config import settings
     token = jwt.encode(
         {"sub": "imp-user", "exp": int(time.time()) + 3600},
-        key,
+        settings.secret_key,
         algorithm="HS256",
         headers={"kid": "impersonation-key"},
     )
