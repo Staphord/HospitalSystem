@@ -47,8 +47,9 @@ class TestRadiologyConfigAndSecurity:
         creds = MagicMock(scheme="bearer", credentials=tok)
         req = MagicMock()
 
-        user = await sec_mod.get_current_active_user(req, credentials=creds)
-        assert user.sub == "rad-user-1"
+        with patch("app.core.security.settings.keycloak_introspect", False):
+            user = await sec_mod.get_current_active_user(req, credentials=creds)
+            assert user.sub == "rad-user-1"
 
 
 # ---------------------------------------------------------------------------

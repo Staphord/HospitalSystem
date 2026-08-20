@@ -27,6 +27,10 @@ from app.events.subscriber import handle_tenant_created, handle_tenant_suspended
 
 @pytest.mark.asyncio
 async def test_messaging_connection_and_publisher():
+    import app.messaging.connection as conn_mod
+    await conn_mod.close_connection()
+    conn_mod._connection = None
+
     mock_conn = AsyncMock(is_closed=False)
     mock_channel = AsyncMock()
     mock_exchange = AsyncMock()
