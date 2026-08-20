@@ -224,6 +224,8 @@ jobs:
       - name: Install migration dependencies
         run: python -m pip install --upgrade pip alembic psycopg2-binary sqlalchemy
       - name: Validate master migration graph and upgrade
+        env:
+          PYTHONPATH: .:services/master-service:shared
         run: |
           test "$(alembic -c migrations/master/alembic.ini heads | grep -c '(head)')" -eq 1
           alembic -c migrations/master/alembic.ini upgrade head
@@ -233,6 +235,7 @@ jobs:
         run: psql -h localhost -U postgres -d hospital_master_test -c 'CREATE DATABASE hospital_tenant_test;'
       - name: Validate tenant migration graph and upgrade
         env:
+          PYTHONPATH: .:services/master-service:shared
           TENANT_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_tenant_test
         run: |
           test "$(alembic -c migrations/tenant/alembic.ini heads | grep -c '(head)')" -eq 1
@@ -252,6 +255,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Ensure env file exists for compose validation
+        run: cp .env.example .env || touch .env
       - name: Validate compose model
         run: docker compose -f infrastructure/docker-compose.yml config --quiet
       - name: Build all backend images

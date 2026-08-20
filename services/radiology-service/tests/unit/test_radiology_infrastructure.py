@@ -41,7 +41,8 @@ class TestRadiologyConfigAndSecurity:
 
     @pytest.mark.asyncio
     async def test_get_current_active_user(self):
-        payload = {"sub": "rad-user-1", "preferred_username": "radiographer", "realm_access": {"roles": ["radiographer"]}}
+        sec_mod._jwks_cache["jwks:hospital"] = {"keys": []}
+        payload = {"sub": "rad-user-1", "iss": "http://localhost:8080/realms/hospital", "preferred_username": "radiographer", "realm_access": {"roles": ["radiographer"]}}
         tok = jwt.encode(payload, cfg_mod.settings.secret_key, algorithm="HS256")
         creds = MagicMock(scheme="bearer", credentials=tok)
         req = MagicMock()
