@@ -1,6 +1,7 @@
 """Unit tests for core database, security, middleware, db/master.py, and exceptions.py in master-service.
 """
 from unittest.mock import AsyncMock, MagicMock, patch
+import urllib.parse
 import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -291,13 +292,13 @@ def test_ensure_master_database_exists():
     with patch("app.db.master.create_engine", side_effect=mock_create_engine_side_effect):
         _ensure_master_database_exists()
 
-from unittest.mock import PropertyMock
-
 def test_ensure_master_database_exists_no_db_name():
-    with patch.object(type(settings), "database_url", new_callable=PropertyMock, return_value="postgresql://user:pass@host/"):
-        with patch("app.db.master.create_engine", side_effect=OperationalError("no db", {}, None)):
-            with pytest.raises(ValueError, match="Cannot determine database name"):
-                _ensure_master_database_exists()
+    mock_eng = MagicMock()
+    mock_eng.connect.side_effect = OperationalError("no db", {}, None)
+    with patch("app.db.master.create_engine", return_value=mock_eng), \
+         patch.object(settings, "database_url", "postgresql://user:pass@host/"):
+        with pytest.raises(ValueError, match="Cannot determine database name"):
+            _ensure_master_database_exists()
 
 def test_get_master_session_and_db():
     with get_master_session() as session:
