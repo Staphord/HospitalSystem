@@ -40,6 +40,13 @@ env:
   TENANT_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_tenant_test
   REDIS_URL: redis://localhost:6379/0
   RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+  KEYCLOAK_URL: http://localhost:8080
+  KEYCLOAK_REALM: hospital
+  KEYCLOAK_CLIENT_ID: hospital-backend
+  KEYCLOAK_CLIENT_SECRET: ci-test-keycloak-client-secret
+  KEYCLOAK_ADMIN_USERNAME: admin
+  KEYCLOAK_ADMIN_PASSWORD: admin
+  TENANT_DB_ENCRYPTION_KEY: ci-test-tenant-db-encryption-key-32bytes!
 
 jobs:
   compile-and-fatal-quality:
