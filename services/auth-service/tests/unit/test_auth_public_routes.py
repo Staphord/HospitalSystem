@@ -358,8 +358,8 @@ async def test_auth_public_routes_additional_branches(monkeypatch, db_session):
         await router.superadmin_login(request("POST", ip="127.0.0.91"), type("Body", (), {"username": "non401user", "password": "p"})(), db_session)
     assert exc_info.value.status_code == 400
 
-    # Test superadmin login sync when local.full_name is None
-    local = SuperAdmin(username="nofullname-admin", email="nofullname@example.com", password_hash="x", full_name=None, mfa_secret="sec")
+    # Test superadmin login sync when local.full_name is empty string
+    local = SuperAdmin(username="nofullname-admin", email="nofullname@example.com", password_hash="x", full_name="", mfa_secret="sec")
     db_session.add(local); db_session.commit()
     calls = {"n": 0}
     async def login_side_effect(**kwargs):

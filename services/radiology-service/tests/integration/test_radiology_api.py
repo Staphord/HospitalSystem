@@ -1,10 +1,14 @@
 import pytest
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
+
 from app.main import app
 
-client = TestClient(app)
 
-def test_health():
-    """Placeholder integration test for radiology service API."""
-    response = client.get("/")
-    assert response.status_code in (200, 307, 404)
+
+@pytest.mark.asyncio
+async def test_health_endpoint():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "service": "radiology-service"}

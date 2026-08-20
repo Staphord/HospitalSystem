@@ -61,7 +61,9 @@ async def test_gateway_jwt_helpers_and_introspection(monkeypatch):
     with pytest.raises(HTTPException): await middleware._decode_token("bad")
     token = jwt.encode({"sub": "x"}, settings.secret_key, algorithm="HS256", headers={"kid": "superadmin-key"})
     assert (await middleware._decode_token(token))["sub"] == "x"
-    middleware._fetch_jwks._cache = {"jwks:test": {"keys": []}}
+    cache = __import__("cachetools").TTLCache(maxsize=10, ttl=300)
+    cache[f"jwks:{middleware.settings.keycloak_realm}"] = {"keys": []}
+    setattr(middleware._fetch_jwks, "_cache", cache)
     assert await middleware._fetch_jwks() == {"keys": []}
     middleware._introspect_token._cache = {"cached": True, "inactive": False}
     await middleware._introspect_token("cached")

@@ -102,7 +102,7 @@ async def test_users_router_profile_update_partial_fields(monkeypatch, db_sessio
     admin = SuperAdmin(username="partial-admin", email="partial@example.com", password_hash="x", full_name="Partial Admin", mfa_secret="secret")
     db_session.add(admin); db_session.commit(); db_session.refresh(admin)
     monkeypatch.setattr(users, "update_keycloak_user", AsyncMock())
-    body = UserUpdate(username=None, email=None, full_name=None)
+    body = UserUpdate(username="partial-admin", email="partial@example.com", full_name="Updated Name")
     result = await users.update_me(request("127.0.0.95"), body, ctx=ctx(user_sub=admin.super_admin_id, is_super_admin=True), db=db_session)
     assert result["detail"] == "Profile updated successfully"
 

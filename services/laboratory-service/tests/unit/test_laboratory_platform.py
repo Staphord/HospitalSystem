@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from jose import jwt
 
+from app import exceptions
 from app.core import database, security, tenant
 from app.core import tenant_auth
 from app.services import tenant_service
@@ -375,7 +376,7 @@ async def test_laboratory_missing_branches_and_edge_cases(monkeypatch):
     res_rej = MagicMock(); res_rej.scalar_one_or_none.return_value = req_rej
     db_br.execute.return_value = res_rej
     with pytest.raises(exceptions.UnprocessableEntityError):
-        await service.reject_specimen(db_br, "r", MagicMock(rejection_reason=None))
+        await service.update_specimen_status(db_br, "s", MagicMock(status="rejected", rejection_reason=None), user=security.TokenPayload("u", None, None, {}, {}))
 
     req_res = MagicMock(status="pending")
     res_res = MagicMock(); res_res.scalar_one_or_none.return_value = req_res
@@ -391,7 +392,7 @@ async def test_laboratory_missing_branches_and_edge_cases(monkeypatch):
 
     res_vis = MagicMock(); res_vis.all.return_value = []
     db_br.execute.return_value = res_vis
-    assert await service.get_completed_visit_results(db_br, "v") == []
+    assert await service.get_visit_verified_results(db_br, "v") == {"visit_id": "v", "results": []}
 
 
 
