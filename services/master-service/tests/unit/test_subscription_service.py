@@ -18,7 +18,7 @@ def compile_uuid_sqlite(type_, compiler, **kw):
 
 from app.db.base import Base
 from app.models.master import Tenant, GlobalAuditLog
-from app.models.saas import Subscription as SubscriptionRecord, SubscriptionPlan as SubscriptionPlanModel
+from app.models.saas import Subscription as SubscriptionRecord, SubscriptionPlan as SubscriptionPlanModel, Invoice, SaaSPayment
 from app.services.subscription_plans import BillingCycle, SubscriptionPlan, SubscriptionStatus
 from app.services.subscription_service import (
     SubscriptionError,
@@ -33,8 +33,28 @@ from app.services.subscription_service import (
     suspend_tenant,
     upgrade_subscription,
     _ensure_aware,
+    _set_subscription_dates,
 )
+from app.services.subscription_request_service import (
+    create_plan_change_request,
+    create_cancellation_request,
+    approve_request,
+    reject_request,
+    get_pending_request,
+    list_subscription_requests,
+    list_pending_requests,
+    _audit_event,
+    log_action,
+)
+from app.api.v1.superadmin.schemas import TenantCreate
 
+
+@pytest.fixture(autouse=True)
+def clear_plan_cache():
+    from app.services.subscription_plans import _db_plans_cache
+    _db_plans_cache.clear()
+    yield
+    _db_plans_cache.clear()
 
 @pytest.fixture
 def db():
@@ -54,6 +74,8 @@ def db():
             GlobalAuditLog.__table__,
             SubscriptionPlanModel.__table__,
             SubscriptionRecord.__table__,
+            Invoice.__table__,
+            SaaSPayment.__table__,
         ],
     )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -501,3 +523,204 @@ def test_cross_cycle_downgrade_immediate(db):
     
     assert tenant.subscription_billing_cycle == "monthly"
     assert (initial_end - tenant.subscription_end).days > 300
+
+
+def test_activate_tenant_manual_override(db):
+    tenant = _make_tenant(db, status="suspended", is_active=False, subscription_status=SubscriptionStatus.SUSPENDED.value)
+    res = activate_tenant(db, tenant_id=tenant.tenant_id, user_sub="admin-sub", ip_address="127.0.0.1")
+    assert res.action == "activate"
+    assert tenant.status == "active"
+    assert tenant.is_active is True
+    assert tenant.subscription_status == SubscriptionStatus.ACTIVE.value
+
+
+def test_create_plan_change_invoice(db):
+    from unittest.mock import MagicMock, patch
+    from app.services.subscription_service import _generate_invoice
+
+    tenant = _make_tenant(db)
+    with patch("app.services.subscription_service.inspect") as mock_inspect:
+        mock_inspect.return_value.has_table.return_value = True
+        with patch.object(db, "add") as mock_add:
+            _generate_invoice(
+                db=db,
+                tenant_id=tenant.tenant_id,
+                subscription_id=uuid.uuid4(),
+                plan_name="standard",
+                amount=99.0,
+                billing_cycle=BillingCycle.MONTHLY,
+                subscription_start=datetime.now(timezone.utc),
+                subscription_end=datetime.now(timezone.utc) + timedelta(days=30),
+            )
+            assert mock_add.called
+
+
+# ---------------------------------------------------------------------------
+# Subscription Requests & Payment Compliance Tests
+# ---------------------------------------------------------------------------
+
+def test_tenant_schema_grace_period_validation():
+    from pydantic import ValidationError
+    valid_create = TenantCreate(
+        hospital_name="St. Luke",
+        admin_username="admin",
+        admin_email="admin@st-luke.org",
+        admin_password="password",
+        grace_period_days=14,
+    )
+    assert valid_create.grace_period_days == 14
+
+    with pytest.raises(ValidationError):
+        TenantCreate(
+            hospital_name="St. Luke",
+            admin_username="admin",
+            admin_email="admin@st-luke.org",
+            admin_password="password",
+            grace_period_days=-5,
+        )
+
+def test_dynamic_grace_period_calculation_free_trial(db):
+    tenant = _make_tenant(db, grace_period_days=15)
+    _set_subscription_dates(tenant, BillingCycle.MONTHLY, plan=SubscriptionPlan.FREE_TRIAL, db=db)
+    expected_grace_days = 15
+    grace_duration = tenant.grace_period_end - tenant.trial_end
+    assert grace_duration.days == expected_grace_days
+
+def test_dynamic_grace_period_calculation_paid_plan(db):
+    tenant = _make_tenant(db, grace_period_days=21)
+    _set_subscription_dates(tenant, BillingCycle.MONTHLY, plan=SubscriptionPlan.STANDARD, db=db)
+    expected_grace_days = 21
+    grace_duration = tenant.grace_period_end - tenant.subscription_end
+    assert grace_duration.days == expected_grace_days
+
+def test_create_plan_change_request(db):
+    tenant = _make_tenant(db, subscription_plan="basic")
+    create_plan_change_request(db, tenant_id=tenant.tenant_id, action="upgrade", requested_plan="standard", reason="Need more features")
+    db.commit()
+    assert tenant.pending_action == "upgrade"
+    assert tenant.requested_plan == "standard"
+    assert tenant.request_reason == "Need more features"
+    assert tenant.requested_at is not None
+
+def test_create_cancellation_request(db):
+    tenant = _make_tenant(db)
+    create_cancellation_request(db, tenant_id=tenant.tenant_id, reason="Closing business")
+    db.commit()
+    assert tenant.pending_action == "cancellation"
+    assert tenant.requested_plan is None
+    assert tenant.request_reason == "Closing business"
+
+def test_approve_plan_change_request(db):
+    tenant = _make_tenant(db, subscription_plan="basic")
+    create_plan_change_request(db, tenant_id=tenant.tenant_id, action="upgrade", requested_plan="standard", reason="Need more features")
+    db.commit()
+
+    super_admin_id = str(uuid.uuid4())
+    approve_request(db, tenant_id=tenant.tenant_id, reviewer_sub=super_admin_id, notes="Approved upgrade")
+    db.commit()
+
+    assert tenant.subscription_plan == "standard"
+    assert tenant.pending_action is None
+    assert tenant.requested_plan is None
+    assert tenant.reviewed_by is not None
+    assert str(tenant.reviewed_by) == super_admin_id
+    assert tenant.review_notes == "Approved upgrade"
+
+def test_reject_plan_change_request(db):
+    tenant = _make_tenant(db, subscription_plan="basic")
+    create_plan_change_request(db, tenant_id=tenant.tenant_id, action="upgrade", requested_plan="standard", reason="Need more features")
+    db.commit()
+
+    super_admin_id = str(uuid.uuid4())
+    reject_request(db, tenant_id=tenant.tenant_id, reviewer_sub=super_admin_id, notes="Not approved")
+    db.commit()
+
+    assert tenant.subscription_plan == "basic"
+    assert tenant.pending_action is None
+    assert tenant.reviewed_by is not None
+    assert str(tenant.reviewed_by) == super_admin_id
+    assert tenant.review_notes == "Not approved"
+
+def test_list_subscription_requests_with_history(db):
+    tenant = _make_tenant(db, subscription_plan="basic")
+    create_plan_change_request(db, tenant_id=tenant.tenant_id, action="upgrade", requested_plan="standard", reason="Test first request")
+    db.commit()
+
+    approve_request(db, tenant_id=tenant.tenant_id, reviewer_sub="admin-1", notes="First request approved")
+    db.commit()
+
+    create_plan_change_request(db, tenant_id=tenant.tenant_id, action="downgrade", requested_plan="basic", reason="Test second request")
+    db.commit()
+
+    all_reqs = list_subscription_requests(db)
+    assert len(all_reqs) == 2
+
+    pending_reqs = list_subscription_requests(db, status="pending")
+    assert len(pending_reqs) == 1
+    assert pending_reqs[0]["pending_action"] == "downgrade"
+
+    approved_reqs = list_subscription_requests(db, status="approved")
+    assert len(approved_reqs) == 1
+    assert approved_reqs[0]["pending_action"] == "upgrade"
+    assert approved_reqs[0]["review_notes"] == "First request approved"
+
+def test_create_same_plan_billing_cycle_upgrade_request(db):
+    tenant = _make_tenant(db, subscription_plan="basic", subscription_billing_cycle="monthly")
+    create_plan_change_request(db, tenant_id=tenant.tenant_id, action="upgrade", requested_plan="basic", requested_billing_cycle="annual", reason="Upgrading to annual")
+    db.commit()
+
+    assert tenant.pending_action == "upgrade"
+    assert tenant.requested_plan == "basic"
+    assert tenant.subscription_metadata.get("requested_billing_cycle") == "annual"
+
+def test_create_same_plan_billing_cycle_downgrade_request(db):
+    tenant = _make_tenant(db, subscription_plan="basic", subscription_billing_cycle="annual")
+    create_plan_change_request(db, tenant_id=tenant.tenant_id, action="downgrade", requested_plan="basic", requested_billing_cycle="monthly", reason="Downgrading to monthly")
+    db.commit()
+
+    assert tenant.pending_action == "downgrade"
+    assert tenant.requested_plan == "basic"
+    assert tenant.subscription_metadata.get("requested_billing_cycle") == "monthly"
+
+def test_subscription_requests_edge_cases(db):
+    tenant = _make_tenant(db, subscription_plan="basic")
+
+    with pytest.raises(Exception):
+        create_plan_change_request(db, tenant.tenant_id, "upgrade", "invalid_plan", "reason")
+
+    with pytest.raises(Exception):
+        create_plan_change_request(db, tenant.tenant_id, "upgrade", "free_trial", "reason")
+
+    create_plan_change_request(db, tenant.tenant_id, "upgrade", "standard", "reason")
+    db.commit()
+
+    pending = list_pending_requests(db, tenant_id=tenant.tenant_id)
+    assert len(pending) == 1
+
+    with pytest.raises(Exception):
+        create_plan_change_request(db, tenant.tenant_id, "upgrade", "premium", "reason2")
+
+    create_cancellation_request(db, tenant.tenant_id, "Closing branch")
+    db.commit()
+    assert tenant.pending_action == "cancellation"
+
+    with pytest.raises(Exception):
+        create_cancellation_request(db, tenant.tenant_id, "Closing branch again")
+
+    reject_request(db, tenant.tenant_id, reviewer_sub="admin-1", notes="Rejected cancellation")
+    db.commit()
+    assert tenant.pending_action is None
+
+def test_audit_event_with_table(db):
+    from unittest.mock import patch
+    with patch("sqlalchemy.inspect") as mock_inspect:
+        mock_inspect.return_value.has_table.return_value = True
+        with patch.object(db, "add") as mock_add:
+            _audit_event(db=db, tenant_id="t1", event_type="request_created", actor_id=str(uuid.uuid4()), actor_type="user", reason="Testing audit")
+            assert mock_add.called
+
+def test_log_action_error(db):
+    from unittest.mock import patch
+    with patch.object(db, "add", side_effect=Exception("DB Error")):
+        log_action(db, "t1", "action.test", {"data": "test"})
+
