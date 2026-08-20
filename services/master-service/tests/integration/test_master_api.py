@@ -800,8 +800,14 @@ def test_record_payment_with_receipt_delivery_status(client, db_session):
     }
 
     # Patch MasterSessionLocal globally and bypass close() to prevent test db teardown
+    async def mark_receipt_sent(**kwargs):
+        receipt = db_session.query(SaaSPayment).filter(SaaSPayment.payment_id == kwargs["payment_id"]).first()
+        receipt.receipt_delivery_status = "sent"
+        db_session.commit()
+
     with patch("app.db.master.MasterSessionLocal", lambda: db_session), \
-         patch.object(db_session, "close", lambda: None):
+             patch.object(db_session, "close", lambda: None), \
+             patch("app.api.v1.superadmin.router._send_payment_receipt_email", new=mark_receipt_sent):
         response = client.post("/api/v1/superadmin/tenants/t1/payments", json=payload)
         assert response.status_code == 201
         data = response.json()
@@ -862,7 +868,9 @@ async def test_overdue_payment_reminders_task(db_session):
 
     # Patch get_master_db globally and bypass close() to prevent test db teardown
     with patch("app.db.master.get_master_db", lambda: db_session), \
-         patch.object(db_session, "close", lambda: None):
+         patch.object(db_session, "close", lambda: None), \
+         patch("app.services.suspension_job.settings.smtp_user", None), \
+         patch("app.services.suspension_job.settings.smtp_password", None):
         sent = await run_overdue_payment_reminders()
         assert sent == 1
         invoice_db = db_session.query(Invoice).filter(Invoice.invoice_id == invoice.invoice_id).first()

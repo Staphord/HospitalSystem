@@ -2,6 +2,10 @@
 
 from app.api.v1.admin.schemas import HospitalUserCreate, PermissionUpdate
 from app.services.roles import DEFAULT_ROLE_MODULES
+from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
 
 
 def test_hospital_user_create_schema_accepts_receptionist():
@@ -23,3 +27,16 @@ def test_permission_update_schema():
 def test_default_role_modules_seed_complete():
     assert "doctor" in DEFAULT_ROLE_MODULES
     assert "consultation" in DEFAULT_ROLE_MODULES["doctor"]
+
+
+def test_health_contract_and_security_headers():
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "service": "admin-service"}
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+
+
+def test_admin_api_rejects_anonymous_requests():
+    response = client.get("/api/v1/admin/users")
+    assert response.status_code in {401, 403}

@@ -1,0 +1,42 @@
+name: Backend Staging CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["Backend CI Pipeline"]
+    types: [completed]
+    branches: [staging, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-staging-deployment
+  cancel-in-progress: true
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging Stack
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Deploy and verify staging stack on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            cd /var/www/hospital-backend-staging
+            git fetch origin
+            git checkout staging
+            git pull origin staging
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml build --parallel
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --remove-orphans
+            docker exec hospital-staging-master-service alembic -c /app/migrations/master/alembic.ini upgrade head
+            docker start -a hospital-staging-bootstrap || true
+            docker start hospital-staging-api-gateway hospital-staging-auth-service
+            curl -s -f http://127.0.0.1:8100/health || (echo "Staging Health Probe Failed!" && exit 1)
+

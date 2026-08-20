@@ -50,3 +50,9 @@ def test_update_admission_condition_rejects_invalid_value():
             )
         )
     assert exc_info.value.status_code == 400
+
+
+def test_compute_los_days_start_after_end():
+    start = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    end = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert compute_los_days(start, end) == Decimal("0.0")

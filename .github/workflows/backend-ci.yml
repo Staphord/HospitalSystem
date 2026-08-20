@@ -2,54 +2,116 @@ name: Backend CI Pipeline
 
 on:
   push:
-    branches: [ main, joseph ]
+    branches: [main, staging, joseph]
     paths:
       - 'services/**'
       - 'shared/**'
       - 'migrations/**'
       - 'deploy/**'
-      - 'docker-compose.yml'
+      - 'infrastructure/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
       - '.github/workflows/backend-ci.yml'
   pull_request:
-    branches: [ main, joseph ]
+    branches: [main, staging, joseph]
     paths:
       - 'services/**'
       - 'shared/**'
       - 'migrations/**'
       - 'deploy/**'
-      - 'docker-compose.yml'
+      - 'infrastructure/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
       - '.github/workflows/backend-ci.yml'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONPATH: .:shared
+  TESTING: 'true'
+  SECRET_KEY: ci-test-secret-key-for-testing-purposes-only
+  DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_master_test
+  MASTER_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_master_test
+  TENANT_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_tenant_test
+  REDIS_URL: redis://localhost:6379/0
+  RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+
 jobs:
-  code-quality:
-    name: Code Quality & Linting
+  compile-and-fatal-quality:
+    name: Compile and fatal static checks
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Linting Tools
+          cache: pip
+      - name: Install quality tools
+        run: python -m pip install --upgrade pip ruff black mypy
+      - name: Compile all backend Python
+        run: python -m compileall -q services shared tests scripts
+      - name: Enforce test surface for every microservice
         run: |
-          python -m pip install --upgrade pip
-          pip install ruff black mypy
+          set -euo pipefail
+          for service_dir in services/*-service services/api-gateway; do
+            test -n "$(find "$service_dir/tests/unit" -type f -name 'test_*.py' -print -quit 2>/dev/null)" \
+              || { echo "Missing unit tests: $service_dir"; exit 1; }
+            test -n "$(find "$service_dir/tests/integration" -type f -name 'test_*.py' -print -quit 2>/dev/null)" \
+              || { echo "Missing integration tests: $service_dir"; exit 1; }
+          done
+          if rg -ni --glob 'test_*.py' 'assert True|placeholder test|minimal placeholder' services/*-service/tests services/api-gateway/tests; then
+            echo 'Placeholder tests are not permitted.'
+            exit 1
+          fi
+      - name: Fail on fatal Ruff findings
+        run: ruff check --select E9,F63,F7,F82 services shared tests scripts
+      - name: Report formatting debt without masking fatal checks
+        continue-on-error: true
+        run: black --check services shared tests scripts
+      - name: Report type-check debt
+        continue-on-error: true
+        run: mypy services shared --ignore-missing-imports
 
-      - name: Run Ruff Linter
-        run: |
-          ruff check services/ shared/ || true
-
-      - name: Check Code Formatting with Black
-        run: |
-          black --check services/ shared/ || true
-
-  test-matrix:
-    name: Run Unit & Integration Tests
+  service-tests:
+    name: Tests - ${{ matrix.service }}
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: hospital_master_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
     strategy:
       fail-fast: false
       matrix:
@@ -70,56 +132,67 @@ jobs:
           - triage-service
           - visit-service
           - ward-service
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Dependencies for ${{ matrix.service }}
+          cache: pip
+      - name: Install service dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov httpx
-          if [ -f services/${{ matrix.service }}/requirements.txt ]; then
-            pip install -r services/${{ matrix.service }}/requirements.txt
-          fi
-          if [ -f shared/requirements.txt ]; then
-            pip install -r shared/requirements.txt
-          fi
-
-      - name: Execute Tests for ${{ matrix.service }}
+          python -m pip install pytest pytest-asyncio pytest-cov httpx
+          python -m pip install -r services/${{ matrix.service }}/requirements.txt
+      - name: Collect tests and fail on collection errors
         env:
           PYTHONPATH: .:services/${{ matrix.service }}:shared
-          SECRET_KEY: ci-test-secret-key-for-testing-purposes-only
-          TESTING: 'true'
         run: |
-          if [ -d services/${{ matrix.service }}/tests ]; then
-            pytest services/${{ matrix.service }}/tests -v || true
-          else
-            echo "No tests directory for ${{ matrix.service }}, skipping."
-          fi
+          set -o pipefail
+          count=$(pytest services/${{ matrix.service }}/tests --collect-only -q | awk '/collected/{print $1; exit}')
+          test "${count:-0}" -gt 0
+      - name: Run service tests with coverage
+        env:
+          PYTHONPATH: .:services/${{ matrix.service }}:shared
+        run: |
+          pytest services/${{ matrix.service }}/tests \
+            --cov=services/${{ matrix.service }}/app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage-${{ matrix.service }}.xml \
+            -ra -v
+      - name: Upload service coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: coverage-${{ matrix.service }}.xml
+          if-no-files-found: ignore
 
-  docker-build-check:
-    name: Validate Docker Containers Build
+  shared-messaging-integration:
+    name: Shared RabbitMQ integration
     runs-on: ubuntu-latest
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build All Microservice Docker Images
-        run: |
-          docker compose -f infrastructure/docker-compose.yml build --parallel
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install messaging dependencies
+        run: python -m pip install --upgrade pip pytest pytest-asyncio aio-pika
+      - name: Run shared messaging integration tests
+        run: pytest tests/integration/test_messaging.py -ra -v
 
   migration-check:
-    name: Validate Alembic Migrations
+    name: Validate master and tenant migrations
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -134,84 +207,65 @@ jobs:
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
-
+          --health-retries 12
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install Migration Dependencies
+          cache: pip
+      - name: Install migration dependencies
+        run: python -m pip install --upgrade pip alembic psycopg2-binary sqlalchemy
+      - name: Validate master migration graph and upgrade
         run: |
-          python -m pip install --upgrade pip
-          pip install alembic psycopg2-binary sqlalchemy
-
-      - name: Validate Master DB Migrations
+          test "$(alembic -c migrations/master/alembic.ini heads | grep -c '(head)')" -eq 1
+          alembic -c migrations/master/alembic.ini upgrade head
+      - name: Create clean tenant database
         env:
-          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_master_test
-          PYTHONPATH: .:services/master-service:shared
-        run: |
-          if [ -f migrations/master/alembic.ini ]; then
-            # Singular "head" fails loudly if the chain has diverged into
-            # multiple heads, instead of silently applying to all of them.
-            alembic -c migrations/master/alembic.ini upgrade head
-          else
-            echo "No master alembic config found, skipping."
-          fi
-
-      - name: Create Tenant Test Database
-        run: |
-          PGPASSWORD=postgrespassword psql -h localhost -U postgres -c "CREATE DATABASE hospital_tenant_test;"
-
-      - name: Validate Tenant DB Migrations
+          PGPASSWORD: postgrespassword
+        run: psql -h localhost -U postgres -d hospital_master_test -c 'CREATE DATABASE hospital_tenant_test;'
+      - name: Validate tenant migration graph and upgrade
         env:
           TENANT_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_tenant_test
-          PYTHONPATH: .:services/patient-service:shared
         run: |
-          if [ -f migrations/tenant/alembic.ini ]; then
-            HEAD_COUNT=$(alembic -c migrations/tenant/alembic.ini heads | grep -c '(head)')
-            if [ "$HEAD_COUNT" -ne 1 ]; then
-              echo "::error::migrations/tenant/versions has $HEAD_COUNT heads (expected exactly 1)."
-              echo "Run 'alembic -c migrations/tenant/alembic.ini merge heads' to reconcile before merging."
-              alembic -c migrations/tenant/alembic.ini heads -v
-              exit 1
-            fi
-            # Applying the full chain to a disposable tenant DB is what
-            # catches divergent branches that redefine the same table
-            # (e.g. the historical "bills" table collision) before merge.
-            alembic -c migrations/tenant/alembic.ini upgrade head
-          else
-            echo "No tenant alembic config found, skipping."
-          fi
+          test "$(alembic -c migrations/tenant/alembic.ini heads | grep -c '(head)')" -eq 1
+          alembic -c migrations/tenant/alembic.ini upgrade head
+
+  docker-build-check:
+    name: Validate Docker compose configuration and builds
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password
+      SECRET_KEY: ci-secret-key
+      TENANT_DB_ENCRYPTION_KEY: ci-tenant-encryption-key
+      KEYCLOAK_ADMIN_PASSWORD: ci-keycloak-password
+      KEYCLOAK_CLIENT_SECRET: ci-keycloak-client-secret
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: ci-rabbit-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate compose model
+        run: docker compose -f infrastructure/docker-compose.yml config --quiet
+      - name: Build all backend images
+        run: docker compose -f infrastructure/docker-compose.yml build --parallel
 
   migration-immutability-check:
-    name: Prevent Editing Shipped Migrations
+    name: Prevent editing shipped migrations
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Reject changes to already-merged migration files
+      - name: Reject modifications to existing migration files
         run: |
           git fetch origin "${{ github.base_ref }}" --depth=50
-          BASE_SHA=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
-          CHANGED=$(git diff --name-status "$BASE_SHA" HEAD -- 'migrations/*/versions/*.py')
-          echo "$CHANGED"
-          BAD=$(echo "$CHANGED" | awk '$1 != "A" && $1 != "" {print}')
-          if [ -n "$BAD" ]; then
-            echo "::error::Already-shipped Alembic migration files were modified, renamed, or deleted."
-            echo "Once a migration file is merged it must be treated as immutable — a tenant DB may"
-            echo "already be stamped past it, so edits silently never apply to that DB. Add a new"
-            echo "revision instead."
-            echo "$BAD"
+          base_sha=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          changed=$(git diff --name-status "$base_sha" HEAD -- 'migrations/*/versions/*.py')
+          bad=$(printf '%s\n' "$changed" | awk '$1 != "A" && $1 != "" {print}')
+          if [ -n "$bad" ]; then
+            echo "Existing migration files are immutable; add a new revision instead."
+            echo "$bad"
             exit 1
           fi
-          echo "OK — no existing migration files were modified."
