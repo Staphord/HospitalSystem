@@ -14,7 +14,10 @@ class Tenant(Base):
     created_by = Column(
         UUID(as_uuid=True),
         ForeignKey("super_admins.super_admin_id"),
-        nullable=False,
+        # Public hospital self-registration has no authenticated superadmin
+        # actor. The field is populated for superadmin-created tenants and is
+        # intentionally nullable for self-service onboarding.
+        nullable=True,
     )
     country = Column(String(100), nullable=False, default="")
     city = Column(String(100), nullable=False, default="")

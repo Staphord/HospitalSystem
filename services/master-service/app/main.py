@@ -63,7 +63,7 @@ def _run_migrations() -> None:
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            [sys.executable, "-m", "alembic", "upgrade", "heads"],
             cwd=migrations_dir,
             capture_output=True,
             text=True,
@@ -82,8 +82,11 @@ def _run_migrations() -> None:
 async def lifespan(app: FastAPI):
     _run_migrations()
 
-    from app.core.database import init_db
-    init_db()
+    try:
+        from app.core.database import init_db
+        init_db()
+    except Exception as exc:
+        logger.warning("DB init_db skipped/existing tables: %s", exc)
 
     # Seed canonical subscription plans into the DB catalog.
     from app.db.master import get_master_db

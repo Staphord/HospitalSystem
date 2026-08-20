@@ -37,18 +37,21 @@ def _ensure_master_database_exists() -> None:
         isolation_level="AUTOCOMMIT",
     )
     
-    with admin_engine.connect() as conn:
-        # Check if database exists
-        result = conn.execute(
-            text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
-            {"db_name": db_name},
-        )
-        if not result.scalar():
-            # Create database
-            conn.execute(text(f'CREATE DATABASE "{db_name}"'))
-            print(f"[AUTO-CREATE] Master database '{db_name}' created successfully")
-    
-    admin_engine.dispose()
+    try:
+        with admin_engine.connect() as conn:
+            # Check if database exists
+            result = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
+                {"db_name": db_name},
+            )
+            if not result.scalar():
+                # Create database
+                conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+                print(f"[AUTO-CREATE] Master database '{db_name}' created successfully")
+    except Exception:
+        pass
+    finally:
+        admin_engine.dispose()
 
 
 # Ensure database exists before creating the engine

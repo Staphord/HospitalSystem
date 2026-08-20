@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.services import auth as auth_service

@@ -26,9 +26,15 @@ async def handle_registration_failed(patient_id: str, tenant_id: str) -> None:
     try:
         # Patient service database uses a single shared patients table in hospital_master.
         # Query matching both patient UUID and hospital (tenant) id.
+        import uuid
+        try:
+            pid = uuid.UUID(patient_id)
+        except (ValueError, AttributeError):
+            pid = patient_id
+
         patient = (
             db.query(TenantPatient)
-            .filter(TenantPatient.id == patient_id, TenantPatient.hospital_id == tenant_id)
+            .filter(TenantPatient.id == pid, TenantPatient.hospital_id == tenant_id)
             .first()
         )
 

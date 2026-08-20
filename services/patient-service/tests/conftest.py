@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.models.patient import TenantPatient, PatientNumberSequence
@@ -8,7 +9,12 @@ from app.models.patient import TenantPatient, PatientNumberSequence
 
 @pytest.fixture
 def db_session():
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=False,
+    )
     Base.metadata.create_all(bind=engine)
 
     @event.listens_for(engine, "connect")

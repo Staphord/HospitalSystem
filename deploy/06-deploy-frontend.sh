@@ -38,6 +38,7 @@ chown -R www-data:www-data "${WEB_ROOT}"
 
 echo "== Configuring Nginx =="
 cp "${SCRIPT_DIR}/nginx-hospitalflow.conf" /etc/nginx/sites-available/hospitalflow
+cp "${SCRIPT_DIR}/hospitalflow-backend-upstream.conf" /etc/nginx/conf.d/hospitalflow-backend-upstream.conf
 ln -sfn /etc/nginx/sites-available/hospitalflow /etc/nginx/sites-enabled/hospitalflow
 rm -f /etc/nginx/sites-enabled/default
 nginx -t

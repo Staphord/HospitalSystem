@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -24,4 +25,7 @@ class SuperAdmin(Base):
     backup_codes = Column(Text, nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     last_login_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, nullable=False, default="now()")
+    # Use a Python callable so SQLite tests and PostgreSQL receive a real
+    # datetime value. A string default such as ``"now()"`` is not portable
+    # and causes SQLAlchemy's SQLite DateTime processor to fail.
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))

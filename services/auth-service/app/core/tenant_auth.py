@@ -75,7 +75,9 @@ async def _decode_token(token: str) -> dict[str, Any]:
 
     kid = headers.get("kid", "")
 
-    if kid == "impersonation-key" or not kid:
+    # Local tokens are issued by the auth service for both impersonation and
+    # super-admin sessions. They must not be sent to Keycloak JWKS lookup.
+    if kid in {"impersonation-key", "superadmin-key"} or not kid:
         try:
             payload = jwt.decode(
                 token, settings.secret_key, algorithms=["HS256"],
