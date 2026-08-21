@@ -34,9 +34,9 @@ jobs:
             git checkout staging
             git pull origin staging
             docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml build --parallel
-            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --remove-orphans
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --remove-orphans --scale staging-bootstrap=0
             docker exec hospital-staging-master-service alembic -c /app/migrations/master/alembic.ini upgrade head
-            docker start -a hospital-staging-bootstrap || true
-            docker start hospital-staging-api-gateway hospital-staging-auth-service
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml run --rm --no-deps staging-bootstrap || true
+            docker start hospital-staging-api-gateway hospital-staging-auth-service || true
             curl -s -f http://127.0.0.1:8100/health || (echo "Staging Health Probe Failed!" && exit 1)
 

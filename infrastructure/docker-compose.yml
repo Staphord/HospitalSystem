@@ -116,8 +116,6 @@ services:
       REPORT_SERVICE_URL: http://report-service:8020
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
-      bootstrap:
-        condition: service_completed_successfully
       master-service:
         condition: service_healthy
       keycloak:
@@ -174,8 +172,6 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       FRONTEND_URL: https://gilgali.com
     depends_on:
-      bootstrap:
-        condition: service_completed_successfully
       master-service:
         condition: service_healthy
       keycloak:
@@ -270,6 +266,8 @@ services:
       retries: 5
 
   bootstrap:
+    profiles:
+      - tools
     build:
       context: ../services/master-service
       dockerfile: Dockerfile
