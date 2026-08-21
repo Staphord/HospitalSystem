@@ -2519,11 +2519,6 @@ async def create_referral(
     )
 
 
-    ref.status = "cancelled"
-    await db.commit()
-    return {"status": "success", "message": "Referral cancelled"}
-
-
 @router.get("/dashboard/stats", response_model=DoctorDashboardStatsResponse, tags=["Dashboard"])
 async def get_doctor_dashboard_stats(
     db: AsyncSession = Depends(get_tenant_db),

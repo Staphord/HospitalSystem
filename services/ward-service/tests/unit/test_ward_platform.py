@@ -1,6 +1,7 @@
 """Unit and integration edge cases test suite for ward-service domain logic and security handlers."""
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -858,8 +859,9 @@ async def test_security_user_dependencies_and_introspect():
     try:
         req = Request({"type": "http", "method": "GET", "path": "/api/v1/ward/beds", "headers": []})
         creds = security.HTTPAuthorizationCredentials(scheme="Bearer", credentials="tok")
-        active_user = await security.get_current_active_user(request=req, credentials=creds)
-        assert active_user.sub == "test-user-sub"
+        with patch("app.core.security.settings.keycloak_introspect", False):
+            active_user = await security.get_current_active_user(request=req, credentials=creds)
+            assert active_user.sub == "test-user-sub"
     finally:
         security._decode_token = orig_dec
 

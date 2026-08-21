@@ -72,7 +72,7 @@ class TestSuspensionJob:
             MagicMock(invoice_number="INV-NEW", amount=100.0, currency="USD", due_date=date(2026, 9, 1), plan_name="standard", billing_period_start=date(2026, 8, 1), billing_period_end=date(2026, 8, 31)),
         ]
 
-        with patch("app.db.master.MasterSessionLocal", return_value=mock_db):
+        with patch("app.db.master.get_master_db", return_value=mock_db):
             with patch("app.services.subscription_service._generate_invoice"):
                 with patch("app.services.suspension_job._send_invoice_email_direct", AsyncMock()):
                     with patch("app.events.publisher.publish_subscription_invoice_generated", AsyncMock()):
@@ -95,7 +95,7 @@ class TestSuspensionJob:
         mock_db.query.return_value.filter.return_value.all.return_value = [fake_inv]
         mock_db.query.return_value.filter.return_value.first.return_value = fake_t
 
-        with patch("app.db.master.MasterSessionLocal", return_value=mock_db):
+        with patch("app.db.master.get_master_db", return_value=mock_db):
             with patch("app.config.settings.smtp_user", ""):
                 res = await run_overdue_payment_reminders()
                 assert res == 1
@@ -116,7 +116,7 @@ class TestSuspensionJob:
         mock_db.query.return_value.filter.return_value.all.return_value = [fake_inv]
         mock_db.query.return_value.filter.return_value.first.return_value = fake_t
 
-        with patch("app.db.master.MasterSessionLocal", return_value=mock_db):
+        with patch("app.db.master.get_master_db", return_value=mock_db):
             with patch("app.config.settings.smtp_user", "smtp_user"), patch("app.config.settings.smtp_password", "secret"):
                 with patch("app.events.publisher.publish_subscription_invoice_overdue", AsyncMock()):
                     with patch("aiosmtplib.send", AsyncMock()):
@@ -138,7 +138,7 @@ class TestSuspensionJob:
         mock_db.query.return_value.filter.return_value.all.return_value = [fake_t]
         mock_db.query.return_value.filter.return_value.first.return_value = fake_inv
 
-        with patch("app.db.master.MasterSessionLocal", return_value=mock_db):
+        with patch("app.db.master.get_master_db", return_value=mock_db):
             with patch("app.services.tenant_service.cache_tenant_suspension", AsyncMock()):
                 with patch("app.services.tenant_service._revoke_keycloak_sessions", AsyncMock()):
                     with patch("app.events.publisher.publish_tenant_suspended", AsyncMock()):
@@ -172,7 +172,7 @@ class TestSuspensionJob:
         mock_db.query.return_value.filter.return_value.all.return_value = [fake_inv]
         mock_db.query.return_value.filter.return_value.first.return_value = fake_t
 
-        with patch("app.db.master.MasterSessionLocal", return_value=mock_db):
+        with patch("app.db.master.get_master_db", return_value=mock_db):
             with patch("app.config.settings.smtp_user", "smtp_user"), patch("app.config.settings.smtp_password", "secret"):
                 with patch("app.events.publisher.publish_subscription_invoice_overdue", AsyncMock(side_effect=Exception("event err"))):
                     with patch("aiosmtplib.send", AsyncMock(side_effect=Exception("smtp err"))):
@@ -194,7 +194,7 @@ class TestSuspensionJob:
         mock_db.query.return_value.filter.return_value.all.return_value = [fake_t]
         mock_db.query.return_value.filter.return_value.first.return_value = fake_inv
 
-        with patch("app.db.master.MasterSessionLocal", return_value=mock_db):
+        with patch("app.db.master.get_master_db", return_value=mock_db):
             with patch("app.services.tenant_service.cache_tenant_suspension", AsyncMock()):
                 with patch("app.services.tenant_service._revoke_keycloak_sessions", AsyncMock()):
                     with patch("app.events.publisher.publish_tenant_suspended", AsyncMock(side_effect=Exception("evt err"))):

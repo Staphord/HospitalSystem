@@ -35,6 +35,23 @@ from app.api.v1.schemas import (
 )
 
 
+class FakeClient:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, *args):
+        pass
+    async def get(self, url):
+        class Resp:
+            def raise_for_status(self): pass
+            def json(self): return {"keys": [{"kid": "k2"}]}
+        return Resp()
+    async def post(self, url, data=None):
+        class Resp:
+            def raise_for_status(self): pass
+            def json(self): return {"active": False}
+        return Resp()
+
+
 @pytest.mark.asyncio
 async def test_pharmacy_infrastructure_core_db_limiter_middleware_security_and_main(test_engine):
     # database.py
@@ -130,22 +147,6 @@ async def test_pharmacy_infrastructure_core_db_limiter_middleware_security_and_m
     security._jwks_cache["jwks:test"] = {"keys": [{"kid": "k1", "n": "123"}]}
     jwks = await security._fetch_jwks("test")
     assert jwks == {"keys": [{"kid": "k1", "n": "123"}]}
-
-    class FakeClient:
-        async def __aenter__(self):
-            return self
-        async def __aexit__(self, *args):
-            pass
-        async def get(self, url):
-            class Resp:
-                def raise_for_status(self): pass
-                def json(self): return {"keys": [{"kid": "k2"}]}
-            return Resp()
-        async def post(self, url, data=None):
-            class Resp:
-                def raise_for_status(self): pass
-                def json(self): return {"active": False}
-            return Resp()
 
     old_client = httpx.AsyncClient
     httpx.AsyncClient = lambda *a, **kw: FakeClient()

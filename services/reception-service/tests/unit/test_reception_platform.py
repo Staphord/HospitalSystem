@@ -81,8 +81,9 @@ async def test_security_get_current_active_user_success():
         req = MagicMock()
         req.state = MagicMock()
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="tok")
-        result = await sec_mod.get_current_active_user(request=req, credentials=creds)
-        assert result.sub == "u1"
+        with patch("app.core.security.settings.keycloak_introspect", False):
+            result = await sec_mod.get_current_active_user(request=req, credentials=creds)
+            assert result.sub == "u1"
     finally:
         sec_mod._decode_token = orig_dec
 
