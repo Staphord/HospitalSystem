@@ -45,7 +45,7 @@ jobs:
             done
 
             docker exec hospital-staging-master-service alembic -c /app/migrations/master/alembic.ini upgrade head
-            docker compose --profile tools -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml run --rm --no-deps staging-bootstrap || true
+            docker start -a hospital-staging-bootstrap || true
             docker start hospital-staging-api-gateway hospital-staging-auth-service || true
 
             echo "Waiting for Staging Health Probe on port 8100..."
