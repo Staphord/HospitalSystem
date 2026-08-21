@@ -35,17 +35,58 @@ jobs:
             git pull origin staging
             docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml build --parallel
             docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --remove-orphans --scale staging-bootstrap=0
+            # Wait for master-service container to enter running state before running migrations
+            echo "Waiting for master-service container..."
+            for i in {1..15}; do
+              if [ "$(docker inspect --format '{{.State.Status}}' hospital-staging-master-service 2>/dev/null)" = "running" ]; then
+                break
+              fi
+              sleep 1
+            done
+
             docker exec hospital-staging-master-service alembic -c /app/migrations/master/alembic.ini upgrade head
             docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml run --rm --no-deps staging-bootstrap || true
             docker start hospital-staging-api-gateway hospital-staging-auth-service || true
 
             echo "Waiting for Staging Health Probe on port 8100..."
+            healthy=0
             for i in {1..30}; do
               if curl -s -f http://127.0.0.1:8100/health >/dev/null 2>&1; then
+                healthy=1
                 echo "Staging Health Probe Passed!"
                 break
               fi
               sleep 2
             done
-            curl -s -f http://127.0.0.1:8100/health || (echo "Staging Health Probe Failed!" && exit 1)
+
+            if [ "$healthy" -eq 0 ]; then
+              echo "Staging Health Probe Failed!"
+              exit 1
+            fi
+
+            echo "Verifying all 16 staging microservices container states..."
+            unhealthy=0
+            for service in api-gateway auth-service master-service patient-service visit-service reception-service triage-service consultation-service laboratory-service radiology-service pharmacy-service billing-service ward-service admin-service notification-service report-service; do
+              service_ok=0
+              for attempt in {1..5}; do
+                status=$(docker inspect --format '{{.State.Status}}' "hospital-staging-${service}" 2>/dev/null || echo "missing")
+                if [ "$status" = "running" ]; then
+                  service_ok=1
+                  break
+                fi
+                sleep 2
+              done
+
+              if [ "$service_ok" -eq 1 ]; then
+                echo "OK: ${service} is running."
+              else
+                echo "ERROR: ${service} is not running! State: ${status}"
+                unhealthy=1
+              fi
+            done
+
+            if [ "$unhealthy" -ne 0 ]; then
+              echo "Staging Deployment Failed: One or more microservices are not running!"
+              exit 1
+            fi
 
