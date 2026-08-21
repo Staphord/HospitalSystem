@@ -31,7 +31,7 @@ async def get_shared_users(
     db: Session = Depends(get_tenant_db_for_request),
     ctx: TenantContext = Depends(get_current_tenant),
 ):
-    return [HospitalUserOut.model_validate(u) for u in admin_svc.list_users(db)]
+    return [HospitalUserOut.model_validate(u) for u in admin_svc.list_users(db, ctx.tenant_id)]
 
 
 router = APIRouter()

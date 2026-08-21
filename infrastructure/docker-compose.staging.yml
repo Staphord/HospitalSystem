@@ -27,6 +27,22 @@ services:
       context: ../services/api-gateway
       dockerfile: Dockerfile
     container_name: hospital-staging-api-gateway
+    environment:
+      - AUTH_SERVICE_URL=http://hospital-staging-auth-service:8001
+      - MASTER_SERVICE_URL=http://hospital-staging-master-service:8002
+      - PATIENT_SERVICE_URL=http://hospital-staging-patient-service:8005
+      - VISIT_SERVICE_URL=http://hospital-staging-visit-service:8006
+      - RECEPTION_SERVICE_URL=http://hospital-staging-reception-service:8010
+      - TRIAGE_SERVICE_URL=http://hospital-staging-triage-service:8011
+      - CONSULTATION_SERVICE_URL=http://hospital-staging-consultation-service:8012
+      - LABORATORY_SERVICE_URL=http://hospital-staging-laboratory-service:8013
+      - RADIOLOGY_SERVICE_URL=http://hospital-staging-radiology-service:8014
+      - PHARMACY_SERVICE_URL=http://hospital-staging-pharmacy-service:8015
+      - BILLING_SERVICE_URL=http://hospital-staging-billing-service:8016
+      - WARD_SERVICE_URL=http://hospital-staging-ward-service:8017
+      - ADMIN_SERVICE_URL=http://hospital-staging-admin-service:8018
+      - NOTIFICATION_SERVICE_URL=http://hospital-staging-notification-service:8019
+      - REPORT_SERVICE_URL=http://hospital-staging-report-service:8020
     ports:
       - "127.0.0.1:8100:8000"
     env_file:
