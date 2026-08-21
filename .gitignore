@@ -31,3 +31,6 @@ AGENTS.md
 # Auto-generated graph/analysis output (graphify tool output)
 graphify-out/
 
+# Deployment state directory
+.deploy-state/
+
