@@ -121,6 +121,7 @@ def test_billing_model_timestamp():
 @pytest.mark.asyncio
 async def test_security_token_and_roles(monkeypatch):
     from jose import jwt
+    monkeypatch.setattr(security.settings, "keycloak_introspect", False)
     token = jwt.encode({"sub": "u", "type": "superadmin", "role": "super_admin"}, security.settings.secret_key, algorithm="HS256")
     req = MagicMock(); req.state = MagicMock()
     user = await security.get_current_active_user(req, security.HTTPAuthorizationCredentials(scheme="Bearer", credentials=token))

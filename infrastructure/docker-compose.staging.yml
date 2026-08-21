@@ -1,0 +1,348 @@
+name: hospitalsystem-staging
+
+networks:
+  hospital-network:
+    external: true
+    name: hospitalsystem_hospital-network
+
+services:
+  staging-bootstrap:
+    profiles:
+      - tools
+    build:
+      context: ../services/master-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-bootstrap
+    command: ["python", "/app/scripts/bootstrap.py"]
+    env_file:
+      - ../.env
+    volumes:
+      - ../scripts:/app/scripts:ro
+    networks:
+      - hospital-network
+    restart: "no"
+
+  api-gateway:
+    build:
+      context: ../services/api-gateway
+      dockerfile: Dockerfile
+    container_name: hospital-staging-api-gateway
+    ports:
+      - "127.0.0.1:8100:8000"
+    env_file:
+      - ../.env
+    depends_on:
+      master-service:
+        condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: ../services/auth-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-auth-service
+    ports:
+      - "127.0.0.1:8101:8001"
+    env_file:
+      - ../.env
+    depends_on:
+      master-service:
+        condition: service_healthy
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  master-service:
+    build:
+      context: ../services/master-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-master-service
+    ports:
+      - "127.0.0.1:8102:8002"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  patient-service:
+    build:
+      context: ../services/patient-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-patient-service
+    ports:
+      - "127.0.0.1:8105:8005"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8005/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  visit-service:
+    build:
+      context: ../services/visit-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-visit-service
+    ports:
+      - "127.0.0.1:8106:8006"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8006/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  reception-service:
+    build:
+      context: ../services/reception-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-reception-service
+    ports:
+      - "127.0.0.1:8110:8010"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8010/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  triage-service:
+    build:
+      context: ../services/triage-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-triage-service
+    ports:
+      - "127.0.0.1:8111:8011"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8011/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  consultation-service:
+    build:
+      context: ../services/consultation-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-consultation-service
+    ports:
+      - "127.0.0.1:8112:8012"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8012/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  laboratory-service:
+    build:
+      context: ../services/laboratory-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-laboratory-service
+    ports:
+      - "127.0.0.1:8113:8013"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8013/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  radiology-service:
+    build:
+      context: ../services/radiology-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-radiology-service
+    ports:
+      - "127.0.0.1:8114:8014"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8014/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  pharmacy-service:
+    build:
+      context: ../services/pharmacy-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-pharmacy-service
+    ports:
+      - "127.0.0.1:8115:8015"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8015/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  billing-service:
+    build:
+      context: ../services/billing-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-billing-service
+    ports:
+      - "127.0.0.1:8116:8016"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8016/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ward-service:
+    build:
+      context: ../services/ward-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-ward-service
+    ports:
+      - "127.0.0.1:8117:8017"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8017/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  admin-service:
+    build:
+      context: ../services/admin-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-admin-service
+    ports:
+      - "127.0.0.1:8118:8018"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8018/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  notification-service:
+    build:
+      context: ../services/notification-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-notification-service
+    ports:
+      - "127.0.0.1:8119:8019"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8019/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  report-service:
+    build:
+      context: ../services/report-service
+      dockerfile: Dockerfile
+    container_name: hospital-staging-report-service
+    ports:
+      - "127.0.0.1:8120:8020"
+    env_file:
+      - ../.env
+    volumes:
+      - ../migrations:/app/migrations:ro
+      - ../shared:/app/shared:ro
+    networks:
+      - hospital-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8020/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5

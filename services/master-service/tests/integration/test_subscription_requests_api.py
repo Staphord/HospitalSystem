@@ -3,20 +3,18 @@ import uuid
 from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
 
-# Inject mock for app.db.master to avoid PostgreSQL connection check on import
-sys.modules["app.db.master"] = MagicMock()
-
 import pytest
 from contextlib import asynccontextmanager
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db.base import Base
-from app.core.database import get_db
-from app.core.security import get_current_active_user, TokenPayload
-from app.models import Tenant, User, SubscriptionPlan, Subscription, Invoice
-from app.main import app
+with patch("app.db.master._ensure_master_database_exists"):
+    from app.db.base import Base
+    from app.core.database import get_db
+    from app.core.security import get_current_active_user, TokenPayload
+    from app.models import Tenant, User, SubscriptionPlan, Subscription, Invoice
+    from app.main import app
 
 @asynccontextmanager
 async def dummy_lifespan(app):

@@ -14,9 +14,11 @@ def _token(payload):
 
 @pytest.mark.asyncio
 async def test_security_local_tokens_roles_and_hospital():
+    from unittest.mock import patch
     req = MagicMock(); req.state = MagicMock()
-    user = await security.get_current_active_user(req, security.HTTPAuthorizationCredentials(scheme="Bearer", credentials=_token({"sub": "u", "type": "superadmin"})))
-    assert security._extract_roles(user) == ["super_admin"]
+    with patch("app.core.security.settings.keycloak_introspect", False):
+        user = await security.get_current_active_user(req, security.HTTPAuthorizationCredentials(scheme="Bearer", credentials=_token({"sub": "u", "type": "superadmin"})))
+        assert security._extract_roles(user) == ["super_admin"]
     assert req.state.user_sub == "u"
     with pytest.raises(Exception): await security.get_current_active_user(req, None)
     with pytest.raises(Exception): await security.get_current_active_user(req, security.HTTPAuthorizationCredentials(scheme="Basic", credentials="x"))

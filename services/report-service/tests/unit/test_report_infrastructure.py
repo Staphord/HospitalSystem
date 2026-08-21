@@ -238,8 +238,9 @@ class TestCoreSecurityModule:
         creds = MagicMock(scheme="bearer", credentials=tok)
         req = MagicMock()
 
-        user = await sec_mod.get_current_active_user(req, credentials=creds)
-        assert user.sub == "user-999"
+        with patch("app.core.security.settings.keycloak_introspect", False):
+            user = await sec_mod.get_current_active_user(req, credentials=creds)
+            assert user.sub == "user-999"
 
     @pytest.mark.asyncio
     async def test_get_current_active_user_no_creds(self):

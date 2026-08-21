@@ -1,9 +1,25 @@
 import sys
 from unittest.mock import MagicMock, AsyncMock, patch
 
-# Inject a mock for app.db.master to avoid PostgreSQL connection check on import
-mock_db_master = MagicMock()
-sys.modules["app.db.master"] = mock_db_master
+with patch("app.db.master._ensure_master_database_exists"):
+    from app.db.base import Base
+    from app.core.database import get_db
+    from app.core.security import get_current_active_user, TokenPayload
+    from app.models import (
+        User,
+        Tenant,
+        GlobalAuditLog,
+        SuperAdmin,
+        SubscriptionPlan,
+        Subscription,
+        Invoice,
+        SaaSPayment,
+        SuperAdminAuditLog,
+        Announcement,
+        SubscriptionAuditLog,
+        RefreshToken,
+    )
+    from app.models.auth import RefreshToken
 
 import pytest
 from contextlib import asynccontextmanager
@@ -24,24 +40,8 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 def compile_uuid_sqlite(type_, compiler, **kw):
     return "CHAR(36)"
 
-from app.db.base import Base
-from app.core.database import get_db
-from app.core.security import get_current_active_user, TokenPayload
-from app.models import (
-    User,
-    Tenant,
-    GlobalAuditLog,
-    SuperAdmin,
-    SubscriptionPlan,
-    Subscription,
-    Invoice,
-    SaaSPayment,
-    SuperAdminAuditLog,
-    Announcement,
-    SubscriptionAuditLog,
-    RefreshToken,
-)
-from app.models.auth import RefreshToken
+# Main FastAPI app import
+from app.main import app
 
 
 # Override lifespan to bypass external dependencies during testing
@@ -49,7 +49,6 @@ from app.models.auth import RefreshToken
 async def dummy_lifespan(app):
     yield
 
-from app.main import app
 app.router.lifespan_context = dummy_lifespan
 
 

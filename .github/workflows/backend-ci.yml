@@ -11,7 +11,7 @@ on:
       - 'infrastructure/**'
       - 'scripts/**'
       - 'pyproject.toml'
-      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [main, staging, joseph]
     paths:
@@ -22,7 +22,7 @@ on:
       - 'infrastructure/**'
       - 'scripts/**'
       - 'pyproject.toml'
-      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/**'
 
 permissions:
   contents: read
@@ -40,6 +40,13 @@ env:
   TENANT_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_tenant_test
   REDIS_URL: redis://localhost:6379/0
   RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+  KEYCLOAK_URL: http://localhost:8080
+  KEYCLOAK_REALM: hospital
+  KEYCLOAK_CLIENT_ID: hospital-backend
+  KEYCLOAK_CLIENT_SECRET: ci-test-keycloak-client-secret
+  KEYCLOAK_ADMIN_USERNAME: admin
+  KEYCLOAK_ADMIN_PASSWORD: admin
+  TENANT_DB_ENCRYPTION_KEY: u67aHw6vkhhB_0HUpBa-EU8P9KBeHkzqaKFsP2LDZ0k=
 
 jobs:
   compile-and-fatal-quality:
@@ -217,6 +224,8 @@ jobs:
       - name: Install migration dependencies
         run: python -m pip install --upgrade pip alembic psycopg2-binary sqlalchemy
       - name: Validate master migration graph and upgrade
+        env:
+          PYTHONPATH: .:services/master-service:shared
         run: |
           test "$(alembic -c migrations/master/alembic.ini heads | grep -c '(head)')" -eq 1
           alembic -c migrations/master/alembic.ini upgrade head
@@ -226,6 +235,7 @@ jobs:
         run: psql -h localhost -U postgres -d hospital_master_test -c 'CREATE DATABASE hospital_tenant_test;'
       - name: Validate tenant migration graph and upgrade
         env:
+          PYTHONPATH: .:services/master-service:shared
           TENANT_DB_URL: postgresql://postgres:postgrespassword@localhost:5432/hospital_tenant_test
         run: |
           test "$(alembic -c migrations/tenant/alembic.ini heads | grep -c '(head)')" -eq 1
@@ -237,7 +247,7 @@ jobs:
     env:
       POSTGRES_PASSWORD: ci-postgres-password
       SECRET_KEY: ci-secret-key
-      TENANT_DB_ENCRYPTION_KEY: ci-tenant-encryption-key
+      TENANT_DB_ENCRYPTION_KEY: u67aHw6vkhhB_0HUpBa-EU8P9KBeHkzqaKFsP2LDZ0k=
       KEYCLOAK_ADMIN_PASSWORD: ci-keycloak-password
       KEYCLOAK_CLIENT_SECRET: ci-keycloak-client-secret
       RABBITMQ_USER: guest
@@ -245,6 +255,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Ensure env file exists for compose validation
+        run: cp .env.example .env || touch .env
       - name: Validate compose model
         run: docker compose -f infrastructure/docker-compose.yml config --quiet
       - name: Build all backend images
