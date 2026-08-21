@@ -7,8 +7,6 @@ networks:
 
 services:
   staging-bootstrap:
-    profiles:
-      - tools
     build:
       context: ../services/master-service
       dockerfile: Dockerfile

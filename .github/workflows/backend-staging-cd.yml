@@ -34,7 +34,7 @@ jobs:
             git checkout staging
             git pull origin staging
             docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml build --parallel
-            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --remove-orphans
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --remove-orphans --scale staging-bootstrap=0
             # Wait for master-service container to enter running state before running migrations
             echo "Waiting for master-service container..."
             for i in {1..15}; do
