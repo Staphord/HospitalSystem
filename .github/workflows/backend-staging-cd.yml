@@ -38,5 +38,14 @@ jobs:
             docker exec hospital-staging-master-service alembic -c /app/migrations/master/alembic.ini upgrade head
             docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml run --rm --no-deps staging-bootstrap || true
             docker start hospital-staging-api-gateway hospital-staging-auth-service || true
+
+            echo "Waiting for Staging Health Probe on port 8100..."
+            for i in {1..30}; do
+              if curl -s -f http://127.0.0.1:8100/health >/dev/null 2>&1; then
+                echo "Staging Health Probe Passed!"
+                break
+              fi
+              sleep 2
+            done
             curl -s -f http://127.0.0.1:8100/health || (echo "Staging Health Probe Failed!" && exit 1)
 

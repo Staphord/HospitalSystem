@@ -7,6 +7,8 @@ networks:
 
 services:
   staging-bootstrap:
+    profiles:
+      - tools
     build:
       context: ../services/master-service
       dockerfile: Dockerfile
@@ -30,8 +32,8 @@ services:
     env_file:
       - ../.env
     depends_on:
-      staging-bootstrap:
-        condition: service_completed_successfully
+      master-service:
+        condition: service_healthy
     volumes:
       - ../shared:/app/shared:ro
     networks:
@@ -52,8 +54,8 @@ services:
     env_file:
       - ../.env
     depends_on:
-      staging-bootstrap:
-        condition: service_completed_successfully
+      master-service:
+        condition: service_healthy
     volumes:
       - ../migrations:/app/migrations:ro
       - ../shared:/app/shared:ro
