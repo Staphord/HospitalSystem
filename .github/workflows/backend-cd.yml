@@ -51,7 +51,7 @@ jobs:
             git fetch --prune origin main
             git cat-file -e '${{ steps.release.outputs.sha }}^{commit}'
             git checkout --detach '${{ steps.release.outputs.sha }}'
-            sudo DEPLOY_SHA='${{ steps.release.outputs.sha }}' ./deploy/deploy-atomic.sh stage '${{ steps.release.outputs.tag }}'
+            sudo ./deploy/deploy-atomic.sh stage '${{ steps.release.outputs.tag }}'
             sudo /var/www/hospital-backend/deploy/deploy-atomic.sh activate '${{ steps.release.outputs.tag }}'
 
       - name: Verify backend production health
@@ -63,7 +63,49 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -euo pipefail
-            curl -s -f http://127.0.0.1:8000/health || (sudo /var/www/hospital-backend/deploy/deploy-atomic.sh rollback && exit 1)
+            echo "Waiting for Production Health Probe on port 8000..."
+            healthy=0
+            for i in {1..30}; do
+              if curl -s -f http://127.0.0.1:8000/health >/dev/null 2>&1; then
+                healthy=1
+                echo "Production Health Probe Passed!"
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$healthy" -eq 0 ]; then
+              echo "Production Health Probe Failed! Rolling back..."
+              sudo /var/www/hospital-backend/deploy/deploy-atomic.sh rollback
+              exit 1
+            fi
+
+            echo "Verifying all 16 production microservices container states..."
+            unhealthy=0
+            for service in api-gateway auth-service master-service patient-service visit-service reception-service triage-service consultation-service laboratory-service radiology-service pharmacy-service billing-service ward-service admin-service notification-service report-service; do
+              service_ok=0
+              for attempt in {1..5}; do
+                status=$(docker inspect --format '{{.State.Status}}' "hospital-${service}" 2>/dev/null || echo "missing")
+                if [ "$status" = "running" ]; then
+                  service_ok=1
+                  break
+                fi
+                sleep 2
+              done
+
+              if [ "$service_ok" -eq 1 ]; then
+                echo "OK: ${service} is running."
+              else
+                echo "ERROR: ${service} is not running! State: ${status}"
+                unhealthy=1
+              fi
+            done
+
+            if [ "$unhealthy" -ne 0 ]; then
+              echo "Production Deployment Failed: One or more microservices are not running! Rolling back..."
+              sudo /var/www/hospital-backend/deploy/deploy-atomic.sh rollback
+              exit 1
+            fi
 
       - name: Trigger frontend deployment for deployed backend release
         if: success()
