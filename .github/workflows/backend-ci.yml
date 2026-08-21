@@ -11,7 +11,7 @@ on:
       - 'infrastructure/**'
       - 'scripts/**'
       - 'pyproject.toml'
-      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [main, staging, joseph]
     paths:
@@ -22,7 +22,7 @@ on:
       - 'infrastructure/**'
       - 'scripts/**'
       - 'pyproject.toml'
-      - '.github/workflows/backend-ci.yml'
+      - '.github/workflows/**'
 
 permissions:
   contents: read
