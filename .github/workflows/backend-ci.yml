@@ -301,6 +301,8 @@ jobs:
       - migration-check
       - docker-build-check
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all JUnit results
         uses: actions/download-artifact@v4
         with:
