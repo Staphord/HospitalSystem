@@ -232,6 +232,7 @@ async def superadmin_login(
     db: Session = Depends(get_db),
 ) -> dict:
     ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
     logger.info("Superadmin login attempt: %s from %s", body.username, ip)
 
     # Brute-force protection
@@ -249,25 +250,31 @@ async def superadmin_login(
     # Authenticate superadmins via Keycloak master realm using the dedicated
     # superadmin-login client (public, Direct Access Grants enabled).
     # Fall back to default realm for backwards compatibility.
-    realms_to_try = ["master", settings.keycloak_realm]
+    realms_to_try = [settings.keycloak_master_realm, settings.keycloak_realm]
     last_exc = None
+    last_exc_was_credentials_failure = False
     result = None
     realm_used = None
     for realm_candidate in realms_to_try:
         try:
             # Use superadmin-login (no secret) for master realm, hospital-api for default
-            client = "superadmin-login" if realm_candidate == "master" else None
+            client = "superadmin-login" if realm_candidate == settings.keycloak_master_realm else None
             result = await auth_service.login(
                 username=body.username,
                 password=body.password,
                 db=db,
                 realm=realm_candidate,
                 client_id=client,
+                ip_address=ip,
+                user_agent=user_agent,
             )
             realm_used = realm_candidate
             break
         except (HTTPException, Exception) as exc:
             last_exc = exc
+            last_exc_was_credentials_failure = (
+                isinstance(exc, HTTPException) and exc.status_code == status.HTTP_401_UNAUTHORIZED
+            )
             logger.debug(
                 "Superadmin login attempt for %s in realm %s failed: %s",
                 body.username, realm_candidate, exc,
@@ -280,14 +287,14 @@ async def superadmin_login(
         if local and local.email:
             try:
                 logger.info("Local superadmin %s found — syncing to Keycloak master realm", body.username)
-                await ensure_roles(["super_admin"], realm="master")
+                await ensure_roles(["super_admin"], realm=settings.keycloak_master_realm)
                 kc_sub = await create_keycloak_user(
                     username=body.username,
                     password=body.password,
                     email=local.email,
                     roles=["super_admin"],
                     full_name=local.full_name or body.username,
-                    realm="master",
+                    realm=settings.keycloak_master_realm,
                 )
                 local.keycloak_sub = kc_sub
                 local.password_hash = _hash_password(body.password)
@@ -298,16 +305,44 @@ async def superadmin_login(
                     username=body.username,
                     password=body.password,
                     db=db,
-                    realm="master",
+                    realm=settings.keycloak_master_realm,
                     client_id="superadmin-login",
+                    ip_address=ip,
+                    user_agent=user_agent,
                 )
-                realm_used = "master"
+                realm_used = settings.keycloak_master_realm
                 logger.info("Superadmin %s synced and authenticated via Keycloak", body.username)
             except Exception as sync_exc:
                 logger.error("Failed to sync superadmin %s to Keycloak: %s", body.username, sync_exc)
                 result = None
+                # Deliberately NOT overwriting last_exc/last_exc_was_credentials_failure
+                # here: this sync/retry step is an internal self-healing attempt, and
+                # its own failure (e.g. the Keycloak admin API being unreachable) is a
+                # separate concern from why the original login attempt(s) failed. The
+                # original realm loop's classification is the more meaningful signal
+                # for the user-facing error and the brute-force counter.
 
     if result is None:
+        logger.warning(
+            "Superadmin login failed for %s across realms %s: %s: %s",
+            body.username, realms_to_try, type(last_exc).__name__, last_exc,
+        )
+
+        # Only a confirmed bad-credentials response from Keycloak (401) should
+        # count against the brute-force limiter or be reported to the user as
+        # "Invalid username or password". A network error, timeout, or any
+        # other Keycloak-side failure is not a credentials problem — retrying
+        # it against a second realm and/or surfacing it as a login failure
+        # both mask the real cause and unfairly burn the user's attempt
+        # counter, so neither happens for that case.
+        if not last_exc_was_credentials_failure:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "message": "Authentication service temporarily unavailable, please retry.",
+                },
+            )
+
         record_failed_attempt(body.username, ip)
         if isinstance(last_exc, HTTPException):
             if last_exc.status_code == status.HTTP_401_UNAUTHORIZED:
@@ -515,14 +550,16 @@ async def login(
 
     # If the user is in the master realm, they might be a superadmin —
     # block them from /login and redirect to /superadmin/login.
-    if login_realm == "master":
+    if login_realm == settings.keycloak_master_realm:
         try:
             result = await auth_service.login(
                 username=body.username,
                 password=body.password,
                 db=db,
-                realm="master",
+                realm=settings.keycloak_master_realm,
                 client_id="superadmin-login",
+                ip_address=ip,
+                user_agent=request.headers.get("user-agent"),
             )
             from jose import jwt as _jwt
             claims = _jwt.get_unverified_claims(result["access_token"])
@@ -1475,17 +1512,48 @@ async def check_session(
     if not user_sub or not session_state:
         return {"has_other_active": False, "session_revoked": False}
 
-    # 1. Check if the current session itself has any active (unrevoked and unexpired) token
+    # 1. Look up this session's own RefreshToken row, regardless of revoked/
+    #    expired state, so we can tell "genuinely revoked" apart from
+    #    "no matching row found" (e.g. not yet visible, mismatched session
+    #    id) — the two are NOT the same thing and must not share a response.
     now = datetime.now(timezone.utc)
-    current_active = db.query(RefreshToken).filter(
+    session_row = db.query(RefreshToken).filter(
         RefreshToken.session_id == session_state,
         RefreshToken.keycloak_sub == user_sub,
-        RefreshToken.is_revoked == False,
-        RefreshToken.expires_at > now,
     ).first()
 
-    if not current_active:
-        return {"has_other_active": False, "session_revoked": True}
+    if session_row is None:
+        logger.info(
+            "session-check: no RefreshToken row found (status=not_found, session_id=%s, keycloak_sub=%s)",
+            session_state, user_sub,
+        )
+        return {"has_other_active": False, "session_revoked": False, "session_missing": True, "status": "not_found"}
+
+    if session_row.is_revoked:
+        logger.info(
+            "session-check: row found and revoked (status=revoked, session_id=%s, keycloak_sub=%s)",
+            session_state, user_sub,
+        )
+        return {"has_other_active": False, "session_revoked": True, "session_missing": False, "status": "revoked"}
+
+    # SQLite (and some legacy database drivers) can return a naive datetime
+    # even though production records are stored as UTC — normalize before
+    # comparing, same as the refresh-token path does.
+    row_expires_at = session_row.expires_at
+    if row_expires_at.tzinfo is None:
+        row_expires_at = row_expires_at.replace(tzinfo=timezone.utc)
+
+    if row_expires_at <= now:
+        logger.info(
+            "session-check: row found but expired (status=expired, session_id=%s, keycloak_sub=%s)",
+            session_state, user_sub,
+        )
+        return {"has_other_active": False, "session_revoked": False, "session_missing": False, "status": "expired"}
+
+    logger.info(
+        "session-check: row found and active (status=active, session_id=%s, keycloak_sub=%s)",
+        session_state, user_sub,
+    )
 
     # 2. Check if there are other active sessions
     other_active = db.query(RefreshToken).filter(

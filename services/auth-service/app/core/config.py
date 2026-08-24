@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     keycloak_url: str = Field(alias="KEYCLOAK_URL")
     keycloak_realm: str = Field(alias="KEYCLOAK_REALM")
+    keycloak_master_realm: str = Field(default="master", alias="KEYCLOAK_MASTER_REALM")
     keycloak_client_id: str = Field(alias="KEYCLOAK_CLIENT_ID")
     keycloak_client_secret: str = Field(alias="KEYCLOAK_CLIENT_SECRET")
     keycloak_admin_username: str = Field(alias="KEYCLOAK_ADMIN_USERNAME")
