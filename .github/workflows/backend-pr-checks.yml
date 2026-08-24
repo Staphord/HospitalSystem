@@ -1,0 +1,48 @@
+name: Backend PR Checks
+
+# Merge gate only — runs the shared test suite plus a migration-immutability
+# check on every PR. Never deploys anything. Deploys happen exclusively from
+# backend-staging.yml / backend-production.yml on push to their branch.
+on:
+  pull_request:
+    branches: [main, staging, develop, joseph]
+    paths:
+      - 'services/**'
+      - 'shared/**'
+      - 'migrations/**'
+      - 'deploy/**'
+      - 'infrastructure/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: backend-pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/backend-tests.yml
+
+  migration-immutability-check:
+    name: Prevent editing shipped migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject modifications to existing migration files
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=50
+          base_sha=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          changed=$(git diff --name-status "$base_sha" HEAD -- 'migrations/*/versions/*.py')
+          bad=$(printf '%s\n' "$changed" | awk '$1 != "A" && $1 != "" {print}')
+          if [ -n "$bad" ]; then
+            echo "Existing migration files are immutable; add a new revision instead."
+            echo "$bad"
+            exit 1
+          fi

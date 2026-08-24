@@ -1,0 +1,253 @@
+name: Backend Staging Pipeline
+
+# Single source of truth for the staging branch: tests -> deploy -> notify
+# frontend, all in one workflow run so the deploy job can never start before
+# tests actually finish (needs:), and no separate CD workflow can race it.
+on:
+  push:
+    branches: [staging, develop]
+    paths:
+      - 'services/**'
+      - 'shared/**'
+      - 'migrations/**'
+      - 'deploy/**'
+      - 'infrastructure/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
+  repository_dispatch:
+    types:
+      - frontend-staging-deployment-succeeded
+      - frontend-staging-deployment-failed
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: backend-staging-deployment
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/backend-tests.yml
+
+  deploy-staging:
+    name: Deploy to Staging Stack
+    needs: tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Set release identity
+        id: release
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          echo "sha=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag=$(date -u +%Y%m%d%H%M%S)-${DEPLOY_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy and verify staging stack on VPS
+        id: deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            cd /var/www/hospital-backend-staging
+            git fetch origin
+            git checkout staging
+            git pull origin staging
+
+            STATE_DIR="/var/www/hospital-backend-staging/.deploy-state"
+            PREVIOUS_STATE="${STATE_DIR}/previous-images.tsv"
+            mkdir -p "${STATE_DIR}"
+
+            # Snapshot currently-running images so a later rollback signal
+            # from the frontend has something to restore to.
+            : > "${PREVIOUS_STATE}"
+            for service in api-gateway auth-service master-service patient-service visit-service reception-service triage-service consultation-service laboratory-service radiology-service pharmacy-service billing-service ward-service admin-service notification-service report-service; do
+              container_id="$(docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml ps -q "${service}" 2>/dev/null || true)"
+              [ -n "${container_id}" ] || continue
+              image_name="$(docker inspect --format '{{.Config.Image}}' "${container_id}")"
+              image_id="$(docker inspect --format '{{.Image}}' "${container_id}")"
+              printf '%s\t%s\t%s\n' "${service}" "${image_name}" "${image_id}" >> "${PREVIOUS_STATE}"
+            done
+
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml build --parallel
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --remove-orphans --scale staging-bootstrap=0
+            # Wait for master-service container to enter running state before running migrations
+            echo "Waiting for master-service container..."
+            for i in {1..15}; do
+              if [ "$(docker inspect --format '{{.State.Status}}' hospital-staging-master-service 2>/dev/null)" = "running" ]; then
+                break
+              fi
+              sleep 1
+            done
+
+            docker exec hospital-staging-master-service alembic -c /app/migrations/master/alembic.ini upgrade head
+            docker start -a hospital-staging-bootstrap || true
+            docker start hospital-staging-api-gateway hospital-staging-auth-service || true
+
+            echo "Waiting for Staging Health Probe on port 8100..."
+            healthy=0
+            for i in {1..30}; do
+              if curl -s -f http://127.0.0.1:8100/health >/dev/null 2>&1; then
+                healthy=1
+                echo "Staging Health Probe Passed!"
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$healthy" -eq 0 ]; then
+              echo "Staging Health Probe Failed!"
+              exit 1
+            fi
+
+            echo "Verifying all 16 staging microservices container states..."
+            unhealthy=0
+            for service in api-gateway auth-service master-service patient-service visit-service reception-service triage-service consultation-service laboratory-service radiology-service pharmacy-service billing-service ward-service admin-service notification-service report-service; do
+              service_ok=0
+              for attempt in {1..5}; do
+                status=$(docker inspect --format '{{.State.Status}}' "hospital-staging-${service}" 2>/dev/null || echo "missing")
+                if [ "$status" = "running" ]; then
+                  service_ok=1
+                  break
+                fi
+                sleep 2
+              done
+
+              if [ "$service_ok" -eq 1 ]; then
+                echo "OK: ${service} is running."
+              else
+                echo "ERROR: ${service} is not running! State: ${status}"
+                unhealthy=1
+              fi
+            done
+
+            if [ "$unhealthy" -ne 0 ]; then
+              echo "Staging Deployment Failed: One or more microservices are not running!"
+              exit 1
+            fi
+
+      - name: Trigger frontend staging deployment for deployed backend release
+        if: success()
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: Staphord/HospitalSystem-FrontEnd
+          event-type: backend-staging-staged-success
+          client-payload: >-
+            {"release_tag":"${{ steps.release.outputs.tag }}",
+             "sha":"${{ steps.release.outputs.sha }}",
+             "environment":"staging"}
+
+      - name: Write deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Backend Staging Deployment Summary"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Release tag | \`${{ steps.release.outputs.tag }}\` |"
+            echo "| Commit SHA | \`${{ steps.release.outputs.sha }}\` |"
+            echo "| Deploy + health check | ${{ steps.deploy.outcome || 'skipped' }} |"
+            echo "| Frontend notified | ${{ job.status == 'success' && 'yes (backend-staging-staged-success)' || 'no' }} |"
+            echo "| Overall result | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  frontend-staging-succeeded:
+    name: Record frontend staging deployment success
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'repository_dispatch' &&
+      github.event.action == 'frontend-staging-deployment-succeeded'
+    steps:
+      - name: Log confirmation
+        run: |
+          echo "Frontend staging deployment succeeded for release ${{ github.event.client_payload.release_tag }} (sha ${{ github.event.client_payload.sha }})."
+          echo "Staging environment is fully up to date; no action needed."
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Staging Fully Deployed"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Release tag | \`${{ github.event.client_payload.release_tag }}\` |"
+            echo "| Commit SHA | \`${{ github.event.client_payload.sha }}\` |"
+            echo "| Backend | deployed |"
+            echo "| Frontend | deployed |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rollback-staging-on-frontend-failure:
+    name: Roll back staging backend when frontend staging deployment fails
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'repository_dispatch' &&
+      github.event.action == 'frontend-staging-deployment-failed'
+    steps:
+      - name: Restore previous staging images on VPS
+        id: rollback
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            cd /var/www/hospital-backend-staging
+            STATE_DIR="/var/www/hospital-backend-staging/.deploy-state"
+            PREVIOUS_STATE="${STATE_DIR}/previous-images.tsv"
+
+            if [ ! -s "${PREVIOUS_STATE}" ]; then
+              echo "No previous staging image snapshot found at ${PREVIOUS_STATE}; nothing to roll back to." >&2
+              exit 1
+            fi
+
+            echo "== Rolling back staging to pre-deploy images =="
+            while IFS=$'\t' read -r service image_name image_id; do
+              [ -n "${service}" ] && [ -n "${image_name}" ] && [ -n "${image_id}" ] || continue
+              docker image inspect "${image_id}" >/dev/null
+              docker tag "${image_id}" "${image_name}"
+            done < "${PREVIOUS_STATE}"
+
+            docker compose -p hospitalsystem-staging -f infrastructure/docker-compose.staging.yml up -d --force-recreate --no-build --remove-orphans
+
+            echo "Waiting for Staging Health Probe on port 8100 after rollback..."
+            healthy=0
+            for i in {1..30}; do
+              if curl -s -f http://127.0.0.1:8100/health >/dev/null 2>&1; then
+                healthy=1
+                echo "Staging Health Probe Passed after rollback!"
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$healthy" -eq 0 ]; then
+              echo "Staging rollback did not pass health checks; manual intervention required." >&2
+              exit 1
+            fi
+
+            echo "Staging rollback completed successfully."
+
+      - name: Write rollback summary
+        if: always()
+        run: |
+          {
+            echo "## Staging Rollback Summary (triggered by frontend failure)"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Trigger | frontend-staging-deployment-failed |"
+            echo "| Release tag | \`${{ github.event.client_payload.release_tag }}\` |"
+            echo "| Commit SHA | \`${{ github.event.client_payload.sha }}\` |"
+            echo "| Rollback result | ${{ steps.rollback.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
