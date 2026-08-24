@@ -33,7 +33,7 @@ jobs:
     name: Compile and fatal static checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -58,11 +58,13 @@ jobs:
       - name: Fail on fatal Ruff findings
         run: ruff check --select E9,F63,F7,F82 services shared tests scripts
       - name: Report formatting debt without masking fatal checks
-        continue-on-error: true
-        run: black --check services shared tests scripts
+        run: |
+          black --check services shared tests scripts \
+            || echo "::warning::Formatting debt exists — run 'black services shared tests scripts' locally to clean up. Not blocking."
       - name: Report type-check debt
-        continue-on-error: true
-        run: mypy services shared --ignore-missing-imports
+        run: |
+          mypy services shared --ignore-missing-imports --explicit-package-bases \
+            || echo "::warning::Type-check debt exists — see mypy output above. Not blocking."
 
   service-tests:
     name: Tests - ${{ matrix.service }}
@@ -120,7 +122,7 @@ jobs:
           - visit-service
           - ward-service
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -149,14 +151,14 @@ jobs:
             -ra -v
       - name: Upload service coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.service }}
           path: coverage-${{ matrix.service }}.xml
           if-no-files-found: ignore
       - name: Upload service test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: junit-${{ matrix.service }}
           path: junit-${{ matrix.service }}.xml
@@ -176,7 +178,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -204,7 +206,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -241,7 +243,7 @@ jobs:
       RABBITMQ_USER: guest
       RABBITMQ_PASSWORD: ci-rabbit-password
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
       - name: Ensure env file exists for compose validation
         run: cp .env.example .env || touch .env
@@ -261,10 +263,10 @@ jobs:
       - migration-check
       - docker-build-check
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download all JUnit results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: junit-*
           path: junit-results
