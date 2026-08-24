@@ -17,7 +17,8 @@ on:
       - '.github/workflows/**'
   repository_dispatch:
     types:
-      - frontend-deployment-failed
+      - frontend-production-deployment-succeeded
+      - frontend-production-deployment-failed
 
 permissions:
   contents: read
@@ -154,12 +155,38 @@ jobs:
             echo "| Overall result | ${{ job.status }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  frontend-production-succeeded:
+    name: Record frontend production deployment success
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'repository_dispatch' &&
+      github.event.action == 'frontend-production-deployment-succeeded'
+    steps:
+      - name: Log confirmation
+        run: |
+          echo "Frontend production deployment succeeded for release ${{ github.event.client_payload.release_tag }} (sha ${{ github.event.client_payload.sha }})."
+          echo "Backend was already deployed and healthy; no action needed."
+
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Production Fully Deployed"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Release tag | \`${{ github.event.client_payload.release_tag }}\` |"
+            echo "| Commit SHA | \`${{ github.event.client_payload.sha }}\` |"
+            echo "| Backend | deployed |"
+            echo "| Frontend | deployed |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   rollback-on-frontend-failure:
     name: Roll back backend when frontend deployment fails
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'repository_dispatch' &&
-      github.event.action == 'frontend-deployment-failed'
+      github.event.action == 'frontend-production-deployment-failed'
     steps:
       - name: Execute atomic rollback on VPS
         uses: appleboy/ssh-action@v1.0.3
@@ -179,7 +206,7 @@ jobs:
             echo
             echo "| Field | Value |"
             echo "|---|---|"
-            echo "| Trigger | frontend-deployment-failed |"
+            echo "| Trigger | frontend-production-deployment-failed |"
             echo "| Release tag | \`${{ github.event.client_payload.release_tag }}\` |"
             echo "| Commit SHA | \`${{ github.event.client_payload.sha }}\` |"
             echo "| Rollback result | ${{ job.status }} |"
