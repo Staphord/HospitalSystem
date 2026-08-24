@@ -84,4 +84,9 @@ async def test_superadmin_login_rejects_invalid_credentials(client):
         "/api/v1/auth/superadmin/login",
         json={"username": "wrong", "password": "wrong"},
     )
-    assert response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST, status.HTTP_429_TOO_MANY_REQUESTS, status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # No real Keycloak is reachable in this test environment, so this
+    # request is expected to fail on connectivity, not credentials. Per
+    # Fix B, that must surface as 503 "service unavailable" rather than
+    # being misreported as a credentials failure — 503 replaces the
+    # previously-accepted 500 for that same underlying case.
+    assert response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST, status.HTTP_429_TOO_MANY_REQUESTS, status.HTTP_503_SERVICE_UNAVAILABLE)

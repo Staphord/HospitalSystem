@@ -285,7 +285,7 @@ async def create_user(
                    "Use /admin/users for hospital-level user creation.",
         )
 
-    await ensure_roles(["super_admin"], realm="master")
+    await ensure_roles(["super_admin"], realm=settings.keycloak_master_realm)
 
     kc_roles = ["super_admin"]
 
@@ -296,7 +296,7 @@ async def create_user(
             email=body.email,
             roles=kc_roles,
             full_name=body.full_name or None,
-            realm="master",
+            realm=settings.keycloak_master_realm,
         )
     except Exception as e:
         raise HTTPException(
@@ -378,12 +378,12 @@ async def update_user(
                 username=body.username,
                 email=body.email,
                 full_name=body.full_name,
-                realm="master",
+                realm=settings.keycloak_master_realm,
             )
     if body.password is not None:
         superadmin_auth_service.update_superadmin_password(db, admin, body.password)
         if kc_sub:
-            await set_user_password(kc_sub, body.password, realm="master")
+            await set_user_password(kc_sub, body.password, realm=settings.keycloak_master_realm)
 
     if body.username is not None:
         admin.username = body.username
@@ -439,7 +439,7 @@ async def delete_user(
         for tenant in tenant_records:
             db.delete(tenant)
         # Delete Keycloak user and local mapping if exists
-        kc_sub = await delete_keycloak_user(body.username, realm="master")
+        kc_sub = await delete_keycloak_user(body.username, realm=settings.keycloak_master_realm)
         if kc_sub:
             delete_local_user(db, kc_sub)
         # Delete the super admin record

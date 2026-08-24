@@ -227,3 +227,41 @@ async def test_session_check_and_keep_only_this_session(db_session):
     bad = TenantContext("t", "", None, None, [], False, raw_token={})
     result = await router.check_session(req("GET"), bad, db_session)
     assert result["session_revoked"] is False
+
+
+@pytest.mark.asyncio
+async def test_session_check_distinguishes_missing_from_revoked(db_session):
+    """Regression test for the false-logout bug: a RefreshToken row that
+    simply doesn't exist must NOT produce the same response shape as a row
+    that genuinely exists and is revoked — the frontend force-logs-out only
+    on a real revoke, so conflating the two caused valid sessions to be
+    kicked."""
+    # Valid, active row: session_revoked must be false. This path falls
+    # through to the existing has_other_active check, which keeps its
+    # original 2-key response shape (has_other_active, session_revoked) —
+    # session_missing/status are only added on the not_found/revoked/expired
+    # short-circuit branches below, which is what this test is really about.
+    auth_service._store_refresh_token(db_session, "sub-a", "sid-active", "r", 3600, "realm")
+    ctx_active = TenantContext("t", "sub-a", "user", "u@example.com", [], False, raw_token={"sid": "sid-active"})
+    result = await router.check_session(req("GET"), ctx_active, db_session)
+    assert result["session_revoked"] is False
+
+    # No row at all for this session_id/keycloak_sub — this must be reported
+    # as "not found", not as a revoke.
+    ctx_missing = TenantContext("t", "sub-a", "user", "u@example.com", [], False, raw_token={"sid": "sid-does-not-exist"})
+    result = await router.check_session(req("GET"), ctx_missing, db_session)
+    assert result["session_revoked"] is False
+    assert result.get("session_missing") is True
+    assert result.get("status") == "not_found"
+    # Must not be the same shape as a genuine revoke.
+    assert result != {"has_other_active": False, "session_revoked": True}
+
+    # Now genuinely revoke the active row and confirm the endpoint correctly
+    # reports it as revoked, distinct from the "not found" case above.
+    row = db_session.query(RefreshToken).filter(RefreshToken.session_id == "sid-active").first()
+    row.is_revoked = True
+    db_session.commit()
+    result = await router.check_session(req("GET"), ctx_active, db_session)
+    assert result["session_revoked"] is True
+    assert result.get("session_missing") is False
+    assert result.get("status") == "revoked"

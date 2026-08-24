@@ -157,6 +157,34 @@ async def test_superadmin_user_management():
          patch("app.api.v1.superadmin.router.delete_keycloak_user", AsyncMock()):
         await fn_delete(req, SuperAdminDelete(username="ex_sa"), db, user)
 
+
+@pytest.mark.asyncio
+async def test_superadmin_create_uses_configured_master_realm():
+    """Fix C regression test: with KEYCLOAK_MASTER_REALM set, master-service's
+    own superadmin management endpoints must create/manage the Keycloak user
+    in that realm, not the literal 'master' — this must stay in lockstep
+    with auth-service's login-time realm selection."""
+    from app.config import settings
+
+    fn_create = get_handler(create_user)
+    req = make_req()
+    user = make_user()
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+
+    with patch.object(settings, "keycloak_master_realm", "master-staging"), \
+         patch("app.services.superadmin_auth.create_superadmin") as mock_create_sa, \
+         patch("app.api.v1.superadmin.router.ensure_roles", AsyncMock()) as mock_ensure_roles, \
+         patch("app.api.v1.superadmin.router.create_keycloak_user", AsyncMock(return_value="kc-999")) as mock_create_kc:
+        fake_sa = MagicMock(super_admin_id=uuid4(), username="staging_sa", email="sa@staging.org", full_name="SA", role="super_admin", is_active=True, created_at=datetime.now(timezone.utc), last_login_at=None)
+        mock_create_sa.return_value = fake_sa
+        await fn_create(req, SuperAdminCreate(username="staging_sa", email="sa@staging.org", password="P@ssword123", full_name="SA"), db, user)
+
+    mock_ensure_roles.assert_awaited_once()
+    assert mock_ensure_roles.call_args.kwargs.get("realm") == "master-staging"
+    mock_create_kc.assert_awaited_once()
+    assert mock_create_kc.call_args.kwargs.get("realm") == "master-staging"
+
 @pytest.mark.asyncio
 async def test_superadmin_tenant_management():
     fn_onboard = get_handler(create_tenant)

@@ -226,7 +226,9 @@ async def test_superadmin_login_failure_and_non_superadmin_token(monkeypatch, db
     monkeypatch.setattr(router, "record_failed_attempt", lambda *args: None)
     with pytest.raises(HTTPException) as exc:
         await router.superadmin_login(request(), type("Body", (), {"username": "down", "password": "p"})(), db_session)
-    assert exc.value.status_code == 500
+    # Fix B: a non-credentials failure surfaces as 503, not a generic 500
+    # masquerading as a login failure.
+    assert exc.value.status_code == 503
 
 
 @pytest.mark.asyncio
@@ -356,7 +358,9 @@ async def test_auth_public_routes_additional_branches(monkeypatch, db_session):
     monkeypatch.setattr(router.auth_service, "login", AsyncMock(side_effect=router.HTTPException(status_code=400, detail="bad request")))
     with pytest.raises(router.HTTPException) as exc_info:
         await router.superadmin_login(request("POST", ip="127.0.0.91"), type("Body", (), {"username": "non401user", "password": "p"})(), db_session)
-    assert exc_info.value.status_code == 400
+    # Fix B: a non-401 HTTPException from Keycloak is not a credentials
+    # failure — it must not be surfaced/counted as one.
+    assert exc_info.value.status_code == 503
 
     # Test superadmin login sync when local.full_name is empty string
     local = SuperAdmin(username="nofullname-admin", email="nofullname@example.com", password_hash="x", full_name="", mfa_secret="sec")
@@ -374,4 +378,91 @@ async def test_auth_public_routes_additional_branches(monkeypatch, db_session):
     monkeypatch.setattr(router, "remove_user_role", AsyncMock())
     result = await router.superadmin_login(request("POST", ip="127.0.0.92"), type("Body", (), {"username": "nofullname-admin", "password": "Password1!"})(), db_session)
     assert result["scope"] == "full"
+
+
+@pytest.mark.asyncio
+async def test_superadmin_login_keycloak_timeout_is_service_unavailable_not_bad_credentials(monkeypatch, db_session):
+    """Fix B regression test: a Keycloak timeout on the first realm attempt
+    must surface as 'service unavailable' (503), not 'Invalid username or
+    password', and must NOT increment the brute-force failed-attempt
+    counter — the user did nothing wrong here."""
+    monkeypatch.setattr(router, "is_blocked", lambda *args: False)
+
+    failed_attempt_calls = []
+    monkeypatch.setattr(router, "record_failed_attempt", lambda *args: failed_attempt_calls.append(args))
+
+    monkeypatch.setattr(
+        router.auth_service,
+        "login",
+        AsyncMock(side_effect=httpx.TimeoutException("Keycloak did not respond in time")),
+    )
+
+    with pytest.raises(router.HTTPException) as exc_info:
+        await router.superadmin_login(
+            request("POST", ip="127.0.0.93"),
+            type("Body", (), {"username": "timeout-user", "password": "p"})(),
+            db_session,
+        )
+
+    assert exc_info.value.status_code == 503
+    detail = exc_info.value.detail
+    message = detail["message"] if isinstance(detail, dict) else detail
+    assert "invalid" not in message.lower()
+    assert "password" not in message.lower()
+    assert "unavailable" in message.lower()
+    assert failed_attempt_calls == []
+
+
+@pytest.mark.asyncio
+async def test_superadmin_login_passes_ip_and_user_agent_to_auth_service(monkeypatch, db_session):
+    """Fix B regression test: superadmin login must record ip/user_agent on
+    the RefreshToken row it creates, same as the regular /login path,
+    so 'another device' claims are auditable."""
+    monkeypatch.setattr(router, "is_blocked", lambda *args: False)
+    monkeypatch.setattr(router, "record_successful_login", lambda *args: None)
+
+    token = jwt.encode(
+        {"sub": "ip-sa", "email": "ip-sa@example.com", "realm_access": {"roles": ["super_admin"]}},
+        settings.secret_key,
+        algorithm="HS256",
+    )
+    login_mock = AsyncMock(return_value={
+        "access_token": token, "refresh_token": "r", "expires_in": 60,
+        "refresh_expires_in": 120, "session_id": "sid",
+    })
+    monkeypatch.setattr(router.auth_service, "login", login_mock)
+
+    req = request("POST", ip="127.0.0.94")
+    await router.superadmin_login(req, type("Body", (), {"username": "ip-sa", "password": "p"})(), db_session)
+
+    login_mock.assert_awaited_once()
+    _, kwargs = login_mock.call_args
+    assert kwargs.get("ip_address") == "127.0.0.94"
+
+
+@pytest.mark.asyncio
+async def test_superadmin_login_uses_configured_master_realm(monkeypatch, db_session):
+    """Fix C regression test: with KEYCLOAK_MASTER_REALM set, superadmin
+    login must authenticate against that realm, not the literal 'master'."""
+    monkeypatch.setattr(router, "is_blocked", lambda *args: False)
+    monkeypatch.setattr(router, "record_successful_login", lambda *args: None)
+    monkeypatch.setattr(settings, "keycloak_master_realm", "master-staging")
+
+    token = jwt.encode(
+        {"sub": "staging-sa", "email": "staging-sa@example.com", "realm_access": {"roles": ["super_admin"]}},
+        settings.secret_key,
+        algorithm="HS256",
+    )
+    login_mock = AsyncMock(return_value={
+        "access_token": token, "refresh_token": "r", "expires_in": 60,
+        "refresh_expires_in": 120, "session_id": "sid",
+    })
+    monkeypatch.setattr(router.auth_service, "login", login_mock)
+
+    await router.superadmin_login(request("POST", ip="127.0.0.95"), type("Body", (), {"username": "staging-sa", "password": "p"})(), db_session)
+
+    login_mock.assert_awaited_once()
+    _, kwargs = login_mock.call_args
+    assert kwargs.get("realm") == "master-staging"
+    assert kwargs.get("realm") != "master"
 

@@ -117,7 +117,13 @@ async def test_mfa_verify_invalid_code_and_disable_tenant(monkeypatch, db_sessio
 @pytest.mark.asyncio
 async def test_session_revoked_and_other_active_paths(db_session):
     ctx = TenantContext("t", "sub", "u", "u@example.com", [], False, raw_token={"sid": "current"})
-    assert (await router.check_session(req(), ctx, db_session))["session_revoked"] is True
+    # Fix A: no RefreshToken row at all for this session is "not found", not
+    # a revoke — the two must not share a response shape (see the dedicated
+    # regression test in test_auth_session_and_mfa_routes.py for full
+    # coverage of this contract).
+    no_row_result = await router.check_session(req(), ctx, db_session)
+    assert no_row_result["session_revoked"] is False
+    assert no_row_result["session_missing"] is True
     now = datetime.now(timezone.utc) + timedelta(hours=1)
     db_session.add_all([
         RefreshToken(keycloak_sub="sub", session_id="current", refresh_token_hash="a", expires_at=now, is_revoked=False),
@@ -156,7 +162,10 @@ async def test_superadmin_login_and_regular_login_error_branches(monkeypatch, db
     monkeypatch.setattr(auth_service, "login", AsyncMock(side_effect=RuntimeError("down")))
     with pytest.raises(HTTPException) as exc:
         await router.superadmin_login(req("10.50.0.15"), body, db_session)
-    assert exc.value.status_code == 500
+    # Fix B: a non-credentials failure (here, a raw network-ish exception,
+    # not a Keycloak-issued 401) must surface as 503 "service unavailable",
+    # not be treated as a login failure.
+    assert exc.value.status_code == 503
 
     monkeypatch.setattr(router, "record_failed_attempt", lambda *args: None)
     monkeypatch.setattr("app.services.keycloak_admin.find_user_realm_by_username", AsyncMock(side_effect=RuntimeError("lookup")))
@@ -201,7 +210,11 @@ async def test_superadmin_non401_and_regular_login_audit_edges(monkeypatch, db_s
     monkeypatch.setattr(auth_service, "login", AsyncMock(side_effect=HTTPException(403, detail="forbidden")))
     with pytest.raises(HTTPException) as exc:
         await router.superadmin_login(req("10.50.0.24"), body, db_session)
-    assert exc.value.status_code == 403
+    # Fix B: only a 401 is treated as a genuine credentials failure. A
+    # non-401 HTTPException from Keycloak (403 here) is not the user's
+    # fault and must not be reported/retried as bad credentials — it
+    # surfaces as 503 instead.
+    assert exc.value.status_code == 503
 
     token = token_claims(realm_access={"roles": ["doctor", "hospital_admin"]})
     monkeypatch.setattr(auth_service, "login", AsyncMock(return_value={"access_token": token, "refresh_token": "r", "expires_in": 1, "refresh_expires_in": 1}))
