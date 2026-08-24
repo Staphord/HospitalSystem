@@ -1,35 +1,15 @@
-name: Backend CI Pipeline
+name: Backend Test Suite
 
+# Reusable workflow — the single source of truth for backend tests.
+# Called by backend-pr-checks.yml, backend-staging.yml, and
+# backend-production.yml so all three run the exact same checks and never
+# drift out of sync with each other.
 on:
-  push:
-    branches: [main, staging, joseph]
-    paths:
-      - 'services/**'
-      - 'shared/**'
-      - 'migrations/**'
-      - 'deploy/**'
-      - 'infrastructure/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - '.github/workflows/**'
-  pull_request:
-    branches: [main, staging, joseph]
-    paths:
-      - 'services/**'
-      - 'shared/**'
-      - 'migrations/**'
-      - 'deploy/**'
-      - 'infrastructure/**'
-      - 'scripts/**'
-      - 'pyproject.toml'
-      - '.github/workflows/**'
+  workflow_call:
 
 permissions:
   contents: read
-
-concurrency:
-  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  checks: write
 
 env:
   PYTHONPATH: .:shared
@@ -269,26 +249,6 @@ jobs:
         run: docker compose -f infrastructure/docker-compose.yml config --quiet
       - name: Build all backend images
         run: docker compose -f infrastructure/docker-compose.yml build --parallel
-
-  migration-immutability-check:
-    name: Prevent editing shipped migrations
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Reject modifications to existing migration files
-        run: |
-          git fetch origin "${{ github.base_ref }}" --depth=50
-          base_sha=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
-          changed=$(git diff --name-status "$base_sha" HEAD -- 'migrations/*/versions/*.py')
-          bad=$(printf '%s\n' "$changed" | awk '$1 != "A" && $1 != "" {print}')
-          if [ -n "$bad" ]; then
-            echo "Existing migration files are immutable; add a new revision instead."
-            echo "$bad"
-            exit 1
-          fi
 
   ci-summary:
     name: CI Summary

@@ -1,38 +1,47 @@
-name: Backend CD Production Deployment Pipeline
+name: Backend Production Pipeline
 
+# Single source of truth for main: tests -> deploy (atomic stage+activate) ->
+# notify frontend, all in one workflow run so deploy can never start before
+# tests finish, and no separate CD workflow can race it.
 on:
-  workflow_run:
-    workflows: ["Backend CI Pipeline"]
-    types: [completed]
+  push:
     branches: [main]
+    paths:
+      - 'services/**'
+      - 'shared/**'
+      - 'migrations/**'
+      - 'deploy/**'
+      - 'infrastructure/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
   repository_dispatch:
     types:
       - frontend-deployment-failed
 
 permissions:
   contents: read
+  checks: write
 
 concurrency:
   group: backend-production-deployment
   cancel-in-progress: false
 
 jobs:
+  tests:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/backend-tests.yml
+
   deploy-backend:
     name: Deploy full backend and notify frontend
+    needs: tests
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push'
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 1
-
       - name: Set immutable release identity
         id: release
         env:
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOY_SHA: ${{ github.sha }}
         run: |
           echo "sha=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
           echo "tag=$(date -u +%Y%m%d%H%M%S)-${DEPLOY_SHA::12}" >> "$GITHUB_OUTPUT"

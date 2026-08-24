@@ -1,5 +1,8 @@
-name: Backend Staging CD Pipeline
+name: Backend Staging Pipeline
 
+# Single source of truth for the staging branch: tests -> deploy -> notify
+# frontend, all in one workflow run so the deploy job can never start before
+# tests actually finish (needs:), and no separate CD workflow can race it.
 on:
   push:
     branches: [staging, develop]
@@ -19,15 +22,20 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  checks: write
 
 concurrency:
   group: backend-staging-deployment
   cancel-in-progress: true
 
 jobs:
+  tests:
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/backend-tests.yml
+
   deploy-staging:
     name: Deploy to Staging Stack
+    needs: tests
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
@@ -38,39 +46,6 @@ jobs:
         run: |
           echo "sha=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
           echo "tag=$(date -u +%Y%m%d%H%M%S)-${DEPLOY_SHA::12}" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for Backend CI Pipeline to pass on this commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          echo "Waiting for 'Backend CI Pipeline' to complete on ${SHA}..."
-          for attempt in {1..60}; do
-            run_json="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${SHA}&per_page=20" \
-              --jq '[.workflow_runs[] | select(.name == "Backend CI Pipeline")] | sort_by(.run_started_at) | last')"
-
-            if [ "${run_json}" != "null" ] && [ -n "${run_json}" ]; then
-              status="$(echo "${run_json}" | jq -r '.status')"
-              conclusion="$(echo "${run_json}" | jq -r '.conclusion')"
-
-              if [ "${status}" = "completed" ]; then
-                echo "Backend CI Pipeline completed with conclusion: ${conclusion}"
-                if [ "${conclusion}" = "success" ]; then
-                  exit 0
-                else
-                  echo "Backend CI Pipeline did not succeed; aborting staging deploy." >&2
-                  exit 1
-                fi
-              fi
-              echo "CI run found, still ${status}... (attempt ${attempt}/60)"
-            else
-              echo "No 'Backend CI Pipeline' run found yet for ${SHA}... (attempt ${attempt}/60)"
-            fi
-            sleep 15
-          done
-          echo "Timed out waiting for Backend CI Pipeline to complete." >&2
-          exit 1
 
       - name: Deploy and verify staging stack on VPS
         id: deploy
