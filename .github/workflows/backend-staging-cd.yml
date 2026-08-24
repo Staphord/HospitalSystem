@@ -1,10 +1,17 @@
 name: Backend Staging CD Pipeline
 
 on:
-  workflow_run:
-    workflows: ["Backend CI Pipeline"]
-    types: [completed]
+  push:
     branches: [staging, develop]
+    paths:
+      - 'services/**'
+      - 'shared/**'
+      - 'migrations/**'
+      - 'deploy/**'
+      - 'infrastructure/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/**'
   repository_dispatch:
     types:
       - frontend-staging-deployment-succeeded
@@ -12,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: backend-staging-deployment
@@ -21,19 +29,51 @@ jobs:
   deploy-staging:
     name: Deploy to Staging Stack
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_run' &&
-      github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'push'
     steps:
       - name: Set release identity
         id: release
         env:
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOY_SHA: ${{ github.sha }}
         run: |
           echo "sha=${DEPLOY_SHA}" >> "$GITHUB_OUTPUT"
           echo "tag=$(date -u +%Y%m%d%H%M%S)-${DEPLOY_SHA::12}" >> "$GITHUB_OUTPUT"
 
+      - name: Wait for Backend CI Pipeline to pass on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "Waiting for 'Backend CI Pipeline' to complete on ${SHA}..."
+          for attempt in {1..60}; do
+            run_json="$(gh api "repos/${{ github.repository }}/actions/runs?head_sha=${SHA}&per_page=20" \
+              --jq '[.workflow_runs[] | select(.name == "Backend CI Pipeline")] | sort_by(.run_started_at) | last')"
+
+            if [ "${run_json}" != "null" ] && [ -n "${run_json}" ]; then
+              status="$(echo "${run_json}" | jq -r '.status')"
+              conclusion="$(echo "${run_json}" | jq -r '.conclusion')"
+
+              if [ "${status}" = "completed" ]; then
+                echo "Backend CI Pipeline completed with conclusion: ${conclusion}"
+                if [ "${conclusion}" = "success" ]; then
+                  exit 0
+                else
+                  echo "Backend CI Pipeline did not succeed; aborting staging deploy." >&2
+                  exit 1
+                fi
+              fi
+              echo "CI run found, still ${status}... (attempt ${attempt}/60)"
+            else
+              echo "No 'Backend CI Pipeline' run found yet for ${SHA}... (attempt ${attempt}/60)"
+            fi
+            sleep 15
+          done
+          echo "Timed out waiting for Backend CI Pipeline to complete." >&2
+          exit 1
+
       - name: Deploy and verify staging stack on VPS
+        id: deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_IP }}
@@ -130,6 +170,21 @@ jobs:
              "sha":"${{ steps.release.outputs.sha }}",
              "environment":"staging"}
 
+      - name: Write deployment summary
+        if: always()
+        run: |
+          {
+            echo "## Backend Staging Deployment Summary"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Release tag | \`${{ steps.release.outputs.tag }}\` |"
+            echo "| Commit SHA | \`${{ steps.release.outputs.sha }}\` |"
+            echo "| Deploy + health check | ${{ steps.deploy.outcome || 'skipped' }} |"
+            echo "| Frontend notified | ${{ job.status == 'success' && 'yes (backend-staging-staged-success)' || 'no' }} |"
+            echo "| Overall result | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   frontend-staging-succeeded:
     name: Record frontend staging deployment success
     runs-on: ubuntu-latest
@@ -142,6 +197,20 @@ jobs:
           echo "Frontend staging deployment succeeded for release ${{ github.event.client_payload.release_tag }} (sha ${{ github.event.client_payload.sha }})."
           echo "Staging environment is fully up to date; no action needed."
 
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Staging Fully Deployed"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Release tag | \`${{ github.event.client_payload.release_tag }}\` |"
+            echo "| Commit SHA | \`${{ github.event.client_payload.sha }}\` |"
+            echo "| Backend | deployed |"
+            echo "| Frontend | deployed |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   rollback-staging-on-frontend-failure:
     name: Roll back staging backend when frontend staging deployment fails
     runs-on: ubuntu-latest
@@ -150,6 +219,7 @@ jobs:
       github.event.action == 'frontend-staging-deployment-failed'
     steps:
       - name: Restore previous staging images on VPS
+        id: rollback
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_IP }}
@@ -192,3 +262,17 @@ jobs:
             fi
 
             echo "Staging rollback completed successfully."
+
+      - name: Write rollback summary
+        if: always()
+        run: |
+          {
+            echo "## Staging Rollback Summary (triggered by frontend failure)"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Trigger | frontend-staging-deployment-failed |"
+            echo "| Release tag | \`${{ github.event.client_payload.release_tag }}\` |"
+            echo "| Commit SHA | \`${{ github.event.client_payload.sha }}\` |"
+            echo "| Rollback result | ${{ steps.rollback.outcome }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -165,6 +165,7 @@ jobs:
             --cov=services/${{ matrix.service }}/app \
             --cov-report=term-missing \
             --cov-report=xml:coverage-${{ matrix.service }}.xml \
+            --junitxml=junit-${{ matrix.service }}.xml \
             -ra -v
       - name: Upload service coverage
         if: always()
@@ -172,6 +173,13 @@ jobs:
         with:
           name: coverage-${{ matrix.service }}
           path: coverage-${{ matrix.service }}.xml
+          if-no-files-found: ignore
+      - name: Upload service test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.service }}
+          path: junit-${{ matrix.service }}.xml
           if-no-files-found: ignore
 
   shared-messaging-integration:
@@ -281,3 +289,45 @@ jobs:
             echo "$bad"
             exit 1
           fi
+
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - compile-and-fatal-quality
+      - service-tests
+      - shared-messaging-integration
+      - migration-check
+      - docker-build-check
+    steps:
+      - name: Download all JUnit results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: junit-*
+          path: junit-results
+          merge-multiple: true
+
+      - name: Publish combined test report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Backend Pytest Results
+          path: 'junit-results/*.xml'
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Write job status summary
+        if: always()
+        run: |
+          {
+            echo "## Backend CI Summary"
+            echo
+            echo "| Job | Result |"
+            echo "|---|---|"
+            echo "| Compile and fatal static checks | ${{ needs.compile-and-fatal-quality.result }} |"
+            echo "| Service tests (matrix) | ${{ needs.service-tests.result }} |"
+            echo "| Shared RabbitMQ integration | ${{ needs.shared-messaging-integration.result }} |"
+            echo "| Migration validation | ${{ needs.migration-check.result }} |"
+            echo "| Docker build check | ${{ needs.docker-build-check.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
