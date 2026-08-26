@@ -18,7 +18,30 @@ from app.core.config import settings
 
 
 class TestProviderBoundary:
-    def test_default_provider_is_the_fail_closed_null_provider(self):
+    def test_provider_is_the_fail_closed_null_provider_without_a_credential(
+        self, monkeypatch
+    ):
+        # Phase 1 asserted that get_provider() always returns NullProvider,
+        # because no transport existed yet. Phase 2 registers the Groq
+        # transport there, so the guarantee actually worth protecting is
+        # narrower and more important: no credential means no provider, and
+        # therefore never a fabricated answer.
+        #
+        # The assertion is now pinned to an explicit configuration instead of
+        # reading whatever the machine's .env happens to hold. As written
+        # before, it passed in CI and failed on any developer machine with a
+        # key configured.
+        #
+        # Change authorised by the user on 2026-08-26 and agreed with
+        # kakaAllord, owner of commit 0289498.
+        monkeypatch.setattr(settings, "assistant_groq_api_key", None, raising=False)
+        assert isinstance(get_provider(), NullProvider)
+
+    def test_provider_is_the_fail_closed_null_provider_for_an_unknown_vendor(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(settings, "assistant_provider", "unknown_vendor", raising=False)
+        monkeypatch.setattr(settings, "assistant_groq_api_key", "gsk_x", raising=False)
         assert isinstance(get_provider(), NullProvider)
 
     def test_null_provider_satisfies_the_provider_interface(self):

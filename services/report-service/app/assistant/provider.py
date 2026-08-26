@@ -120,7 +120,17 @@ def describe_configured_provider() -> dict[str, str]:
 def get_provider() -> AssistantProvider:
     """Return the active provider.
 
-    Phase 1 has no transport implementation, so this always returns the
-    fail-closed NullProvider. Phase 2 registers the Groq transport here.
+    Resolves to the configured vendor transport when a server-side credential
+    is present, and to the fail-closed NullProvider otherwise, so a missing or
+    misconfigured credential can never produce a fabricated answer.
+
+    The transport is imported lazily so that this seam stays free of any vendor
+    import, and so that nothing outside the transport module can reach a vendor
+    SDK or a credential through it.
     """
-    return NullProvider()
+    if not is_provider_configured():
+        return NullProvider()
+
+    from app.assistant.groq_provider import build_groq_provider
+
+    return build_groq_provider() or NullProvider()
