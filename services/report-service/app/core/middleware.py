@@ -13,9 +13,29 @@ from app.core.config import settings
 from app.core.database import get_session_local
 
 
+def _inbound_request_id(request: Request) -> str | None:
+    """Return the caller's X-Request-ID when it is a well-formed UUID.
+
+    The API Gateway mints a request id, forwards it on this header, and returns
+    it to the browser. Minting a second id here would mean the identifier a user
+    can see never matches the one in this service's audit row.
+
+    The value is validated rather than trusted: services are reachable on their
+    own ports, so an unchecked header would let a caller choose its own audit
+    identifier and poison the log.
+    """
+    candidate = request.headers.get("X-Request-ID")
+    if not candidate:
+        return None
+    try:
+        return str(uuid.UUID(candidate))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
 class AuditLogMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        request_id = str(uuid.uuid4())
+        request_id = _inbound_request_id(request) or str(uuid.uuid4())
         request.state.request_id = request_id
         start_time = time.monotonic()
 
