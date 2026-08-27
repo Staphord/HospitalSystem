@@ -31,6 +31,18 @@ LOGGABLE_FIELDS: frozenset[str] = frozenset(
         "error_code",
         "tool",
         "item_count",
+        # Voice. Non-content metadata about a capture only: how big it was, how
+        # long, what container and codec, which language was detected, and how
+        # many characters the transcript ran to. The transcript itself, and any
+        # audio byte, remain unloggable.
+        "audio_container",
+        "audio_codec",
+        "audio_bytes_size",
+        "audio_duration_ms",
+        "duration_source",
+        "language",
+        "rejection",
+        "transcript_chars",
     }
 )
 

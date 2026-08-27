@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -146,12 +146,23 @@ class AssistantFeedbackRequest(AssistantModel):
 
 
 class VoiceTranscriptMetadata(AssistantModel):
-    """Non-content metadata about one push-to-talk capture."""
+    """Non-content metadata about one push-to-talk capture.
 
-    duration_ms: int = Field(gt=0, le=60_000)
+    Every value here is determined by the server from the audio bytes
+    themselves; nothing is accepted from the browser. Duration and sample rate
+    are optional because some containers a browser produces genuinely do not
+    carry them, and reporting "not determined" is honest where inventing a
+    number would not be. A capture whose length cannot be determined is bounded
+    by the byte limit instead, and that is recorded in duration_source.
+    """
+
+    duration_ms: Annotated[int, Field(gt=0, le=60_000)] | None = None
     mime_type: str = Field(min_length=1, max_length=80)
-    sample_rate_hz: int = Field(gt=0, le=192_000)
+    sample_rate_hz: Annotated[int, Field(gt=0, le=192_000)] | None = None
     byte_size: int = Field(gt=0, le=10 * 1024 * 1024)
+    container: str | None = Field(default=None, max_length=16)
+    codec: str | None = Field(default=None, max_length=16)
+    duration_source: str | None = Field(default=None, max_length=16)
     audio_retained: bool = False
     transcript_confirmed_by_user: bool = False
 
@@ -161,6 +172,45 @@ class VoiceTranscriptMetadata(AssistantModel):
         if value:
             raise ValueError("raw audio retention requires a separate approved policy")
         return value
+
+
+class VoiceTranscriptStatus(str, Enum):
+    """Whether a capture produced usable speech."""
+
+    TRANSCRIBED = "transcribed"
+    NO_SPEECH_DETECTED = "no_speech_detected"
+
+
+class AssistantVoiceTranscriptResponse(AssistantModel):
+    """A transcript returned for the speaker to read, correct, and confirm.
+
+    This response is the end of the voice pipeline, not a step inside another
+    one. The server never forwards a transcript onwards on the user's behalf:
+    requires_confirmation is structurally always true, so a transcript can only
+    become a question after the person who spoke it has seen it and sent it.
+    """
+
+    request_id: str = Field(min_length=1, max_length=64)
+    status: VoiceTranscriptStatus
+    transcript: str = Field(default="", max_length=4000)
+    language: str | None = Field(default=None, max_length=16)
+    metadata: VoiceTranscriptMetadata
+    requires_confirmation: bool = True
+
+    @field_validator("requires_confirmation")
+    @classmethod
+    def _confirmation_is_mandatory(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("a transcript always requires explicit user confirmation")
+        return value
+
+    @model_validator(mode="after")
+    def _no_speech_carries_no_transcript(self) -> AssistantVoiceTranscriptResponse:
+        if self.status is VoiceTranscriptStatus.NO_SPEECH_DETECTED and self.transcript:
+            raise ValueError("no_speech_detected must not carry a transcript")
+        if self.status is VoiceTranscriptStatus.TRANSCRIBED and not self.transcript:
+            raise ValueError("transcribed requires a transcript")
+        return self
 
 
 # Medication safety. Severity, and whether two medicines interact at all, are
@@ -259,6 +309,9 @@ class AssistantErrorCode(str, Enum):
     INVALID_PROVIDER_OUTPUT = "INVALID_PROVIDER_OUTPUT"
     UNSUPPORTED_QUESTION = "UNSUPPORTED_QUESTION"
     NEEDS_REVIEW = "NEEDS_REVIEW"
+    INVALID_AUDIO = "INVALID_AUDIO"
+    AUDIO_TOO_LONG = "AUDIO_TOO_LONG"
+    UNSUPPORTED_AUDIO_FORMAT = "UNSUPPORTED_AUDIO_FORMAT"
 
 
 class AssistantErrorResponse(AssistantModel):

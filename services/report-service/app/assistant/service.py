@@ -6,6 +6,12 @@ import time
 from dataclasses import dataclass
 
 from app.assistant.audit import AssistantAuditMetadata, AssistantOutcome, build_audit_metadata
+from app.assistant.audio import (
+    AudioProbe,
+    AudioRejection,
+    AudioValidationError,
+    validate_audio,
+)
 from app.assistant.contracts import (
     AssistantAnswerStatus,
     AssistantChatRequest,
@@ -14,6 +20,9 @@ from app.assistant.contracts import (
     AssistantErrorResponse,
     AssistantFeedbackRequest,
     AssistantSource,
+    AssistantVoiceTranscriptResponse,
+    VoiceTranscriptMetadata,
+    VoiceTranscriptStatus,
 )
 from app.assistant.flags import AssistantCapability, is_capability_enabled
 from app.assistant.permissions import is_role_allowed, normalize_roles
@@ -21,6 +30,15 @@ from app.assistant.provider import AssistantProviderError, ProviderErrorCode, Pr
 from app.assistant.redaction import log_assistant_event
 from app.assistant.retrieval import build_retrieval_context, content_pack_version
 from app.assistant.sanitize import MAX_ANSWER_CHARS, sanitize_answer, sanitize_untrusted_content
+from app.assistant.transcription import (
+    TranscriptionError,
+    TranscriptionErrorCode,
+    TranscriptionRequest,
+    get_transcription_provider,
+    is_silence_artifact,
+    normalize_detected_language,
+    normalize_language,
+)
 from app.assistant.tools import (
     LIST_SUPPORTED_REPORTS,
     SEARCH_OPERATIONAL_CONTENT,
@@ -485,3 +503,313 @@ def record_feedback(
         status=payload.rating.value,
     )
     return None, audit
+
+
+# Push-to-talk voice
+#
+# The voice path ends at a transcript. It never continues into an answer on
+# behalf of the speaker, and it never reaches a clinical endpoint: the
+# transcript is returned for the speaker to read, correct, and submit
+# themselves. That is enforced structurally by the response contract, which
+# cannot be built with requires_confirmation false, and by this function never
+# calling answer_question.
+
+
+_AUDIO_REJECTION_CODES: dict[AudioRejection, AssistantErrorCode] = {
+    AudioRejection.EMPTY: AssistantErrorCode.INVALID_AUDIO,
+    AudioRejection.TOO_SHORT: AssistantErrorCode.INVALID_AUDIO,
+    AudioRejection.UNREADABLE: AssistantErrorCode.INVALID_AUDIO,
+    AudioRejection.TOO_LARGE: AssistantErrorCode.REQUEST_TOO_LARGE,
+    AudioRejection.TOO_LONG: AssistantErrorCode.AUDIO_TOO_LONG,
+    AudioRejection.UNSUPPORTED_MIME: AssistantErrorCode.UNSUPPORTED_AUDIO_FORMAT,
+    AudioRejection.MIME_MISMATCH: AssistantErrorCode.UNSUPPORTED_AUDIO_FORMAT,
+    AudioRejection.UNSUPPORTED_CODEC: AssistantErrorCode.UNSUPPORTED_AUDIO_FORMAT,
+}
+
+_TRANSCRIPTION_ERROR_CODES: dict[str, AssistantErrorCode] = {
+    TranscriptionErrorCode.TIMEOUT: AssistantErrorCode.PROVIDER_TIMEOUT,
+    TranscriptionErrorCode.INVALID_OUTPUT: AssistantErrorCode.INVALID_PROVIDER_OUTPUT,
+    TranscriptionErrorCode.NOT_CONFIGURED: AssistantErrorCode.PROVIDER_UNAVAILABLE,
+    TranscriptionErrorCode.UNAVAILABLE: AssistantErrorCode.PROVIDER_UNAVAILABLE,
+}
+
+
+def _voice_metadata(
+    probe: AudioProbe, duration_ms: int | None
+) -> VoiceTranscriptMetadata:
+    """Build capture metadata from what the server determined, nothing else."""
+    return VoiceTranscriptMetadata(
+        duration_ms=duration_ms,
+        mime_type=f"audio/{probe.container}",
+        sample_rate_hz=probe.sample_rate_hz,
+        byte_size=probe.byte_size,
+        container=probe.container,
+        codec=probe.codec,
+        duration_source=probe.duration_source,
+        audio_retained=False,
+        transcript_confirmed_by_user=False,
+    )
+
+
+async def transcribe_capture(
+    request_id: str,
+    caller: AssistantCaller,
+    audio: bytes,
+    content_type: str | None,
+    language: str | None = None,
+) -> tuple[
+    AssistantVoiceTranscriptResponse | AssistantErrorResponse, AssistantAuditMetadata
+]:
+    """Transcribe one push-to-talk capture. Never raises for an expected failure.
+
+    The audio is held in memory for the duration of this call and then dropped.
+    It is not written to disk, not cached, not attached to the audit record, and
+    never logged.
+    """
+    capability = AssistantCapability.VOICE
+    started = time.monotonic()
+
+    denied = _authorize(caller, capability)
+    if denied is not None:
+        log_assistant_event(
+            logger,
+            "assistant voice refused",
+            request_id=request_id,
+            actor_sub=caller.user_sub,
+            tenant_id=caller.tenant_id,
+            capability=capability,
+            outcome=denied,
+        )
+        return (
+            _outcome_to_error(request_id, denied),
+            _audit(request_id, caller, capability, denied),
+        )
+
+    # Every bound is checked before a byte reaches a vendor.
+    try:
+        probe = validate_audio(
+            audio,
+            content_type,
+            max_bytes=int(
+                getattr(settings, "assistant_max_audio_bytes", 5 * 1024 * 1024)
+            ),
+            max_duration_ms=int(
+                getattr(settings, "assistant_max_audio_duration_ms", 60_000)
+            ),
+        )
+    except AudioValidationError as exc:
+        code = _AUDIO_REJECTION_CODES.get(
+            exc.rejection, AssistantErrorCode.INVALID_AUDIO
+        )
+        log_assistant_event(
+            logger,
+            "assistant voice rejected capture",
+            request_id=request_id,
+            actor_sub=caller.user_sub,
+            tenant_id=caller.tenant_id,
+            capability=capability,
+            outcome=AssistantOutcome.INVALID_REQUEST,
+            rejection=exc.rejection,
+            error_code=code.value,
+            audio_bytes_size=len(audio or b""),
+        )
+        return (
+            _error(request_id, code, exc.message),
+            _audit(request_id, caller, capability, AssistantOutcome.INVALID_REQUEST),
+        )
+
+    provider = get_transcription_provider()
+    described = provider.describe()
+    timeout = float(getattr(settings, "assistant_voice_timeout_seconds", 20.0))
+
+    transcription_request = TranscriptionRequest(
+        audio=audio,
+        content_type=f"audio/{probe.container}",
+        # A fixed, server-chosen name. A browser-supplied filename would be an
+        # untrusted string travelling into a multipart header.
+        filename=f"capture.{probe.container}",
+        language=normalize_language(language),
+        timeout_seconds=timeout,
+    )
+
+    try:
+        result = await asyncio.wait_for(
+            provider.transcribe(transcription_request), timeout=timeout + 5
+        )
+    except TranscriptionError as exc:
+        code = _TRANSCRIPTION_ERROR_CODES.get(
+            exc.code, AssistantErrorCode.PROVIDER_UNAVAILABLE
+        )
+        log_assistant_event(
+            logger,
+            "assistant voice provider error",
+            request_id=request_id,
+            actor_sub=caller.user_sub,
+            tenant_id=caller.tenant_id,
+            capability=capability,
+            outcome=AssistantOutcome.PROVIDER_ERROR,
+            error_code=code.value,
+            provider=described.get("provider"),
+        )
+        return (
+            _error(request_id, code, exc.message),
+            _audit(
+                request_id,
+                caller,
+                capability,
+                AssistantOutcome.PROVIDER_ERROR,
+                provider=described.get("provider"),
+                model_version=described.get("model_version"),
+                duration_ms=int((time.monotonic() - started) * 1000),
+            ),
+        )
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        return (
+            _error(
+                request_id,
+                AssistantErrorCode.PROVIDER_TIMEOUT,
+                "Transcribing that recording took too long.",
+            ),
+            _audit(
+                request_id,
+                caller,
+                capability,
+                AssistantOutcome.PROVIDER_ERROR,
+                provider=described.get("provider"),
+                duration_ms=int((time.monotonic() - started) * 1000),
+            ),
+        )
+    except Exception:
+        # Nothing unexpected may surface a stack trace, a vendor payload, or an
+        # audio byte.
+        logger.exception(
+            "assistant voice failed unexpectedly request_id=%s", request_id
+        )
+        return (
+            _error(
+                request_id,
+                AssistantErrorCode.PROVIDER_UNAVAILABLE,
+                "Voice input is not available right now.",
+            ),
+            _audit(request_id, caller, capability, AssistantOutcome.PROVIDER_ERROR),
+        )
+
+    # The engine reports the true length of what it decoded. For a container
+    # whose duration could not be derived up front, this is the first point at
+    # which the limit can be enforced, so it is enforced here too rather than
+    # letting an over-long capture through on a technicality.
+    max_duration_ms = int(getattr(settings, "assistant_max_audio_duration_ms", 60_000))
+    provider_duration_ms: int | None = None
+    if result.duration_seconds is not None and result.duration_seconds > 0:
+        provider_duration_ms = int(result.duration_seconds * 1000)
+        if provider_duration_ms > max_duration_ms:
+            log_assistant_event(
+                logger,
+                "assistant voice rejected capture",
+                request_id=request_id,
+                actor_sub=caller.user_sub,
+                tenant_id=caller.tenant_id,
+                capability=capability,
+                outcome=AssistantOutcome.INVALID_REQUEST,
+                rejection=AudioRejection.TOO_LONG,
+                audio_duration_ms=provider_duration_ms,
+            )
+            return (
+                _error(
+                    request_id,
+                    AssistantErrorCode.AUDIO_TOO_LONG,
+                    "That recording is too long.",
+                ),
+                _audit(
+                    request_id, caller, capability, AssistantOutcome.INVALID_REQUEST
+                ),
+            )
+
+    duration_ms = probe.duration_ms or provider_duration_ms
+    metadata = _voice_metadata(probe, duration_ms)
+    # The vendor picks its own wording for the language it detected, so it is
+    # shaped here rather than passed straight into the response contract.
+    detected_language = normalize_detected_language(result.language)
+    max_chars = int(getattr(settings, "assistant_max_question_chars", 2000))
+
+    # Speech is untrusted input. It is neutralised the same way retrieved
+    # content is, so an instruction someone speaks aloud is text on a screen and
+    # nothing more, and it is capped at the length a question may be so that a
+    # transcript is always something the user can actually submit.
+    transcript = sanitize_untrusted_content(result.text or "", max_chars)
+
+    if is_silence_artifact(transcript):
+        # Whisper-family engines emit stock phrases for silence. Reporting one
+        # as speech would put words in the mouth of the person who spoke.
+        log_assistant_event(
+            logger,
+            "assistant voice heard no speech",
+            request_id=request_id,
+            actor_sub=caller.user_sub,
+            tenant_id=caller.tenant_id,
+            capability=capability,
+            outcome=AssistantOutcome.UNSUPPORTED,
+            provider=described.get("provider"),
+            model_version=result.model_version,
+            audio_container=probe.container,
+            audio_duration_ms=duration_ms,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+        return (
+            AssistantVoiceTranscriptResponse(
+                request_id=request_id,
+                status=VoiceTranscriptStatus.NO_SPEECH_DETECTED,
+                transcript="",
+                language=None,
+                metadata=metadata,
+            ),
+            _audit(
+                request_id,
+                caller,
+                capability,
+                AssistantOutcome.UNSUPPORTED,
+                provider=described.get("provider"),
+                model_version=result.model_version,
+                duration_ms=int((time.monotonic() - started) * 1000),
+            ),
+        )
+
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    log_assistant_event(
+        logger,
+        "assistant voice transcribed",
+        request_id=request_id,
+        actor_sub=caller.user_sub,
+        tenant_id=caller.tenant_id,
+        capability=capability,
+        outcome=AssistantOutcome.SUCCESS,
+        provider=described.get("provider"),
+        model_version=result.model_version,
+        audio_container=probe.container,
+        audio_codec=probe.codec,
+        audio_bytes_size=probe.byte_size,
+        audio_duration_ms=duration_ms,
+        duration_source=probe.duration_source,
+        language=detected_language,
+        transcript_chars=len(transcript),
+        duration_ms=elapsed_ms,
+    )
+
+    return (
+        AssistantVoiceTranscriptResponse(
+            request_id=request_id,
+            status=VoiceTranscriptStatus.TRANSCRIBED,
+            transcript=transcript,
+            language=detected_language,
+            metadata=metadata,
+        ),
+        _audit(
+            request_id,
+            caller,
+            capability,
+            AssistantOutcome.SUCCESS,
+            provider=described.get("provider"),
+            model_version=result.model_version,
+            duration_ms=elapsed_ms,
+        ),
+    )

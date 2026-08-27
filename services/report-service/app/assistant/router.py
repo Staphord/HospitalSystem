@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.assistant.contracts import (
@@ -11,8 +11,15 @@ from app.assistant.contracts import (
     AssistantErrorCode,
     AssistantErrorResponse,
     AssistantFeedbackRequest,
+    AssistantVoiceTranscriptResponse,
 )
-from app.assistant.service import answer_question, build_caller, record_feedback
+from app.assistant.service import (
+    answer_question,
+    build_caller,
+    record_feedback,
+    transcribe_capture,
+)
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.tenant_auth import TenantContext, get_current_tenant
 
@@ -21,6 +28,11 @@ router = APIRouter(tags=["Assistant"])
 # Mounted under the existing /api/v1/reports prefix, so the assistant reaches the
 # browser through the gateway route that already exists for report-service. No
 # new gateway route and no per-service frontend base URL is introduced.
+
+# Hard ceiling on an upload, taken from configuration so an operator can lower
+# it. It sits below the gateway body limit, so an oversized capture is refused
+# here with an assistant error rather than by shared middleware.
+MAX_UPLOAD_BYTES = int(getattr(settings, "assistant_max_audio_bytes", 5 * 1024 * 1024))
 
 _STATUS_BY_CODE: dict[AssistantErrorCode, int] = {
     # The capability is switched off for this deployment, so for this caller the
@@ -34,6 +46,9 @@ _STATUS_BY_CODE: dict[AssistantErrorCode, int] = {
     AssistantErrorCode.INVALID_PROVIDER_OUTPUT: 502,
     AssistantErrorCode.UNSUPPORTED_QUESTION: 200,
     AssistantErrorCode.NEEDS_REVIEW: 200,
+    AssistantErrorCode.INVALID_AUDIO: 400,
+    AssistantErrorCode.AUDIO_TOO_LONG: 400,
+    AssistantErrorCode.UNSUPPORTED_AUDIO_FORMAT: 415,
 }
 
 
@@ -101,3 +116,65 @@ async def assistant_feedback(
     if error is not None:
         return _error_response(error)
     return Response(status_code=204)
+
+
+@router.post(
+    "/assistant/voice/transcribe",
+    response_model=AssistantVoiceTranscriptResponse,
+    responses={403: {"model": AssistantErrorResponse}},
+    summary="Transcribe one push-to-talk recording for the speaker to confirm",
+)
+@limiter.limit("10/minute")
+async def assistant_voice_transcribe(
+    request: Request,
+    language: str | None = Query(
+        default=None,
+        max_length=5,
+        description=(
+            "Optional recognition hint, en or sw. Anything else is ignored and "
+            "the language is detected instead."
+        ),
+    ),
+    ctx: TenantContext = Depends(get_current_tenant),
+):
+    request_id = _request_id(request)
+    caller = build_caller(ctx)
+
+    # The declared length is refused before the body is read, so an oversized
+    # upload is not buffered into memory first. The real length is checked again
+    # after reading, because a declared length is only a claim.
+    declared_length = request.headers.get("content-length")
+    if declared_length:
+        try:
+            if int(declared_length) > MAX_UPLOAD_BYTES:
+                return _error_response(
+                    AssistantErrorResponse(
+                        request_id=request_id,
+                        code=AssistantErrorCode.REQUEST_TOO_LARGE,
+                        message="That recording is too large.",
+                    )
+                )
+        except ValueError:
+            return _error_response(
+                AssistantErrorResponse(
+                    request_id=request_id,
+                    code=AssistantErrorCode.INVALID_AUDIO,
+                    message="That recording could not be read.",
+                )
+            )
+
+    audio = await request.body()
+
+    result, audit = await transcribe_capture(
+        request_id,
+        caller,
+        audio,
+        request.headers.get("content-type"),
+        language=language,
+    )
+
+    request.state.assistant_audit = audit
+
+    if isinstance(result, AssistantErrorResponse):
+        return _error_response(result)
+    return result

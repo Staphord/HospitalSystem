@@ -18,13 +18,25 @@ from app.main import app
 APPROVED_ASSISTANT_PATHS = {
     "/api/v1/reports/assistant/chat",
     "/api/v1/reports/assistant/feedback",
+    "/api/v1/reports/assistant/voice/transcribe",
 }
 
-# Capabilities that belong to phases 4, 5, and 7. None of them may be reachable
+# Capabilities that belong to phases 5, 7, and 8. None of them may be reachable
 # yet, whatever their feature flags happen to say.
+#
+# Phase 4 adds push-to-talk transcription, so "/voice" and "/transcribe" have
+# left this list. Change authorised by the user (kakaAllord) on 2026-08-27, who
+# is also the author of the guard: commit 02f43d9, 2026-08-26, "add hospital
+# assistant operational chat and feedback endpoints".
+#
+# Speech playback is deliberately absent. Phase 4 speaks an already-returned
+# answer using the browser speech synthesiser, so no audio is generated or
+# served by this service and no answer text is sent to a vendor to be spoken.
+# "/speak" and "/tts" are reserved here so that decision cannot be reversed by
+# accident.
 RESERVED_PATH_FRAGMENTS = (
-    "/voice",
-    "/transcribe",
+    "/speak",
+    "/tts",
     "/differential",
     "/medication",
     "/interaction",

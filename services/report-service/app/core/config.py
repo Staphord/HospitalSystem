@@ -62,6 +62,27 @@ class Settings(BaseSettings):
         default=2000, alias="ASSISTANT_MAX_QUESTION_CHARS"
     )
 
+    # Push-to-talk voice. Every bound here is enforced on the server; nothing
+    # about a capture is accepted from the browser. whisper-large-v3 is chosen
+    # over the turbo variant because Swahili and code-mixed Swahili/English
+    # speech are a requirement, and turbo trades multilingual accuracy for
+    # speed. Raw audio is never persisted: there is deliberately no retention
+    # setting to turn on.
+    assistant_transcription_model: str = Field(
+        default="whisper-large-v3", alias="ASSISTANT_TRANSCRIPTION_MODEL"
+    )
+    assistant_max_audio_bytes: int = Field(
+        default=5 * 1024 * 1024, alias="ASSISTANT_MAX_AUDIO_BYTES"
+    )
+    assistant_max_audio_duration_ms: int = Field(
+        default=60_000, alias="ASSISTANT_MAX_AUDIO_DURATION_MS"
+    )
+    # Must stay below the API gateway's fixed 30 second proxy timeout, or the
+    # browser sees a gateway error instead of the assistant's own safe refusal.
+    assistant_voice_timeout_seconds: float = Field(
+        default=20.0, alias="ASSISTANT_VOICE_TIMEOUT_SECONDS"
+    )
+
     # Read-only impersonation enforcement.
     #
     # "log" reports what would have been blocked without blocking it, which is
