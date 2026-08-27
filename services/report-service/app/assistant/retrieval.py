@@ -12,6 +12,7 @@ from app.assistant.content import (
     ContentEntry,
     ContentKind,
 )
+from app.assistant.language import SWAHILI_STOPWORDS, expand_query
 from app.assistant.permissions import normalize_roles
 
 # Hard ceiling on how much content may be assembled for one question. This
@@ -29,7 +30,7 @@ _STOPWORDS = frozenset(
         "or", "the", "to", "what", "when", "where", "which", "who", "why",
         "with", "you", "your", "hospital", "system", "patient", "patients",
     }
-)
+) | SWAHILI_STOPWORDS
 
 
 @dataclass(frozen=True)
@@ -165,7 +166,11 @@ def retrieve(
     permitted entry can be dropped but a forbidden entry can never be promoted.
     """
     permitted = visible_entries(context, kinds)
-    terms = _tokenize(query or "")
+    # Swahili terms are expanded to the English vocabulary the content pack is
+    # written in. Expansion happens after access filtering has already produced
+    # `permitted`, so it can only reorder or drop entries the caller may
+    # already see, never surface one they may not.
+    terms = _tokenize(expand_query(query or ""))
 
     scored = [(entry, _score(entry, terms)) for entry in permitted]
     matching = [(entry, score) for entry, score in scored if score > 0]
