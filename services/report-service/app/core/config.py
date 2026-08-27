@@ -53,7 +53,7 @@ class Settings(BaseSettings):
         default="https://api.groq.com/openai/v1", alias="GROQ_BASE_URL"
     )
     assistant_groq_model: str = Field(
-        default="llama-3.3-70b-versatile", alias="GROQ_MODEL"
+        default="openai/gpt-oss-120b", alias="GROQ_MODEL"
     )
     assistant_request_timeout_seconds: float = Field(
         default=20.0, alias="ASSISTANT_REQUEST_TIMEOUT_SECONDS"
