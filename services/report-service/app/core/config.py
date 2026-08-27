@@ -62,6 +62,19 @@ class Settings(BaseSettings):
         default=2000, alias="ASSISTANT_MAX_QUESTION_CHARS"
     )
 
+    # Read-only impersonation enforcement.
+    #
+    # "log" reports what would have been blocked without blocking it, which is
+    # how this is rolled out: the shared ReadOnlyScopeMiddleware has never
+    # actually blocked anything, so switching straight to "enforce" would begin
+    # refusing writes that succeed today, on paths nobody has tested under
+    # enforcement. Run in "log", read the warnings, then move to "enforce".
+    #
+    # "enforce" refuses writes in a read-only session. "off" disables the check.
+    readonly_scope_enforcement: str = Field(
+        default="log", alias="READONLY_SCOPE_ENFORCEMENT"
+    )
+
     class Config:
         env_file = ".env"
         case_sensitive = False

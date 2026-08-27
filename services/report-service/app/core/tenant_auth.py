@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -26,6 +27,8 @@ class TenantContext:
     scope: str = "full"
     raw_token: dict[str, Any] = field(default_factory=dict)
 
+
+logger = logging.getLogger(__name__)
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 _jwks_cache: TTLCache[str, dict[str, Any]] = TTLCache(maxsize=10, ttl=300)
@@ -102,6 +105,52 @@ async def _decode_token(token: str) -> dict[str, Any]:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from e
 
 
+WRITE_METHODS: frozenset[str] = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _apply_readonly_scope(request: Request, ctx: TenantContext) -> None:
+    """Refuse writes during a read-only impersonation session.
+
+    This lives here rather than in ReadOnlyScopeMiddleware because that
+    middleware reads request.state.tenant before calling the next handler, and
+    that attribute is only populated by this dependency, which runs afterwards.
+    The tenant is therefore always None at the middleware's check, so it has
+    never blocked anything. Here the verified scope is already known.
+
+    Rollout is staged through READONLY_SCOPE_ENFORCEMENT. The default, "log",
+    records what would have been refused without refusing it, because writes
+    that succeed today would otherwise start failing on paths nobody has
+    exercised under enforcement.
+    """
+    if ctx.scope != "readonly" or request.method not in WRITE_METHODS:
+        return
+
+    mode = (settings.readonly_scope_enforcement or "log").strip().lower()
+    if mode == "off":
+        return
+
+    if mode != "enforce":
+        # Identifiers and the attempted route only. No request body, no token,
+        # no patient data.
+        logger.warning(
+            "readonly scope would refuse write: method=%s path=%s tenant_id=%s actor_sub=%s",
+            request.method,
+            request.url.path,
+            ctx.tenant_id,
+            ctx.user_sub,
+        )
+        return
+
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN,
+        detail={
+            "code": "READ_ONLY_SCOPE",
+            "message": "Write operations are not allowed in readonly mode",
+        },
+        headers={"X-Impersonation-Banner": "true"},
+    )
+
+
 async def get_current_tenant(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
@@ -167,4 +216,7 @@ async def get_current_tenant(
 
     request.state.tenant = ctx
     request.state.user_sub = ctx.user_sub
+
+    _apply_readonly_scope(request, ctx)
+
     return ctx
