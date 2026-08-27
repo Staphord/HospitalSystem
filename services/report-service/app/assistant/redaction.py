@@ -63,13 +63,16 @@ def safe_log_fields(**fields: Any) -> dict[str, Any]:
     for name, value in fields.items():
         if name not in LOGGABLE_FIELDS or value is None:
             continue
-        if isinstance(value, bool) or isinstance(value, int):
+        # Enums are matched before str and int, because the enums used here
+        # subclass str: without this order they would fall into the str branch
+        # and log as "AssistantOutcome.SUCCESS" rather than as "success", which
+        # is the repr this function exists to avoid.
+        if isinstance(value, Enum) and isinstance(value.value, (str, int, float)):
+            safe[name] = scrub(value.value)
+        elif isinstance(value, bool) or isinstance(value, int):
             safe[name] = value
         elif isinstance(value, (str, float)):
             safe[name] = scrub(value)
-        elif isinstance(value, Enum) and isinstance(value.value, (str, int, float)):
-            # Enums log as their value, never as their repr.
-            safe[name] = scrub(value.value)
         # Anything else (a dict of retrieved content, a provider response, a
         # model object) is dropped rather than serialised. Falling back to str()
         # here is how a payload would end up in a log line.
