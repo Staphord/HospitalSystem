@@ -387,3 +387,32 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
+  clinical-decision-support-service:
+    image: ghcr.io/your-org/clinical-decision-support-service:latest
+    container_name: hospital-cds-service-test
+    ports:
+      - "18021:8021"
+    environment:
+      - MASTER_DB_URL=postgresql://postgres:postgres@postgres-master-test:5432/hospital_master_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq-test:5672/
+      # Clinical decision support stays off in the test stack unless a test
+      # explicitly turns it on, and the ruleset source stays fail-closed.
+      - CDS_ENABLED=${CDS_ENABLED:-false}
+      - CDS_MEDICATION_CHECK_ENABLED=${CDS_MEDICATION_CHECK_ENABLED:-false}
+      - CDS_RULESET_SOURCE=${CDS_RULESET_SOURCE:-null}
+    networks:
+      - hospital-network-test
+    depends_on:
+      postgres-master-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      rabbitmq-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8021/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5

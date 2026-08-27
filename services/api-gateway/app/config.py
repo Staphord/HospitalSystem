@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     visit_service_url: str = Field(default="http://localhost:8006", alias="VISIT_SERVICE_URL")
     notification_service_url: str = Field(default="http://localhost:8019", alias="NOTIFICATION_SERVICE_URL")
     report_service_url: str = Field(default="http://localhost:8020", alias="REPORT_SERVICE_URL")
+    cds_service_url: str = Field(default="http://localhost:8021", alias="CDS_SERVICE_URL")
 
     tenant_db_encryption_key: str = Field(alias="TENANT_DB_ENCRYPTION_KEY")
     impersonation_token_ttl: int = Field(default=900, alias="IMPERSONATION_TOKEN_TTL")

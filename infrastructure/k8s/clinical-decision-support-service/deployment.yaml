@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clinical-decision-support-service
+  labels:
+    app: clinical-decision-support-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: clinical-decision-support-service
+  template:
+    metadata:
+      labels:
+        app: clinical-decision-support-service
+    spec:
+      containers:
+        - name: clinical-decision-support-service
+          image: ghcr.io/your-org/clinical-decision-support-service:latest
+          ports:
+            - containerPort: 8021
+          envFrom:
+            - configMapRef:
+                name: hospital-config
+            - secretRef:
+                name: hospital-secrets
+          # Clinical decision support stays off unless an operator sets these
+          # explicitly. hospital-config carries none of these names, so a
+          # cluster that has not opted in answers 404 on every CDS route and
+          # runs no clinical code. The ruleset source stays fail-closed: every
+          # check returns needs_review until an approved artifact is mounted
+          # and CDS_RULESET_PATH points at it.
+          env:
+            - name: CDS_ENABLED
+              value: "false"
+            - name: CDS_MEDICATION_CHECK_ENABLED
+              value: "false"
+            - name: CDS_DIFFERENTIAL_SUPPORT_ENABLED
+              value: "false"
+            - name: CDS_RULESET_SOURCE
+              value: "null"
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8021
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8021
+            initialDelaySeconds: 10
+            periodSeconds: 5
