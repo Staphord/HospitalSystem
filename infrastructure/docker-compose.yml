@@ -842,6 +842,14 @@ services:
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: RZ4x5srAJWSrMAAkllCfVuqYiHYIIlfgXDdvAN11Gh0=
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      # Hospital assistant. Off unless an operator opts in: with nothing exported
+      # the flag is false, so the assistant routes return 404, and the key is
+      # empty, so the provider stays the fail-closed NullProvider and no vendor
+      # call is reachable. Supply the key through the deployment secret store.
+      ASSISTANT_OPERATIONAL_CHAT_ENABLED: ${ASSISTANT_OPERATIONAL_CHAT_ENABLED:-false}
+      ASSISTANT_PROVIDER: ${ASSISTANT_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
     depends_on:
       master-service:
         condition: service_healthy
