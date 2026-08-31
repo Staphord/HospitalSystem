@@ -245,3 +245,37 @@ Extend the Hospital Flow Streamlit portal with tenant subscription visibility, u
 - `services/api-gateway/app/proxy.py` — Route `/api/v1/tenant` to master-service
 - `streamlit_app/app.py` — User suspend/resume, terminate button, subscription page, lockout screen, user-list error feedback, proactive subscription status check on dashboard load
 - `scripts/migrate_existing_tenants.py` — Utility to run tenant migrations on all existing tenant DBs
+
+---
+
+## Assistant content pack: naming screens
+
+`services/report-service/app/assistant/content/entries.py` tells staff where to go
+("Reports, then Patient reports (/admin/reports/patients)"). Those screens live in
+`frontend-hospital`, behind a role check this repo cannot see. When the two drift, a
+user is told to open a page that is not in their menu.
+
+The bridge is **`frontend-hospital/nav-manifest.json`** - generated from the rendered
+sidebar by `npm run nav:manifest` and committed. It maps every menu path to the roles
+whose sidebar shows it.
+
+When adding or editing a content entry:
+
+- **Use a real path.** Every `/path` in an entry's `location` or `body` must appear in
+  the manifest.
+- **Match the role scope to the menu.** Every role that can retrieve the entry must
+  have that screen in the manifest. Widening `roles` on an entry without widening the
+  frontend menu is what caused the original bug.
+- **Use the manifest's `label`** as the screen name in prose, so the words in the
+  answer match the words on screen.
+
+`tests/unit/test_assistant_content_locations.py` enforces all three. It drives the real
+`build_retrieval_context` / `visible_entries` path, so it checks what a role would
+actually be shown, department and approval filters included. It skips with a loud
+message if the frontend is not checked out alongside this repo; set
+`NAV_MANIFEST_PATH` to point at the manifest elsewhere (CI should set it).
+
+The reverse direction is guarded in the frontend by
+`src/app/layout/__tests__/navContract.test.tsx`, which fails if a nav item is offered
+to a role the router rejects, if a page has no way to reach it, or if the sidebar drops
+an item a role is permitted to see.
