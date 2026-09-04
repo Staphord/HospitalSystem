@@ -124,7 +124,9 @@ class TestSuccessfulChat:
         body = response.json()
         assert body["status"] == "supported"
         assert body["answer"]
-        assert body["sources"]
+        # No Sources footnote is returned any more; it was noise under every
+        # reply. The trace lives on the stored exchange and the audit record.
+        assert body["sources"] == []
         assert body["request_id"]
 
     def test_the_response_carries_the_request_id_header(self, client, as_user, stub):
@@ -148,7 +150,17 @@ class TestSuccessfulChat:
     def test_the_response_contains_only_contract_fields(self, client, as_user, stub):
         as_user()
         body = client.post(CHAT_URL, json=PASSWORD_QUESTION).json()
-        assert set(body) == {"request_id", "status", "answer", "sources", "follow_ups"}
+        assert set(body) == {
+            "request_id",
+            "status",
+            "answer",
+            "sources",
+            "follow_ups",
+            # The thread the exchange was stored in. None here: chat history is
+            # its own capability and this test does not switch it on.
+            "conversation_id",
+        }
+        assert body["conversation_id"] is None
 
 
 class TestClientSuppliedFieldsAreRefused:
@@ -247,22 +259,23 @@ class TestRoleFiltering:
     def test_only_hospital_admin_receives_report_catalog_content(
         self, client, as_user, stub
     ):
+        """Checked against what reaches the model, not against the response.
+
+        This used to read the Sources list off the reply. That list is no longer
+        shown to staff, so the observable moved to the prompt itself - which is
+        the stronger check anyway: it asserts the content never reaches the model
+        for a receptionist, rather than only that it was not cited afterwards.
+        """
         as_user(roles=["hospital_admin"])
-        admin_labels = [
-            s["label"]
-            for s in client.post(
-                CHAT_URL, json={"question": "what reports can I run"}
-            ).json()["sources"]
-        ]
+        client.post(CHAT_URL, json={"question": "what reports can I run"})
+        admin_prompt = stub.calls[-1].content.lower()
+
         as_user(roles=["receptionist"])
-        staff_labels = [
-            s["label"]
-            for s in client.post(
-                CHAT_URL, json={"question": "what reports can I run"}
-            ).json()["sources"]
-        ]
-        assert any("report" in label.lower() for label in admin_labels)
-        assert not any("report" in label.lower() for label in staff_labels)
+        client.post(CHAT_URL, json={"question": "what reports can I run"})
+        staff_prompt = stub.calls[-1].content.lower()
+
+        assert "reports dashboard" in admin_prompt
+        assert "reports dashboard" not in staff_prompt
 
 
 class TestReadOnlyImpersonationIsBlocked:

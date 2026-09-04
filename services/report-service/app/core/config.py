@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     assistant_realtime_voice_enabled: bool = Field(
         default=False, alias="ASSISTANT_REALTIME_VOICE_ENABLED"
     )
+    assistant_chat_history_enabled: bool = Field(
+        default=False, alias="ASSISTANT_CHAT_HISTORY_ENABLED"
+    )
+    assistant_live_data_enabled: bool = Field(
+        default=False, alias="ASSISTANT_LIVE_DATA_ENABLED"
+    )
+    # Whether a medicine the reference pack does not carry may be answered from
+    # the model's own knowledge of pharmacology, clearly marked as unverified.
+    # Off by default and separate from the medicines capability itself, so a
+    # hospital can run the reference and nothing but the reference.
+    assistant_medicines_model_fallback_enabled: bool = Field(
+        default=False, alias="ASSISTANT_MEDICINES_MODEL_FALLBACK_ENABLED"
+    )
 
     # Model provider. Groq is the approved vendor; the credential is read here on
     # the server only and is never sent to a browser, a log, or an audit record.
@@ -60,6 +73,18 @@ class Settings(BaseSettings):
     )
     assistant_max_question_chars: int = Field(
         default=2000, alias="ASSISTANT_MAX_QUESTION_CHARS"
+    )
+
+    # Chat history bounds. These exist so one staff member cannot fill a tenant
+    # database by leaving the panel open: the oldest conversation is dropped
+    # once the ceiling is reached, and a single thread stops growing instead of
+    # growing without limit. History is kept until its owner deletes it, which
+    # is why there is deliberately no expiry setting here to discard it quietly.
+    assistant_history_max_conversations: int = Field(
+        default=50, alias="ASSISTANT_HISTORY_MAX_CONVERSATIONS"
+    )
+    assistant_history_max_messages: int = Field(
+        default=200, alias="ASSISTANT_HISTORY_MAX_MESSAGES"
     )
 
     # Push-to-talk voice. Every bound here is enforced on the server; nothing
@@ -81,6 +106,25 @@ class Settings(BaseSettings):
     # browser sees a gateway error instead of the assistant's own safe refusal.
     assistant_voice_timeout_seconds: float = Field(
         default=20.0, alias="ASSISTANT_VOICE_TIMEOUT_SECONDS"
+    )
+
+    # Live operational figures read from the tenant database.
+    #
+    # The cache exists so the chat rate limit cannot be turned into database
+    # load: twenty questions a minute about bed availability must not become
+    # twenty scans. It is deliberately short, and every figure is stamped
+    # with the time it was read so staff can see how fresh it is.
+    #
+    # The statement timeout is applied inside the read-only transaction, so a
+    # pathological query releases its connection instead of holding it.
+    assistant_live_data_cache_seconds: int = Field(
+        default=30, alias="ASSISTANT_LIVE_DATA_CACHE_SECONDS"
+    )
+    assistant_live_data_timeout_seconds: float = Field(
+        default=3.0, alias="ASSISTANT_LIVE_DATA_TIMEOUT_SECONDS"
+    )
+    assistant_live_data_max_metrics: int = Field(
+        default=3, alias="ASSISTANT_LIVE_DATA_MAX_METRICS"
     )
 
     # Read-only impersonation enforcement.

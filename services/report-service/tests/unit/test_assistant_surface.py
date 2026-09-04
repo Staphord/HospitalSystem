@@ -15,14 +15,43 @@ from app.main import app
 # could not have failed. It now reads the generated OpenAPI paths, which reflect
 # what is genuinely reachable.
 
-APPROVED_ASSISTANT_PATHS = {
-    "/api/v1/reports/assistant/chat",
-    "/api/v1/reports/assistant/feedback",
-    "/api/v1/reports/assistant/voice/transcribe",
+# Chat history adds four routes and, for the first time, assistant methods other
+# than POST: history is read and deleted, so GET and DELETE are unavoidable. The
+# guard is therefore stated as an explicit method map rather than as a blanket
+# "POST only" rule, so a read or a delete appearing on some other assistant path
+# is still a failure. Change authorised by the user on 2026-08-29, who asked for
+# previous chats to be kept server side.
+APPROVED_ASSISTANT_ROUTES = {
+    "/api/v1/reports/assistant/chat": {"post"},
+    "/api/v1/reports/assistant/feedback": {"post"},
+    "/api/v1/reports/assistant/voice/transcribe": {"post"},
+    # Chat history. Read and delete only: a conversation is created by asking a
+    # question, never by a browser posting conversation text, so there is
+    # deliberately no POST or PUT here.
+    "/api/v1/reports/assistant/conversations": {"get", "delete"},
+    "/api/v1/reports/assistant/conversations/{conversation_id}": {"get", "delete"},
+    # Starting questions. Read only, and it takes no parameters at all: the
+    # caller's roles and tenant come from the verified token, so a browser cannot
+    # ask what some other role would be offered. Change authorised by the user on
+    # 2026-08-31, who reported that the questions the panel suggested did not
+    # work for the role they were signed in as.
+    "/api/v1/reports/assistant/suggestions": {"get"},
 }
 
-# Capabilities that belong to phases 5, 7, and 8. None of them may be reachable
-# yet, whatever their feature flags happen to say.
+APPROVED_ASSISTANT_PATHS = set(APPROVED_ASSISTANT_ROUTES)
+
+# Capabilities that must not have a surface of their own, whatever their feature
+# flags happen to say.
+#
+# "/medication" and "/interaction" stay listed here even though the medicines
+# reference now answers a clinician's medicine question. It answers it through
+# the existing chat endpoint, because that is where a doctor asks it - mid-round,
+# in words, alongside everything else they ask. A separate medication-check
+# endpoint would be a second way in, with its own gate to keep in step with the
+# first, and the first thing to drift when one of them changed. So the capability
+# grew without the surface growing, and this guard is what keeps it that way.
+# Change authorised by the user on 2026-09-03, who asked for medicine questions
+# to be answered in the assistant chat.
 #
 # Phase 4 adds push-to-talk transcription, so "/voice" and "/transcribe" have
 # left this list. Change authorised by the user (kakaAllord) on 2026-08-27, who
@@ -71,10 +100,18 @@ class TestOnlyTheApprovedAssistantSurfaceIsExposed:
                 "belongs to a later phase"
             )
 
-    def test_assistant_routes_are_post_only(self):
+    def test_each_assistant_route_exposes_only_its_approved_methods(self):
         for path, operations in _paths().items():
             if "assistant" in path.lower():
-                assert set(operations) == {"post"}
+                assert set(operations) == APPROVED_ASSISTANT_ROUTES[path]
+
+    def test_nothing_writes_conversation_content_over_the_history_routes(self):
+        # History is written by asking a question. If a POST or a PUT ever
+        # appears here, a browser can put words into a stored conversation that
+        # the assistant never said.
+        for path, operations in _paths().items():
+            if "conversations" in path.lower():
+                assert not {"post", "put", "patch"} & set(operations)
 
     def test_assistant_is_mounted_under_the_existing_reports_gateway_route(self):
         # The gateway already routes /api/v1/reports to this service. Every

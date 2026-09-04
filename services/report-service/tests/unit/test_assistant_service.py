@@ -222,22 +222,43 @@ class TestRequestLimits:
 
 
 class TestSupportedAnswers:
-    def test_a_supported_question_is_answered_with_sources(self, stub):
+    def test_a_supported_question_is_answered(self, stub):
         response, audit = ask()
         assert isinstance(response, AssistantChatResponse)
         assert response.status is AssistantAnswerStatus.SUPPORTED
         assert response.request_id == REQUEST_ID
-        assert response.sources
+        assert response.answer
         assert audit.outcome is AssistantOutcome.SUCCESS
+
+    def test_the_answer_carries_no_sources_list(self, stub):
+        """The Sources footnote is not shown to staff any more.
+
+        Retrieval cites everything scoring above zero, so a question about taking
+        a payment was footnoted "Do not share accounts or sign-in details" and no
+        reader was better off for it. They are still computed, still written to
+        the stored exchange, and still on the audit record - the trace is for
+        whoever investigates an answer, not clutter under every reply.
+        """
+        response, _ = ask()
+        assert response.sources == []
 
     def test_the_content_pack_version_is_recorded(self, stub):
         _, audit = ask()
         assert audit.ruleset_version
         assert audit.ruleset_version.startswith("operational-content-")
 
-    def test_sources_carry_a_version(self, stub):
-        response, _ = ask()
-        assert all(source.version for source in response.sources)
+    def test_the_stored_exchange_still_records_what_produced_the_answer(self, stub):
+        """Removing the footnote must not remove the trace behind it."""
+        import inspect
+
+        from app.assistant import service
+
+        source = inspect.getsource(service.answer_question)
+        assert "sources = _sources(results, tools) + _live_sources(metric_results)" in source
+        assert "sources=sources," in source, (
+            "the stored exchange no longer records its sources, so an answer can "
+            "no longer be traced back to the content that produced it"
+        )
 
     def test_the_model_only_receives_permitted_content(self, stub):
         # A receptionist asking about revenue must not have report catalog
@@ -277,9 +298,29 @@ class TestUnsupportedQuestions:
     def test_an_unsupported_answer_offers_no_false_reassurance(self, stub):
         response, _ = ask(question="zzzqqq wholly unrelated nonsense")
         text = response.answer.lower()
-        assert "do not have" in text
+        assert "can't help with that" in text
         for reassurance in ("no problem", "it is safe", "nothing found", "all clear"):
             assert reassurance not in text
+
+    def test_an_unsupported_answer_says_what_the_caller_can_ask_instead(self, stub):
+        """A refusal used to be a dead end that ended "please speak to the
+        relevant department". It now lists what this person can actually ask."""
+        response, _ = ask(question="zzzqqq wholly unrelated nonsense")
+        text = response.answer
+        assert "You could ask me:" in text
+        offered = [line[2:] for line in text.splitlines() if line.startswith("- ")]
+        assert offered and all(q.endswith("?") for q in offered)
+
+    def test_an_unsupported_answer_sends_nobody_to_it(self, stub):
+        response, _ = ask(question="zzzqqq wholly unrelated nonsense")
+        text = response.answer.lower()
+        for referral in (
+            "it support", "it department", "system administrator", "helpdesk",
+            "relevant department", "technical support",
+        ):
+            assert referral not in text, (
+                "the refusal still sends the staff member away: " + referral
+            )
 
 
 class TestProviderFailures:
@@ -447,3 +488,40 @@ class TestFeedback:
             ),
         )
         assert "John Doe" not in str(audit.model_dump())
+
+
+class TestTheCapabilityQuestionIsAnsweredEndToEnd:
+    """Running the real branch, not just the helper that composes its text.
+
+    The first version of this branch built its audit record with an outcome that
+    does not exist on the enum. Every helper test passed; asking "What can you
+    help me with?" through the gateway returned a 500. Nothing short of calling
+    answer_question would have caught it.
+    """
+
+    def test_it_returns_a_supported_answer(self, stub):
+        response, audit = ask(question="What can you help me with?")
+        assert isinstance(response, AssistantChatResponse)
+        assert response.status is AssistantAnswerStatus.SUPPORTED
+        assert audit.outcome is AssistantOutcome.SUCCESS
+
+    def test_it_lists_what_this_caller_can_ask(self, stub):
+        response, _ = ask(question="What can you help me with?")
+        assert "Here is what I can help you with:" in response.answer
+        assert "1." in response.answer and "2." in response.answer
+
+    def test_it_never_reaches_the_model(self, stub):
+        """Composed on the server, so it cannot be hallucinated and cannot
+        promise something the caller would then be refused."""
+        ask(question="What can you do?")
+        assert stub.calls == []
+
+    def test_it_sends_nobody_to_it(self, stub):
+        response, _ = ask(question="What can you do?")
+        text = response.answer.lower()
+        for referral in ("it support", "system administrator", "helpdesk"):
+            assert referral not in text
+
+    def test_an_ordinary_question_still_reaches_the_model(self, stub):
+        ask(question="how do I register a patient")
+        assert stub.calls, "a normal question stopped reaching the provider"

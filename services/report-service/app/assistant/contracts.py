@@ -119,6 +119,10 @@ class AssistantChatResponse(AssistantModel):
     answer: str = Field(max_length=8000)
     sources: list[AssistantSource] = Field(default_factory=list, max_length=20)
     follow_ups: list[str] = Field(default_factory=list, max_length=5)
+    # The thread this exchange was stored in, so the browser can carry on the
+    # same conversation. None when history is switched off or could not be
+    # written: an answer is never withheld because history failed.
+    conversation_id: UUID | None = None
 
     @model_validator(mode="after")
     def _unsupported_answers_carry_no_sources(self) -> AssistantChatResponse:
@@ -139,6 +143,112 @@ class AssistantFeedbackRequest(AssistantModel):
     request_id: str = Field(min_length=1, max_length=64)
     rating: AssistantFeedbackRating
     comment: str | None = Field(default=None, max_length=1000)
+
+
+# Chat history
+#
+# A stored conversation is the caller's own past questions and the answers they
+# were given, nothing more. Every contract below is a response contract: a
+# conversation is created by asking a question, never by a browser describing
+# one, so there is no request body here that could set a title, an author, or an
+# owner. The only thing a client sends is a conversation id in the path, and the
+# server resolves that against the caller's own rows.
+
+
+class AssistantMessageAuthor(str, Enum):
+    """Who wrote a stored message.
+
+    Deliberately not called a role: the caller's hospital role is resolved from
+    the token on every request and is never stored alongside a message, where it
+    would go stale and start being read as an authorization fact.
+    """
+
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class AssistantConversationSummary(AssistantModel):
+    """One row in the history list."""
+
+    conversation_id: UUID
+    # Derived on the server from the opening question and stored plain, so the
+    # list can never be a route for markup the answer sanitizer already refused.
+    title: str = Field(min_length=1, max_length=120)
+    message_count: int = Field(ge=0)
+    created_at: datetime
+    last_message_at: datetime
+
+
+class AssistantSuggestion(AssistantModel):
+    """One starting question this caller can actually get an answer to."""
+
+    question: str = Field(min_length=1, max_length=200)
+    # "content" or "live_metric", so the panel can group a how-do-I apart from a
+    # figure. It is a label for presentation only and names no entry or metric:
+    # the browser is never told which content or which metric backs a question.
+    kind: str = Field(min_length=1, max_length=40)
+
+
+class AssistantSuggestionsResponse(AssistantModel):
+    """Starting questions, chosen for the caller's own roles.
+
+    Every question here is one the server has already established this caller can
+    reach: it comes from a content entry they may read, or a live metric their
+    roles pass. An empty list is a real answer - a caller with no usable role is
+    offered nothing rather than something that would be refused.
+    """
+
+    request_id: str = Field(min_length=1, max_length=64)
+    suggestions: list[AssistantSuggestion] = Field(
+        default_factory=list, max_length=20
+    )
+
+
+class AssistantConversationListResponse(AssistantModel):
+    """The caller's own conversations, most recently used first."""
+
+    conversations: list[AssistantConversationSummary] = Field(
+        default_factory=list, max_length=200
+    )
+
+
+class AssistantStoredMessage(AssistantModel):
+    """One question or one answer, as it was shown at the time."""
+
+    message_id: UUID
+    author: AssistantMessageAuthor
+    body: str = Field(max_length=8000)
+    # Set on an assistant message only; a question has no answer status and
+    # cites nothing.
+    answer_status: AssistantAnswerStatus | None = None
+    sources: list[AssistantSource] = Field(default_factory=list, max_length=20)
+    request_id: str | None = Field(default=None, max_length=64)
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def _only_answers_carry_answer_fields(self) -> AssistantStoredMessage:
+        if self.author is AssistantMessageAuthor.USER and (
+            self.answer_status is not None or self.sources
+        ):
+            raise ValueError("a stored question carries no answer status and no sources")
+        return self
+
+
+class AssistantConversationResponse(AssistantModel):
+    """One reopened conversation and its messages, oldest first."""
+
+    conversation_id: UUID
+    title: str = Field(min_length=1, max_length=120)
+    created_at: datetime
+    last_message_at: datetime
+    messages: list[AssistantStoredMessage] = Field(default_factory=list, max_length=500)
+    # Where the thread could go next, for the answer it currently ends on.
+    #
+    # Computed when the thread is reopened rather than stored with it, because
+    # what a caller may ask is decided by the roles on their token now, not by
+    # the roles they held when the exchange happened. A stored follow-up could
+    # outlive the permission that made it answerable; this one cannot.
+    follow_ups: list[str] = Field(default_factory=list, max_length=5)
 
 
 # Voice metadata. Audio bytes are never described by this contract, and raw audio
