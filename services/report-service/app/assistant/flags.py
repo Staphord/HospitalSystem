@@ -13,6 +13,8 @@ class AssistantCapability(str, Enum):
     MEDICATION_CHECK = "medication_check"
     DIFFERENTIAL_SUPPORT = "differential_support"
     REALTIME_VOICE = "realtime_voice"
+    LIVE_DATA = "live_data"
+    CHAT_HISTORY = "chat_history"
 
 
 _FLAG_ATTRIBUTES: dict[AssistantCapability, str] = {
@@ -21,6 +23,8 @@ _FLAG_ATTRIBUTES: dict[AssistantCapability, str] = {
     AssistantCapability.MEDICATION_CHECK: "assistant_medication_check_enabled",
     AssistantCapability.DIFFERENTIAL_SUPPORT: "assistant_differential_support_enabled",
     AssistantCapability.REALTIME_VOICE: "assistant_realtime_voice_enabled",
+    AssistantCapability.CHAT_HISTORY: "assistant_chat_history_enabled",
+    AssistantCapability.LIVE_DATA: "assistant_live_data_enabled",
 }
 
 

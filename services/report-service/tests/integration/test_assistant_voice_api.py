@@ -198,6 +198,10 @@ class TestCaptureValidationOverHttp:
             (mp4(duration_ms=3000), "audio/mp4"),
             (wav(duration_ms=3000), "audio/wav"),
         ],
+        # Named, or the id is the capture's own bytes. Three seconds of WAV is
+        # real PCM and its id overflows PYTEST_CURRENT_TEST, which Windows caps
+        # at 32767 characters, so the case errored in setup on Windows only.
+        ids=["webm", "ogg", "mp4", "wav"],
     )
     def test_every_browser_capture_format_is_accepted(
         self, client, as_user, transcriber, audio, content_type

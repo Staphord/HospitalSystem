@@ -209,6 +209,13 @@ class TestTheCaptureIsBoundedBeforeAnyVendorIsContacted:
             (mp4(duration_ms=3000), "audio/mp4"),
             (wav(duration_ms=3000), "audio/wav"),
         ],
+        # Named, or pytest builds the id from the capture itself. Three seconds
+        # of WAV is real PCM, so that id is about a hundred thousand characters,
+        # and pytest writes the running test's id into PYTEST_CURRENT_TEST -
+        # which Windows caps at 32767. The case errored in setup on Windows and
+        # passed on Linux, and took the next test in the class down with it
+        # ("previous item was not torn down properly").
+        ids=["webm", "ogg", "mp4", "wav"],
     )
     @pytest.mark.asyncio
     async def test_each_browser_format_is_accepted(

@@ -48,6 +48,12 @@ CAPABILITY_ROLES: dict[AssistantCapability, frozenset[str]] = {
     AssistantCapability.MEDICATION_CHECK: frozenset({DOCTOR, PHARMACIST}),
     AssistantCapability.DIFFERENTIAL_SUPPORT: frozenset({DOCTOR}),
     AssistantCapability.REALTIME_VOICE: TENANT_STAFF_ROLES,
+    # History is only ever the caller's own past questions, so it carries the
+    # same role set as the chat that produced it and adds no new exposure.
+    AssistantCapability.CHAT_HISTORY: TENANT_STAFF_ROLES,
+    # Live data is gated again per metric: holding the capability does not
+    # mean reaching every figure. See live/registry.py allowed_roles.
+    AssistantCapability.LIVE_DATA: TENANT_STAFF_ROLES,
 }
 
 

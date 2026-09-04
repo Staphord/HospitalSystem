@@ -42,6 +42,14 @@ class TestContainerIsIdentifiedFromTheBytes:
             (mp4(), CONTAINER_MP4),
             (wav(), CONTAINER_WAV),
         ],
+        # Named, because the parameter is a capture and pytest would otherwise
+        # build the test id out of its bytes. WAV is real PCM rather than a
+        # short stub, so that id runs to roughly a hundred thousand characters -
+        # and pytest puts the id of the running test into PYTEST_CURRENT_TEST,
+        # which on Windows cannot hold more than 32767. The test then errors in
+        # setup, before its body runs, on every Windows machine and on no Linux
+        # one. Naming the cases fixes it and reads better in the output too.
+        ids=["webm", "ogg", "mp4", "wav"],
     )
     def test_each_supported_container_is_recognised(self, data, expected):
         assert sniff_container(data) == expected
@@ -205,6 +213,10 @@ class TestMalformedInputIsRefusedNotCrashed:
             b"\x00\x00\x00\x18ftyp" + b"\xff" * 1024,
             b"RIFF" + b"\xff" * 4 + b"WAVE" + b"\xff" * 1024,
         ],
+        # Named for the same reason as above. These payloads are only a kilobyte
+        # so they stay under the Windows ceiling today, but the id is still four
+        # thousand characters of escaped bytes in every failure message.
+        ids=["webm-ff", "webm-01", "ogg", "mp4", "wav"],
     )
     def test_a_corrupt_container_raises_only_a_validation_error(self, data):
         with pytest.raises(AudioValidationError):
