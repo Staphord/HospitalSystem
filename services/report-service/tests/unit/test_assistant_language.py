@@ -16,6 +16,7 @@ from datetime import date
 import pytest
 
 from app.assistant.language import (
+    _lookup,
     SWAHILI_STOPWORDS,
     SWAHILI_TO_ENGLISH,
     contains_swahili,
@@ -149,3 +150,161 @@ class TestVocabularyHealth:
         assert contains_swahili("Ninawezaje kusajili mgonjwa?") is True
         assert contains_swahili("How do I register a patient?") is False
         assert contains_swahili("") is False
+
+
+class TestTheReplyLanguageIsDecidedByTheServer:
+    """An English question answered in Swahili reads as a broken assistant.
+
+    SYSTEM_INSTRUCTIONS asks the model to reply in the language it was asked in,
+    and it mostly does. "Mostly" showed up in QA as "How do I take a payment
+    against a bill?" coming back as "Fungua Billing, chagua Bills...". The server
+    already knows which language the question was in, so it says so in the prompt
+    rather than hoping. These tests pin that the instruction is built, is
+    unambiguous, and is presentation only.
+    """
+
+    @pytest.mark.parametrize(
+        "question,expected",
+        [
+            ("How do I take a payment against a bill?", "English"),
+            ("How much have we collected today?", "English"),
+            ("Which medicines are out of stock?", "English"),
+            ("Malipo ya leo ni kiasi gani?", "Swahili"),
+            ("Ninawezaje kusajili mgonjwa mpya?", "Swahili"),
+            ("Foleni ya daktari ina watu wangapi?", "Swahili"),
+        ],
+    )
+    def test_it_resolves_the_language_of_a_real_question(self, question, expected):
+        resolved = "Swahili" if contains_swahili(question) else "English"
+        assert resolved == expected
+
+    def test_the_detector_never_gates_anything(self):
+        """It decides wording, never access.
+
+        Being wrong about the language can only produce an answer in the wrong
+        language. It must not appear in any access decision, or a question phrased
+        in Swahili could reach content a question phrased in English could not.
+        """
+        import inspect
+
+        from app.assistant import retrieval, service
+
+        for module in (retrieval, service):
+            source = inspect.getsource(module)
+            for line in source.splitlines():
+                if "contains_swahili" not in line or line.strip().startswith("#"):
+                    continue
+                # The capability answer also asks which language to compose in,
+                # which is the same presentation decision made one layer up.
+                allowed = ("reply_language", "swahili=", "import")
+                assert any(token in line for token in allowed), (
+                    "contains_swahili is used outside the reply-language decision "
+                    "in " + module.__name__ + ": " + line.strip()
+                )
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "Ni kiasi gani bado hakijalipwa?",
+            "Vipimo vingapi bado havijakamilika?",
+            "Foleni ina watu wangapi sasa?",
+            "Je, kuna dawa zilizoisha?",
+        ],
+    )
+    def test_a_swahili_question_carrying_no_mapped_term_is_still_swahili(
+        self, question
+    ):
+        """A question can be entirely Swahili and translate to nothing.
+
+        "Ni kiasi gani bado hakijalipwa" - how much is still unpaid - has a verb
+        conjugated past anything the vocabulary map recognises, so before the
+        function-word list it read as English and was answered in English.
+        """
+        assert contains_swahili(question) is True
+
+    @pytest.mark.parametrize(
+        "question",
+        [
+            "How much have we collected today?",
+            "How do I take a payment against a bill?",
+            "Which medicines are out of stock?",
+            "What is the average lab turnaround time today?",
+            "Are there critical lab results awaiting verification?",
+            "How many patients are waiting in each queue?",
+            "Where is Leo's record?",
+        ],
+    )
+    def test_an_english_question_is_never_mistaken_for_swahili(self, question):
+        """Including one with a name that is also a Swahili word."""
+        assert contains_swahili(question) is False
+
+    def test_the_function_words_do_not_disturb_retrieval_or_routing(self):
+        """They must not leak into the shared stopword set.
+
+        retrieval merges SWAHILI_STOPWORDS into its own stopwords, and routing
+        tokenises against the same function, so a word added there stops being a
+        term at all - which would silently disable the billing trigger on "kiasi"
+        and the laboratory trigger on "bado".
+        """
+        from app.assistant.language import _SWAHILI_FUNCTION_WORDS
+        from app.assistant.retrieval import _tokenize
+
+        assert not (_SWAHILI_FUNCTION_WORDS & SWAHILI_STOPWORDS)
+        for term in ("kiasi", "bado"):
+            assert term in _tokenize(term), (
+                term + " was swallowed as a stopword and can no longer route"
+            )
+
+
+class TestTheQuestionsANurseActuallyTyped:
+    """Reported from the ward, not invented here.
+
+    A triage nurse asked these in Swahili and got a list of things the assistant
+    could do instead of an answer - including, absurdly, for changing a password,
+    which the very list it printed said it could help with.
+
+    Two causes, both silent:
+
+      - "kubadilisha" and "nywila" were simply not in the vocabulary map, so not
+        one word of "Ninawezaje kubadilisha nywila yangu?" reached the content
+        pack.
+      - Swahili puts the object inside the verb. "kusajili" is to register;
+        "kumsajili" is to register *them*. That single infixed letter defeated
+        the prefix stripper, so "kumpima" missed "kupima" - which was in the map
+        the whole time.
+    """
+
+    @pytest.mark.parametrize(
+        "question,expected",
+        [
+            ("Ninawezaje kubadilisha nywila yangu?", "password"),
+            ("Ninawezaje kumpima mgonjwa?", "triage"),
+            ("Nifanyeje kumsajili mgonjwa mpya?", "register"),
+            ("Nitajuaje kama mgonjwa ana dharura?", "emergency"),
+            ("Naweza kuona vipimo vya nyuma vya mgonjwa wapi?", "laboratory"),
+        ],
+    )
+    def test_it_now_reaches_the_english_the_content_pack_uses(self, question, expected):
+        assert expected in expand_query(question).lower(), (
+            f"{question!r} still expands to nothing the content pack can match"
+        )
+
+    @pytest.mark.parametrize(
+        "infixed,plain",
+        [
+            ("kumsajili", "kusajili"),
+            ("kumpima", "kupima"),
+            ("kuwapima", "kupima"),
+            ("kumuandikisha", "kuandikisha"),
+        ],
+    )
+    def test_an_object_infix_resolves_to_the_same_terms_as_the_plain_verb(
+        self, infixed, plain
+    ):
+        assert _lookup(infixed) == _lookup(plain) != ()
+
+    def test_stripping_never_invents_a_match(self):
+        """Only a result that is itself a known term is accepted, so an ordinary
+        word cannot be mangled into a translation."""
+        for word in ("kubernetes", "kumquat", "kuwait", "customer", "nurse"):
+            assert _lookup(word) == (), f"{word} was mangled into a Swahili match"

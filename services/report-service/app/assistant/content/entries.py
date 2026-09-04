@@ -50,6 +50,8 @@ def _entry(
     departments: frozenset[str] = frozenset(),
     required_role: str | None = None,
     location: str | None = None,
+    example_question: str | None = None,
+    swahili_example_question: str | None = None,
 ) -> ContentEntry:
     return ContentEntry(
         entry_id=entry_id,
@@ -63,6 +65,8 @@ def _entry(
         departments=departments,
         required_role=required_role,
         location=location,
+        example_question=example_question,
+        swahili_example_question=swahili_example_question,
     )
 
 
@@ -89,6 +93,8 @@ _REPORTS: list[ContentEntry] = [
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
         location="Reports, then Patient reports (/admin/reports/patients)",
+        example_question="How do I run the patient census report?",
+        swahili_example_question="Ninawezaje kuendesha ripoti ya sensa ya wagonjwa?",
     ),
     _entry(
         "report.wait-times",
@@ -103,6 +109,8 @@ _REPORTS: list[ContentEntry] = [
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
         location="Reports, then Operational reports (/admin/reports/operations)",
+        example_question="How do I run the wait times report?",
+        swahili_example_question="Ninawezaje kuendesha ripoti ya muda wa kusubiri?",
     ),
     _entry(
         "report.discharges",
@@ -117,6 +125,8 @@ _REPORTS: list[ContentEntry] = [
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
         location="Reports, then Patient reports (/admin/reports/patients)",
+        example_question="Where is the discharges report?",
+        swahili_example_question="Ripoti ya kuruhusiwa iko wapi?",
     ),
     _entry(
         "report.bed-occupancy",
@@ -130,6 +140,8 @@ _REPORTS: list[ContentEntry] = [
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
         location="Reports, then Operational reports (/admin/reports/operations)",
+        example_question="How do I open the bed occupancy report?",
+        swahili_example_question="Ninawezaje kufungua ripoti ya matumizi ya vitanda?",
     ),
     _entry(
         "report.revenue-summary",
@@ -143,6 +155,8 @@ _REPORTS: list[ContentEntry] = [
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
         location="Reports, then Revenue reports (/admin/reports/revenue)",
+        example_question="How do I run the revenue summary report?",
+        swahili_example_question="Ninawezaje kuendesha ripoti ya muhtasari wa mapato?",
     ),
     _entry(
         "report.operational-activity",
@@ -157,6 +171,8 @@ _REPORTS: list[ContentEntry] = [
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
         location="Reports, then Operational reports (/admin/reports/operations)",
+        example_question="Where is the operational activity report?",
+        swahili_example_question="Ripoti ya shughuli za uendeshaji iko wapi?",
     ),
     _entry(
         "report.dashboard",
@@ -171,6 +187,8 @@ _REPORTS: list[ContentEntry] = [
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
         location="Reports (/admin/reports)",
+        example_question="Where is the reports dashboard?",
+        swahili_example_question="Dashibodi ya ripoti iko wapi?",
     ),
 ]
 
@@ -192,6 +210,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"receptionist", "hospital_admin"}),
         frozenset({DEPARTMENT_RECEPTION, DEPARTMENT_ADMINISTRATION}),
         location="/reception/register",
+        example_question="How do I register a new patient?",
+        swahili_example_question="Ninawezaje kumsajili mgonjwa mpya?",
     ),
     _entry(
         "workflow.reception.visit-queue",
@@ -204,6 +224,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"receptionist", "hospital_admin"}),
         frozenset({DEPARTMENT_RECEPTION, DEPARTMENT_ADMINISTRATION}),
         location="/reception/queue",
+        example_question="How do I work the visit queue?",
+        swahili_example_question="Ninawezaje kushughulikia foleni ya ziara?",
     ),
     _entry(
         "workflow.triage.assess",
@@ -217,6 +239,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"triage_nurse", "hospital_admin"}),
         frozenset({DEPARTMENT_TRIAGE, DEPARTMENT_ADMINISTRATION}),
         location="/triage/queue",
+        example_question="How do I assess a patient in triage?",
+        swahili_example_question="Ninawezaje kumpima mgonjwa katika triage?",
     ),
     _entry(
         "workflow.consultation.encounter",
@@ -231,6 +255,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"doctor", "hospital_admin"}),
         frozenset({DEPARTMENT_CLINICAL, DEPARTMENT_ADMINISTRATION}),
         location="/consultation/queue",
+        example_question="How do I open a consultation encounter?",
+        swahili_example_question="Ninawezaje kufungua mashauriano ya mgonjwa?",
     ),
     _entry(
         "workflow.laboratory.requests",
@@ -244,6 +270,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"lab_technician", "hospital_admin"}),
         frozenset({DEPARTMENT_LABORATORY, DEPARTMENT_ADMINISTRATION}),
         location="/laboratory/requests",
+        example_question="How do I process a laboratory request?",
+        swahili_example_question="Ninawezaje kushughulikia ombi la maabara?",
     ),
     _entry(
         "workflow.radiology.requests",
@@ -256,6 +284,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"radiographer", "hospital_admin"}),
         frozenset({DEPARTMENT_RADIOLOGY, DEPARTMENT_ADMINISTRATION}),
         location="/radiology/requests",
+        example_question="How do I process an imaging request?",
+        swahili_example_question="Ninawezaje kushughulikia ombi la mionzi?",
     ),
     _entry(
         "workflow.pharmacy.dispense",
@@ -271,6 +301,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"pharmacist", "hospital_admin"}),
         frozenset({DEPARTMENT_PHARMACY, DEPARTMENT_ADMINISTRATION}),
         location="/pharmacy/queue",
+        example_question="How do I dispense a prescription?",
+        swahili_example_question="Ninawezaje kutoa dawa kwa agizo?",
     ),
     _entry(
         "workflow.ward.beds-and-patients",
@@ -285,6 +317,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"ward_nurse", "hospital_admin"}),
         frozenset({DEPARTMENT_WARD, DEPARTMENT_ADMINISTRATION}),
         location="/ward/beds",
+        example_question="How do I manage ward beds and patients?",
+        swahili_example_question="Ninawezaje kusimamia vitanda vya wodi na wagonjwa?",
     ),
     _entry(
         "workflow.billing.take-payment",
@@ -298,6 +332,8 @@ _WORKFLOWS: list[ContentEntry] = [
         frozenset({"cashier", "hospital_admin"}),
         frozenset({DEPARTMENT_BILLING, DEPARTMENT_ADMINISTRATION}),
         location="/billing/bills",
+        example_question="How do I take a payment against a bill?",
+        swahili_example_question="Ninawezaje kupokea malipo kwenye bili?",
     ),
     _entry(
         "workflow.admin.add-staff",
@@ -312,6 +348,8 @@ _WORKFLOWS: list[ContentEntry] = [
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         location="/admin/staff",
+        example_question="How do I add a staff member?",
+        swahili_example_question="Ninawezaje kuongeza mfanyakazi?",
     ),
 ]
 
@@ -331,6 +369,8 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         are under Profile. Alerts raised for you are under Notifications.
         """,
         ALL_STAFF,
+        example_question="How do I find my way around the system?",
+        swahili_example_question="Ninawezaje kuzunguka kwenye mfumo na kupata njia yangu?",
     ),
     _entry(
         "help.account.password",
@@ -342,6 +382,8 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         administrator can also reset a staff password from the staff list.
         """,
         ALL_STAFF,
+        example_question="How do I change my password?",
+        swahili_example_question="Ninawezaje kubadilisha nywila yangu?",
     ),
     _entry(
         "help.access.denied",
@@ -354,6 +396,8 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         member is never an acceptable workaround.
         """,
         ALL_STAFF,
+        example_question="Why does a screen say I am not authorised?",
+        swahili_example_question="Kwa nini skrini inasema sijaruhusiwa?",
     ),
     _entry(
         "policy.data.minimum-necessary",
@@ -366,6 +410,8 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         messages, or email.
         """,
         ALL_STAFF,
+        example_question="What patient information am I allowed to access?",
+        swahili_example_question="Ni taarifa zipi za mgonjwa ninaruhusiwa kuona?",
     ),
     _entry(
         "policy.accounts.no-sharing",
@@ -378,6 +424,8 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         computer.
         """,
         ALL_STAFF,
+        example_question="Can I share my sign-in details with a colleague?",
+        swahili_example_question="Naweza kushiriki nywila yangu na mfanyakazi mwenzangu?",
     ),
     _entry(
         "policy.assistant.scope",
@@ -393,6 +441,8 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         approved workflow in the system and your own professional judgement.
         """,
         ALL_STAFF,
+        example_question="What can this assistant help me with?",
+        swahili_example_question="Msaidizi huyu anaweza kunisaidia na nini?",
     ),
 ]
 

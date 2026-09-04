@@ -80,6 +80,27 @@ class ContentEntry:
     # owned by admin-service and gated to hospital_admin there.
     required_role: str | None = None
     location: str | None = None
+    # A question this entry actually answers, offered to the caller as a starting
+    # point when they open the assistant with nothing typed.
+    #
+    # It lives on the entry rather than in a list of its own so that a suggestion
+    # cannot outlive the thing that answers it: an entry withdrawn or narrowed to
+    # fewer roles takes its suggestion with it, and a suggestion is only ever
+    # shown to somebody who may read the entry it came from. The panel used to
+    # hardcode three questions in the browser instead, and two of the three
+    # matched no entry at all - every user was invited to ask something the
+    # assistant could not answer, and the third only worked for reception.
+    #
+    # test_assistant_suggestions.py asserts that every example_question here
+    # actually retrieves its own entry, so a suggestion that has drifted away
+    # from its content fails the build rather than the user.
+    example_question: str | None = None
+    # The same question in Swahili. Offered instead of the English one when
+    # the reply is in Swahili: showing an English question inside a Swahili
+    # answer is the half-translated failure this codebase has already had
+    # once. Tested to retrieve this same entry, so it is also the Swahili
+    # regression corpus for retrieval.
+    swahili_example_question: str | None = None
 
     def __post_init__(self) -> None:
         if not self.roles:

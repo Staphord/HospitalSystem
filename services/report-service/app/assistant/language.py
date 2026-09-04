@@ -45,6 +45,11 @@ SWAHILI_STOPWORDS: frozenset[str] = frozenset(
         "ninataka",
         "naweza",
         "ninawezaje",
+        "nifanyeje",
+        "nifanye",
+        "nitajuaje",
+        "nitafanyaje",
+        "ninaweza",
         "kuna",
         "yangu",
         "yako",
@@ -137,9 +142,53 @@ SWAHILI_TO_ENGLISH: dict[str, tuple[str, ...]] = {
     "jumla": ("summary", "totals"),
     # Reports and administration
     "ripoti": ("report", "reports"),
-    "taarifa": ("report", "reports"),
+    "taarifa": ("report", "reports", "information"),
     "utawala": ("administration",),
     "mipangilio": ("settings", "administration"),
+    # Account, access and passwords
+    #
+    # These were all missing, and their absence was not cosmetic: the assistant
+    # would print "I can help you change your password" in its own capability
+    # list and then fail to answer "Ninawezaje kubadilisha nywila yangu?",
+    # because not one word of that sentence reached the content pack.
+    "nywila": ("password",),
+    "nenosiri": ("password",),
+    "neno": ("password",),
+    "badilisha": ("change", "password"),
+    "kubadilisha": ("change", "password"),
+    "mabadiliko": ("change",),
+    "akaunti": ("account",),
+    "kuingia": ("sign", "login", "open"),
+    "kutoka": ("sign", "logout"),
+    "ruhusiwa": ("authorised", "permission", "access"),
+    "hauruhusiwi": ("authorised", "permission", "access"),
+    "idhini": ("permission", "access"),
+    "msaada": ("help",),
+    "kusaidia": ("help",),
+    # Words the Swahili example questions actually use.
+    #
+    # Every one of these was found by asserting that each Swahili example
+    # question reaches the same entry or metric its English twin does. Without
+    # them the questions parsed as Swahili, were answered in Swahili, and matched
+    # nothing - which is the exact failure a nurse reported.
+    "muda": ("time", "wait", "duration"),
+    "kusubiri": ("wait", "waiting", "queue"),
+    "subiri": ("wait", "waiting"),
+    "kuzunguka": ("navigate", "around", "way", "find"),
+    "njia": ("way", "navigation"),
+    "msaidizi": ("assistant",),
+    "naruhusiwa": ("access", "permission", "allowed"),
+    "ninaruhusiwa": ("access", "permission", "allowed"),
+    "waliolazwa": ("admitted", "admission", "ward"),
+    "aliyelazwa": ("admitted", "admission", "ward"),
+    "zimeisha": ("out", "stock", "finished"),
+    "imeisha": ("out", "stock", "finished"),
+    "ujumla": ("overall", "summary", "total"),
+    "hali": ("status", "position", "state"),
+    # Urgency
+    "dharura": ("emergency", "urgent"),
+    "haraka": ("urgent",),
+    "hatari": ("critical", "urgent"),
     # Screen verbs and nouns
     "fungua": ("open",),
     "kufungua": ("open",),
@@ -162,6 +211,28 @@ _WORD = re.compile(r"[a-z0-9]+")
 _PREFIXES: tuple[str, ...] = ("ku", "ni", "wa", "ya", "vi", "mi")
 
 
+# Object infixes that sit between the infinitive "ku" and the verb stem.
+#
+# Swahili puts the object inside the verb: "kusajili" is to register, but
+# "kumsajili" is to register *him or her*, and "kumpima" is to assess *them*.
+# That single letter defeated the prefix stripper above, so "Ninawezaje
+# kumpima mgonjwa?" - how do I assess a patient, the commonest question a triage
+# nurse has - matched no content at all and was answered with a list of things
+# the assistant could do instead. "kupima" was in the map the whole time.
+_OBJECT_INFIXES: tuple[str, ...] = (
+    "m", "mu", "wa", "ni", "tu", "ki", "vi", "li", "zi", "ya", "i", "u",
+)
+
+# Every mapped term, also indexed by its bare stem, so a term stored with its
+# infinitive ("kupima") is still found once the infinitive has been stripped off
+# to get at an infix ("ku" + "m" + "pima").
+_STEM_INDEX: dict[str, tuple[str, ...]] = {}
+for _term, _english in SWAHILI_TO_ENGLISH.items():
+    _STEM_INDEX.setdefault(_term, _english)
+    if _term.startswith("ku") and len(_term) > 4:
+        _STEM_INDEX.setdefault(_term[2:], _english)
+
+
 def _lookup(token: str) -> tuple[str, ...]:
     direct = SWAHILI_TO_ENGLISH.get(token)
     if direct:
@@ -171,6 +242,20 @@ def _lookup(token: str) -> tuple[str, ...]:
             stripped = SWAHILI_TO_ENGLISH.get(token[len(prefix) :])
             if stripped:
                 return stripped
+
+    # "ku" + optional object infix + stem. Only a result that is itself a known
+    # term is accepted, so an unrelated word cannot be mangled into a match: the
+    # stripping is a way of asking the table a second question, never a guess.
+    if token.startswith("ku") and len(token) > 5:
+        rest = token[2:]
+        hit = _STEM_INDEX.get(rest)
+        if hit:
+            return hit
+        for infix in _OBJECT_INFIXES:
+            if rest.startswith(infix) and len(rest) > len(infix) + 2:
+                hit = _STEM_INDEX.get(rest[len(infix) :])
+                if hit:
+                    return hit
     return ()
 
 
@@ -198,15 +283,49 @@ def expand_query(query: str) -> str:
     return f"{query} {' '.join(additions)}"
 
 
+# Swahili function words used *only* to decide which language to answer in.
+#
+# Deliberately separate from SWAHILI_STOPWORDS, which retrieval merges into its
+# own stopword set and which routing therefore tokenises against. A word added
+# there stops being a term at all, so putting "kiasi" or "bado" in that list
+# would silently disable the billing and laboratory triggers that depend on
+# them. These words influence nothing but the language of the reply.
+#
+# They are the ordinary scaffolding of a spoken question - "ni kiasi gani",
+# "vipimo vingapi", "watu wangapi" - which is why a question can be entirely
+# Swahili and still contain no term the vocabulary map translates. "Ni kiasi
+# gani bado hakijalipwa?" was answered in English for exactly that reason.
+_SWAHILI_FUNCTION_WORDS: frozenset[str] = frozenset(
+    {
+        "ni", "gani", "kiasi", "bado", "ngapi", "vingapi", "wangapi",
+        "zipi", "ipi", "yupi", "sasa", "je",
+        # "vipi" and "wapi" are not repeated here: SWAHILI_STOPWORDS already
+        # carries them, and contains_swahili checks both sets.
+        # "leo" is deliberately absent: it is Swahili for today, but it is
+        # also an ordinary English name, and "where is Leo's record" is not a
+        # Swahili question. Routing reads it as a date term either way.
+        "kwenye", "ili", "lakini", "pia", "sana", "tena", "bila",
+        "hakuna", "kila", "wote", "zote", "yote", "hizi", "hao",
+    }
+)
+
+
 def contains_swahili(text: str) -> bool:
     """Return whether a query carries recognisable Swahili vocabulary.
 
-    Used for diagnostics only. It never gates access and never changes which
-    content is retrieved.
+    Used for diagnostics, and to tell the model which language to answer in.
+    Both are presentation: it never gates access, never changes which content is
+    retrieved, and never changes which figures run. Being wrong about it can only
+    produce an answer in the wrong language, never an answer somebody should not
+    have seen.
     """
     if not text or not isinstance(text, str):
         return False
     for token in _WORD.findall(text.lower()):
-        if token in SWAHILI_STOPWORDS or _lookup(token):
+        if (
+            token in SWAHILI_STOPWORDS
+            or token in _SWAHILI_FUNCTION_WORDS
+            or _lookup(token)
+        ):
             return True
     return False
