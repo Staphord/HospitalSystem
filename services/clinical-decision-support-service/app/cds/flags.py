@@ -8,14 +8,10 @@ from app.core.config import settings
 class CdsCapability(str, Enum):
     """Independently gated clinical-decision-support capabilities."""
 
-    MEDICATION_CHECK = "medication_check"
-    # Phase 7 owns this. The switch exists first so the capability can never be
-    # shipped without a way to pull it.
     DIFFERENTIAL_SUPPORT = "differential_support"
 
 
 _FLAG_ATTRIBUTES: dict[CdsCapability, str] = {
-    CdsCapability.MEDICATION_CHECK: "cds_medication_check_enabled",
     CdsCapability.DIFFERENTIAL_SUPPORT: "cds_differential_support_enabled",
 }
 

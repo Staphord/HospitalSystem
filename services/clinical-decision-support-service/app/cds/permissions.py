@@ -11,28 +11,22 @@ HOSPITAL_ADMIN = "hospital_admin"
 DOCTOR = "doctor"
 PHARMACIST = "pharmacist"
 
-# Roles allowed to run a medication check. Administrative seniority is not
-# clinical competence, so hospital_admin is deliberately absent: an admin can
-# create the pharmacist's account but must not read the pharmacist's clinical
-# alerts. super_admin is denied everything here as well, because platform super
-# admins administer tenants and must never read tenant clinical data.
+# Differential support is a clinician's reasoning aid for their own encounter,
+# so only a doctor reaches it. Administrative seniority is not clinical
+# competence, which is why hospital_admin is deliberately absent: an admin can
+# create the doctor's account but must not read the doctor's clinical results.
+# super_admin is denied here as well, because platform super admins administer
+# tenants and must never read tenant clinical data.
 #
 # This is the authority for the /api/v1/cds endpoints. The assistant permission
 # matrix in report-service governs a different question — whether the assistant
 # surface offers the capability at all — and the two are deliberately separate
 # so that switching the assistant on can never widen who may reach a clinical
 # result.
-MEDICATION_CHECK_ROLES: frozenset[str] = frozenset({DOCTOR, PHARMACIST})
-
-# Overriding a blocking alert is a narrower act than seeing one. Kept as its own
-# set so the two can diverge without touching the check path.
-MEDICATION_OVERRIDE_ROLES: frozenset[str] = frozenset({DOCTOR, PHARMACIST})
+DIFFERENTIAL_SUPPORT_ROLES: frozenset[str] = frozenset({DOCTOR})
 
 CAPABILITY_ROLES: dict[CdsCapability, frozenset[str]] = {
-    CdsCapability.MEDICATION_CHECK: MEDICATION_CHECK_ROLES,
-    # Phase 7 decides this. An empty set means nobody, which is the right
-    # default for a capability that does not exist yet.
-    CdsCapability.DIFFERENTIAL_SUPPORT: frozenset(),
+    CdsCapability.DIFFERENTIAL_SUPPORT: DIFFERENTIAL_SUPPORT_ROLES,
 }
 
 
@@ -78,14 +72,6 @@ def is_role_allowed(
     return bool(normalized & allowed)
 
 
-def may_override(roles: Iterable[str] | None, is_super_admin: bool = False) -> bool:
-    """Return whether the caller may override a blocking medication alert."""
-    normalized = normalize_roles(roles)
-    if is_super_admin or SUPER_ADMIN in normalized:
-        return False
-    return bool(normalized & MEDICATION_OVERRIDE_ROLES)
-
-
 def clinical_role_of(roles: Iterable[str] | None) -> str:
     """Return the caller's clinical role slug for the audit record.
 
@@ -94,7 +80,7 @@ def clinical_role_of(roles: Iterable[str] | None) -> str:
     have refused.
     """
     normalized = normalize_roles(roles)
-    for candidate in (DOCTOR, PHARMACIST):
+    for candidate in (DOCTOR,):
         if candidate in normalized:
             return candidate
     return ""

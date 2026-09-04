@@ -31,25 +31,21 @@ openapi_url = None if settings.environment == "prod" else "/openapi.json"
 app = FastAPI(
     title="Clinical Decision Support Service",
     description=(
-        "Deterministic clinical decision support. Medication safety results come "
-        "from an approved, versioned ruleset, never from a language model, and a "
-        "result that is unknown, stale, ambiguous, or failed is reported as "
-        "needs_review rather than as safe."
+        "Clinical Differential Support. Produces considerations for clinician "
+        "review, never a diagnosis: red flags come from a deterministic, "
+        "versioned rule pack rather than from a language model, and no result "
+        "may prescribe, dose, refer, admit, or write to a record."
     ),
     version="1.0.0",
     docs_url=docs_url,
     openapi_url=openapi_url,
     openapi_tags=[
         {
-            "name": "Medication safety",
+            "name": "Clinical differential support",
             "description": (
-                "Normalize medicines for confirmation, run deterministic checks, "
-                "and record acknowledgements and overrides."
+                "Diagnosis suggestions for clinician review, with the inputs, "
+                "evidence, missing data, limitations, and versions behind them."
             ),
-        },
-        {
-            "name": "Ruleset",
-            "description": "Which approved ruleset version is answering today.",
         },
     ],
 )
@@ -89,19 +85,35 @@ app.add_middleware(AuditLogMiddleware)
 async def health():
     """Liveness plus the operational state an on-call engineer needs.
 
-    Deliberately carries no ruleset contents, no rule identifiers, no patient
-    data, and no credential: only whether the capability is switched on and
-    whether an approved ruleset is currently answering.
+    Deliberately carries no rule contents, no patient data, and no credential:
+    only whether the capability is switched on and which rule pack is answering.
     """
-    from app.cds.rules import active_ruleset_health
+    from app.cds.redflags import ruleset_version
 
     return {
         "status": "ok",
         "service": "clinical-decision-support-service",
         "cds_enabled": settings.cds_enabled,
-        "medication_check_enabled": settings.cds_medication_check_enabled,
-        "ruleset": active_ruleset_health(),
+        "differential_support_enabled": settings.cds_differential_support_enabled,
+        "redflag_ruleset_version": ruleset_version(),
     }
+
+
+@app.get("/metrics")
+async def feature_metrics():
+    """Feature-level counters for operations and clinical review.
+
+    Not reachable through the API Gateway: the gateway routes /api/v1/cds and
+    nothing else here, so this endpoint is only addressable from inside the
+    deployment network by a scraper or an on-call engineer.
+
+    Every counter is keyed by a member of a closed vocabulary. No patient, no
+    tenant, no actor, and no clinical text can appear in this payload, by
+    construction rather than by review.
+    """
+    from app.cds.metrics import snapshot
+
+    return snapshot()
 
 
 app.include_router(service_router, prefix="/api/v1/cds")

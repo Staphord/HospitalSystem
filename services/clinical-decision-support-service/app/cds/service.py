@@ -16,34 +16,22 @@ arguments: it arrives with the database session, resolved from the token.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cds import audit
-from app.cds.access import VisitAccessError, load_terminology, load_visit_context
+from app.cds import audit, metrics
+from app.cds.access import load_differential_context
 from app.cds.contracts import (
-    ActiveRulesetResponse,
-    AlertAction,
-    AlertActionRequest,
-    AlertActionResponse,
-    AlertStatus,
     CdsErrorCode,
     CdsErrorResponse,
-    MedicationCheckRequest,
-    MedicationCheckResponse,
-    MedicineInput,
-    NormalizedMedicine,
-    NormalizeRequest,
-    NormalizeResponse,
-    ReviewReason,
+    DifferentialFeedbackRequest,
+    DifferentialFeedbackResponse,
+    DifferentialRequest,
+    DifferentialResponse,
 )
-from app.cds.engine import evaluate
+from app.cds.differential import run_differential
 from app.cds.flags import CdsCapability, is_capability_enabled
-from app.cds.permissions import clinical_role_of, is_role_allowed, may_override
-from app.cds.rules import load_active_ruleset
-from app.core.config import settings
+from app.cds.permissions import clinical_role_of, is_role_allowed
 
 logger = logging.getLogger("cds.service")
 
@@ -70,6 +58,7 @@ def guard(request_id: str, caller: Caller, capability: CdsCapability) -> CdsErro
     if not is_capability_enabled(capability):
         # Switched off means the feature is not there for this caller, not that
         # they were refused something that exists.
+        metrics.record("capability.disabled_request")
         return CdsErrorResponse(
             request_id=request_id,
             code=CdsErrorCode.CAPABILITY_DISABLED,
@@ -77,6 +66,7 @@ def guard(request_id: str, caller: Caller, capability: CdsCapability) -> CdsErro
         )
 
     if not is_role_allowed(capability, caller.roles, caller.is_super_admin):
+        metrics.record("authorization.denied")
         return CdsErrorResponse(
             request_id=request_id,
             code=CdsErrorCode.PERMISSION_DENIED,
@@ -93,127 +83,39 @@ def guard(request_id: str, caller: Caller, capability: CdsCapability) -> CdsErro
     return None
 
 
-def active_ruleset(request_id: str) -> ActiveRulesetResponse:
-    """Report which approved ruleset is answering, for reproducibility."""
-    load = load_active_ruleset()
-    if load.ruleset is None:
-        return ActiveRulesetResponse(
-            request_id=request_id,
-            available=False,
-            unavailable_reason=load.reason or ReviewReason.NO_APPROVED_RULESET,
-        )
-    return ActiveRulesetResponse(
-        request_id=request_id,
-        available=True,
-        descriptor=load.ruleset.descriptor,
-        unavailable_reason=load.reason,
-    )
-
-
-async def normalize_medicines(
+async def differential_support(
     request_id: str,
     caller: Caller,
-    payload: NormalizeRequest,
+    payload: DifferentialRequest,
     db: AsyncSession,
-) -> NormalizeResponse | CdsErrorResponse:
-    """Resolve typed names to products so a clinician can confirm them."""
-    error = guard(request_id, caller, CdsCapability.MEDICATION_CHECK)
-    if error is not None:
-        return error
+) -> DifferentialResponse | CdsErrorResponse:
+    """Produce considerations for clinician review, and record that it happened."""
+    response = await run_differential(request_id, caller, payload, db, guard)
+    if isinstance(response, CdsErrorResponse):
+        return response
 
-    terminology = await load_terminology(db)
-    return NormalizeResponse(
+    metrics.record("differential.requested")
+    metrics.record(f"differential.{response.status.value}")
+    for _ in response.red_flags:
+        metrics.record("differential.red_flag_raised")
+
+    audit.log_suggestion(
         request_id=request_id,
-        source=terminology.name,
-        results=[terminology.normalize(medicine) for medicine in payload.medicines],
-        evaluated_at=datetime.now(timezone.utc),
-    )
-
-
-async def run_medication_check(
-    request_id: str,
-    caller: Caller,
-    payload: MedicationCheckRequest,
-    db: AsyncSession,
-) -> MedicationCheckResponse | CdsErrorResponse:
-    """Run the deterministic medication check for one visit."""
-    error = guard(request_id, caller, CdsCapability.MEDICATION_CHECK)
-    if error is not None:
-        return error
-
-    max_medicines = int(getattr(settings, "cds_max_medications_per_check", 30))
-
-    try:
-        context = await load_visit_context(db, payload.visit_id, max_medicines)
-    except VisitAccessError:
-        # Identical answer for "does not exist" and "not yours", so the endpoint
-        # cannot be used to probe for visit ids in another hospital.
-        return CdsErrorResponse(
-            request_id=request_id,
-            code=CdsErrorCode.RESOURCE_NOT_FOUND,
-            message="That visit is not available.",
-        )
-    except Exception:
-        logger.exception("cds visit context load failed")
-        return CdsErrorResponse(
-            request_id=request_id,
-            code=CdsErrorCode.CHECK_UNAVAILABLE,
-            message="The medication check could not be completed. Refer for manual review.",
-        )
-
-    medicines: list[MedicineInput] = []
-    if payload.include_prescribed:
-        medicines.extend(context.prescribed)
-    medicines.extend(payload.additional_medicines)
-
-    if len(medicines) > max_medicines:
-        return CdsErrorResponse(
-            request_id=request_id,
-            code=CdsErrorCode.TOO_MANY_MEDICINES,
-            message="Too many medicines were submitted for one check.",
-        )
-
-    terminology = await load_terminology(db)
-    normalized: list[NormalizedMedicine] = [
-        terminology.to_normalized(medicine) for medicine in medicines
-    ]
-
-    outcome = evaluate(
-        medicines=normalized,
-        allergies=context.allergies,
-        ruleset_load=load_active_ruleset(),
-    )
-
-    response = MedicationCheckResponse(
-        request_id=request_id,
-        check_id=uuid4(),
-        visit_id=payload.visit_id,
-        status=outcome.status,
-        findings=list(outcome.findings),
-        medicines=normalized,
-        review_reasons=list(outcome.review_reasons),
-        ruleset=outcome.ruleset,
-        checks_performed=list(outcome.checks_performed),
-        checks_not_performed=list(outcome.checks_not_performed),
-        limitations=list(outcome.limitations),
-        requires_human_review=True,
-        evaluated_at=datetime.now(timezone.utc),
-    )
-
-    audit.log_check(
-        audit.build_log_record(
-            request_id=request_id,
-            check_id=response.check_id,
-            tenant_id=caller.tenant_id,
-            actor_sub=caller.actor_sub,
-            actor_role=caller.clinical_role,
-            visit_id=response.visit_id,
-            response=response,
-        )
+        suggestion_id=response.suggestion_id,
+        tenant_id=caller.tenant_id,
+        actor_sub=caller.actor_sub,
+        actor_role=caller.clinical_role,
+        status=response.status.value,
+        red_flag_rule_ids=[flag.rule_id for flag in response.red_flags],
+        prompt_version=response.prompt_version,
+        model_version=response.model_version,
     )
 
     try:
-        await audit.persist_check(
+        # The patient id is read again here rather than carried on the response,
+        # which deliberately does not expose one to the browser.
+        context = await load_differential_context(db, payload.visit_id, 1)
+        await audit.persist_suggestion(
             db,
             request_id=request_id,
             tenant_id=caller.tenant_id,
@@ -223,98 +125,49 @@ async def run_medication_check(
             response=response,
         )
     except Exception:
-        # The clinician still sees the findings. Losing the audit row is an
-        # operational fault to alarm on, never a reason to swallow an alert.
-        logger.exception("cds check audit record could not be persisted")
+        logger.exception("cds differential suggestion record could not be persisted")
 
     return response
 
 
-async def record_alert_action(
+async def record_differential_feedback(
     request_id: str,
     caller: Caller,
-    payload: AlertActionRequest,
+    payload: DifferentialFeedbackRequest,
     db: AsyncSession,
-) -> AlertActionResponse | CdsErrorResponse:
-    """Record that a clinician acknowledged a finding, or overrode an alert."""
-    error = guard(request_id, caller, CdsCapability.MEDICATION_CHECK)
+) -> DifferentialFeedbackResponse | CdsErrorResponse:
+    """Record a clinician's judgement of one suggestion.
+
+    Written for humans to review. Nothing reads it back into the workflow, so a
+    rating can never quietly change what the next clinician is shown.
+    """
+    error = guard(request_id, caller, CdsCapability.DIFFERENTIAL_SUPPORT)
     if error is not None:
         return error
 
-    if payload.action is AlertAction.OVERRIDE and not may_override(
-        caller.roles, caller.is_super_admin
-    ):
-        return CdsErrorResponse(
-            request_id=request_id,
-            code=CdsErrorCode.PERMISSION_DENIED,
-            message="Your role may not override a medication alert.",
-        )
-
-    check = await audit.find_check(db, payload.check_id, caller.tenant_id)
-    if check is None:
+    suggestion = await audit.find_suggestion(db, payload.suggestion_id, caller.tenant_id)
+    if suggestion is None:
         return CdsErrorResponse(
             request_id=request_id,
             code=CdsErrorCode.RESOURCE_NOT_FOUND,
-            message="That check is not available.",
+            message="That suggestion is not available.",
         )
 
-    entry = (check.finding_index or {}).get(payload.finding_id)
-    if not isinstance(entry, dict):
-        # The finding did not come from this check. Accepting it would let an
-        # acknowledgement be recorded against something nobody was ever shown.
-        return CdsErrorResponse(
-            request_id=request_id,
-            code=CdsErrorCode.RESOURCE_NOT_FOUND,
-            message="That finding is not part of this check.",
-        )
-
-    if (
-        payload.action is AlertAction.OVERRIDE
-        and entry.get("status") != AlertStatus.ALERT.value
-    ):
-        # A needs_review finding is an open question, not a decision to be
-        # overruled. It has to be reviewed, not dismissed.
-        return CdsErrorResponse(
-            request_id=request_id,
-            code=CdsErrorCode.INVALID_REQUEST,
-            message="Only a decided alert can be overridden. This finding requires review.",
-        )
-
-    action_id, recorded_at = await audit.persist_action(
+    _, recorded_at = await audit.persist_feedback(
         db,
         request_id=request_id,
-        check_id=payload.check_id,
-        finding_id=payload.finding_id,
-        action=payload.action,
+        suggestion_id=payload.suggestion_id,
         tenant_id=caller.tenant_id,
         actor_sub=caller.actor_sub,
         actor_role=caller.clinical_role,
-        reason=(payload.reason or None),
+        rating=payload.rating,
+        comment=(payload.comment or None),
     )
 
-    audit.log_action(
-        request_id=request_id,
-        action_id=action_id,
-        check_id=payload.check_id,
-        tenant_id=caller.tenant_id,
-        actor_sub=caller.actor_sub,
-        actor_role=caller.clinical_role,
-        action=payload.action,
-    )
+    metrics.record("differential.feedback")
 
-    return AlertActionResponse(
+    return DifferentialFeedbackResponse(
         request_id=request_id,
-        action_id=action_id,
-        check_id=payload.check_id,
-        finding_id=payload.finding_id,
-        action=payload.action,
+        suggestion_id=payload.suggestion_id,
         recorded_at=recorded_at,
     )
-
-
-def check_id_from(value: str) -> UUID | None:
-    """Parse a check id without leaking a parser error to the caller."""
-    try:
-        return UUID(value)
-    except (ValueError, AttributeError, TypeError):
-        return None

@@ -38,49 +38,68 @@ class Settings(BaseSettings):
     #
     # Two levels, both defaulting to off. cds_enabled is the whole-service
     # switch: with it off every /api/v1/cds route answers 404 and no clinical
-    # code runs at all. The per-capability flags below are the finer kill
-    # switches required by the phase gate, so medication checking can be pulled
-    # without taking down anything else and without a redeploy of other
-    # services.
+    # code runs at all. The per-capability flag below is the finer kill switch,
+    # so differential support can be pulled without taking down anything else
+    # and without a redeploy of other services.
     cds_enabled: bool = Field(default=False, alias="CDS_ENABLED")
-    cds_medication_check_enabled: bool = Field(
-        default=False, alias="CDS_MEDICATION_CHECK_ENABLED"
-    )
-    # Phase 7 owns differential support. The flag exists so the kill switch is
-    # in place before the capability is, and it is never read by phase 5 code.
     cds_differential_support_enabled: bool = Field(
         default=False, alias="CDS_DIFFERENTIAL_SUPPORT_ENABLED"
     )
 
-    # ── Interaction ruleset ──────────────────────────────────────────────────
+    # ── Clinical differential support ────────────────────────────────────────
     #
-    # No ruleset ships with this repository. Deciding whether two medicines
-    # interact, and how severely, is a clinical judgement that must come from a
-    # licensed or hospital-approved source, so the default source is the
-    # fail-closed null source: it answers "unavailable" to every question and
-    # every result becomes needs_review.
+    # A narrow, clinician-only workflow that organizes what was recorded into
+    # considerations for review. It is not a diagnosis engine and it is not an
+    # authority: red flags come from the deterministic rule pack in code, never
+    # from a model, and no output may prescribe, dose, refer, or write a record.
     #
-    # CDS_RULESET_PATH points at an approved, versioned ruleset artifact. The
-    # loader validates its metadata, its approval block, and its effective and
-    # review dates, and refuses to load an artifact that is not approved for the
-    # current environment.
-    cds_ruleset_source: str = Field(default="null", alias="CDS_RULESET_SOURCE")
-    cds_ruleset_path: str | None = Field(default=None, alias="CDS_RULESET_PATH")
-
-    # A ruleset past its review date is stale. Stale is not safe: it degrades
-    # to needs_review rather than being used or being reported as no alerts.
-    cds_ruleset_stale_after_days: int = Field(
-        default=180, alias="CDS_RULESET_STALE_AFTER_DAYS"
+    # The department this is approved for. A request for any other department is
+    # refused, so switching the capability on cannot quietly widen it beyond the
+    # workflow a clinical owner reviewed.
+    cds_differential_department: str = Field(
+        default="general_opd", alias="CDS_DIFFERENTIAL_DEPARTMENT"
     )
 
-    # Bound on how much a single check may consider, so one request cannot walk
-    # an entire medication history.
-    cds_max_medications_per_check: int = Field(
-        default=30, alias="CDS_MAX_MEDICATIONS_PER_CHECK"
+    # Red flags are deterministic. This names the versioned rule pack that
+    # produces them so a flag can always be traced to a rule and a version.
+    cds_redflag_ruleset_version: str = Field(
+        default="builtin-general-opd-2026.08", alias="CDS_REDFLAG_RULESET_VERSION"
     )
-    cds_max_override_reason_chars: int = Field(
-        default=500, alias="CDS_MAX_OVERRIDE_REASON_CHARS"
+
+    # The prompt is versioned so a suggestion can be reproduced. Bumping this is
+    # a deliberate act that shows up in every audit record afterwards.
+    cds_differential_prompt_version: str = Field(
+        default="differential-2026.08.1", alias="CDS_DIFFERENTIAL_PROMPT_VERSION"
     )
+
+    # Bounds on one differential request, so a single call cannot walk an entire
+    # clinical history or hand a model an unbounded amount of free text.
+    cds_max_symptoms_per_request: int = Field(
+        default=20, alias="CDS_MAX_SYMPTOMS_PER_REQUEST"
+    )
+    # Bound on how many current medicines are listed as context, so one request
+    # cannot walk an entire medication history.
+    cds_max_medicines_in_context: int = Field(
+        default=30, alias="CDS_MAX_MEDICINES_IN_CONTEXT"
+    )
+    cds_max_considerations: int = Field(default=8, alias="CDS_MAX_CONSIDERATIONS")
+    cds_differential_timeout_seconds: float = Field(
+        default=20.0, alias="CDS_DIFFERENTIAL_TIMEOUT_SECONDS"
+    )
+
+    # ── Model provider ───────────────────────────────────────────────────────
+    #
+    # Vendor-neutral seam. The model may organize and explain approved data; it
+    # never decides severity, never raises a red flag, and never receives a
+    # database credential, a tenant header, or a write tool. With no key
+    # configured the provider is the fail-closed null provider, which returns
+    # nothing rather than fabricating a suggestion.
+    cds_provider: str = Field(default="groq", alias="CDS_PROVIDER")
+    cds_groq_api_key: str | None = Field(default=None, alias="GROQ_API_KEY")
+    cds_groq_base_url: str = Field(
+        default="https://api.groq.com/openai/v1", alias="GROQ_BASE_URL"
+    )
+    cds_groq_model: str = Field(default="openai/gpt-oss-120b", alias="GROQ_MODEL")
 
     class Config:
         env_file = ".env"

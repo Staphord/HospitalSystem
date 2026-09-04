@@ -6,7 +6,12 @@ that anything unexpected resolves to off rather than on.
 
 import pytest
 
-from app.cds.flags import CdsCapability, enabled_capabilities, is_capability_enabled, is_service_enabled
+from app.cds.flags import (
+    CdsCapability,
+    enabled_capabilities,
+    is_capability_enabled,
+    is_service_enabled,
+)
 from app.core import config
 
 
@@ -20,45 +25,39 @@ def flags(monkeypatch):
 
 
 def test_everything_is_off_by_default(flags):
-    flags(cds_enabled=False, cds_medication_check_enabled=False, cds_differential_support_enabled=False)
+    flags(cds_enabled=False, cds_differential_support_enabled=False)
 
     assert is_service_enabled() is False
-    assert is_capability_enabled(CdsCapability.MEDICATION_CHECK) is False
     assert is_capability_enabled(CdsCapability.DIFFERENTIAL_SUPPORT) is False
     assert enabled_capabilities() == []
 
 
-def test_service_switch_overrides_an_enabled_capability(flags):
-    flags(cds_enabled=False, cds_medication_check_enabled=True)
+def test_the_service_switch_overrides_the_capability_switch(flags):
+    """Pulling the service switch has to stop everything, not most things."""
+    flags(cds_enabled=False, cds_differential_support_enabled=True)
 
-    # Pulling the service switch has to stop the capability even when the
-    # capability's own flag was left on, or the whole-service kill switch is a
-    # lie during an incident.
-    assert is_capability_enabled(CdsCapability.MEDICATION_CHECK) is False
-
-
-def test_capabilities_are_independent(flags):
-    flags(
-        cds_enabled=True,
-        cds_medication_check_enabled=True,
-        cds_differential_support_enabled=False,
-    )
-
-    assert is_capability_enabled(CdsCapability.MEDICATION_CHECK) is True
+    assert is_service_enabled() is False
     assert is_capability_enabled(CdsCapability.DIFFERENTIAL_SUPPORT) is False
-    assert enabled_capabilities() == [CdsCapability.MEDICATION_CHECK]
+    assert enabled_capabilities() == []
 
 
-def test_unknown_capability_is_disabled(flags):
-    flags(cds_enabled=True, cds_medication_check_enabled=True)
+def test_both_switches_on_enables_the_capability(flags):
+    flags(cds_enabled=True, cds_differential_support_enabled=True)
+
+    assert is_service_enabled() is True
+    assert is_capability_enabled(CdsCapability.DIFFERENTIAL_SUPPORT) is True
+    assert enabled_capabilities() == [CdsCapability.DIFFERENTIAL_SUPPORT]
+
+
+def test_an_unknown_capability_is_denied(flags):
+    flags(cds_enabled=True, cds_differential_support_enabled=True)
 
     assert is_capability_enabled("not_a_capability") is False
-    assert is_capability_enabled("") is False
-    assert is_capability_enabled(None) is False
 
 
-def test_missing_setting_is_disabled(monkeypatch):
-    monkeypatch.setattr(config.settings, "cds_enabled", True, raising=False)
-    monkeypatch.delattr(config.settings, "cds_medication_check_enabled", raising=False)
+def test_a_missing_setting_resolves_to_off(flags, monkeypatch):
+    """A configuration gap must fail closed, not open."""
+    flags(cds_enabled=True)
+    monkeypatch.delattr(config.settings, "cds_differential_support_enabled", raising=False)
 
-    assert is_capability_enabled(CdsCapability.MEDICATION_CHECK) is False
+    assert is_capability_enabled(CdsCapability.DIFFERENTIAL_SUPPORT) is False

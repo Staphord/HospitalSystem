@@ -32,17 +32,32 @@ EXPECTED_ALLOWLISTS = {
         "prescription_item_id",
         "prescription_id",
         "drug_name",
-        "dose",
-        "frequency",
         "status",
     },
-    "drug_inventory": {
-        "inventory_id",
+    # The prescriber's own record, read for the current-medicines list only.
+    # Dose, route, prescriber identity and free-text instructions are
+    # deliberately absent: this service lists what the patient is on as clinical
+    # context and has no use for anything more.
+    "prescriptions": {
+        "id",
+        "visit_id",
         "drug_name",
-        "brand_name",
-        "drug_code",
-        "category",
-        "unit",
+        "status",
+    },
+    # Vitals for clinical differential support. The
+    # free-text presenting complaint, triage notes, and triage category on this
+    # table are deliberately excluded: the clinician states the complaint in the
+    # request, and another service's free text would widen both what reaches the
+    # model and what a clinician has to review, for no gain.
+    "triage_assessments": {
+        "visit_id",
+        "blood_pressure",
+        "temperature",
+        "pulse",
+        "oxygen_saturation",
+        "respiratory_rate",
+        "weight",
+        "created_at",
     },
 }
 
@@ -57,7 +72,7 @@ def test_no_table_is_read_that_was_not_approved():
 
 
 def test_the_patient_name_is_not_readable():
-    # A medication check does not need to know whose visit it is. The clinician
+    # A differential suggestion does not need to know whose visit it is. The clinician
     # already chose the visit.
     assert "full_name" not in access.PATIENT_COLUMNS
     assert "phone" not in access.PATIENT_COLUMNS
@@ -66,7 +81,13 @@ def test_the_patient_name_is_not_readable():
 
 @pytest.mark.parametrize(
     "statement",
-    [access.VISIT_SQL, access.PATIENT_SQL, access.PRESCRIPTION_SQL, access.INVENTORY_SQL],
+    [
+        access.VISIT_SQL,
+        access.PATIENT_SQL,
+        access.PRESCRIPTION_SQL,
+        access.CONSULTATION_PRESCRIPTION_SQL,
+        access.TRIAGE_SQL,
+    ],
 )
 def test_no_query_selects_everything(statement):
     # SELECT * is how a deny-list gets in through the back door.
@@ -91,7 +112,8 @@ def test_every_selected_column_appears_in_an_allowlist():
         access.VISIT_SQL,
         access.PATIENT_SQL,
         access.PRESCRIPTION_SQL,
-        access.INVENTORY_SQL,
+        access.CONSULTATION_PRESCRIPTION_SQL,
+        access.TRIAGE_SQL,
     ):
         assert _selected_columns(statement) <= approved
 
@@ -103,7 +125,8 @@ def test_no_query_accepts_a_tenant_or_a_database_as_a_parameter():
         access.VISIT_SQL,
         access.PATIENT_SQL,
         access.PRESCRIPTION_SQL,
-        access.INVENTORY_SQL,
+        access.CONSULTATION_PRESCRIPTION_SQL,
+        access.TRIAGE_SQL,
     ):
         sql = str(statement).lower()
         for forbidden in (":tenant", ":database", ":db", ":dsn", ":schema"):
@@ -130,12 +153,23 @@ VENDOR_MARKERS = (
     "system_prompt",
 )
 
+# The single module permitted to reach a model vendor, added in phase 7. Naming
+# it here rather than dropping the assertion is the point: the guarantee is no
+# longer "no vendor anywhere", it is "the vendor exists in exactly one file",
+# which is a stronger statement and one this test keeps enforcing. A second
+# module importing a vendor SDK still fails the suite.
+VENDOR_BOUNDARY_MODULE = "provider.py"
+
 MODULES_UNDER_TEST = sorted(
     path for path in CDS_PACKAGE.glob("*.py") if path.name != "__init__.py"
 )
 
+CLINICAL_PATH_MODULES = [
+    path for path in MODULES_UNDER_TEST if path.name != VENDOR_BOUNDARY_MODULE
+]
 
-@pytest.mark.parametrize("module", MODULES_UNDER_TEST, ids=lambda p: p.name)
+
+@pytest.mark.parametrize("module", CLINICAL_PATH_MODULES, ids=lambda p: p.name)
 def test_no_cds_module_mentions_a_model_vendor(module):
     source = module.read_text(encoding="utf-8").lower()
     # Strip comments and docstrings: this file's own prose explains why a model
@@ -152,7 +186,7 @@ def test_no_cds_module_mentions_a_model_vendor(module):
         assert marker not in source, f"{module.name} references {marker}"
 
 
-@pytest.mark.parametrize("module", MODULES_UNDER_TEST, ids=lambda p: p.name)
+@pytest.mark.parametrize("module", CLINICAL_PATH_MODULES, ids=lambda p: p.name)
 def test_no_cds_module_imports_an_outbound_http_client(module):
     tree = ast.parse(module.read_text(encoding="utf-8"))
     imported: set[str] = set()
@@ -177,3 +211,53 @@ def test_sql_echo_is_off_so_bound_parameters_never_reach_the_log():
     source = Path(tenant.__file__).read_text(encoding="utf-8")
     assert "echo=False" in source
     assert 'echo=settings.environment == "dev"' not in source
+
+
+def test_exactly_one_module_is_allowed_to_reach_a_model_vendor():
+    """The vendor boundary is one file, and the suite fails if it becomes two.
+
+    Phase 7 gives clinical differential support a model. The safety property is
+    not that no model exists, it is that the model is confined: a second module
+    importing a vendor SDK or an HTTP client is what this catches.
+    """
+    offenders = []
+    for module in CLINICAL_PATH_MODULES:
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        if imported & {"httpx", "requests", "aiohttp", "openai", "groq"}:
+            offenders.append(module.name)
+
+    assert offenders == [], f"only {VENDOR_BOUNDARY_MODULE} may reach a vendor: {offenders}"
+
+
+def test_the_data_and_rule_path_never_imports_the_provider():
+    """Retrieval and red flags must not depend on a model at all.
+
+    The differential workflow may use a provider to organize what was found; the
+    code that reads the record and the code that raises a red flag may not,
+    directly or transitively.
+    """
+    for name in ("access.py", "redflags.py"):
+        module = CDS_PACKAGE / name
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                assert "provider" not in node.module, f"{name} imports {node.module}"
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    assert "provider" not in alias.name, f"{name} imports {alias.name}"
+
+
+def test_red_flags_do_not_depend_on_a_model():
+    """A red flag must fire whether or not any vendor is reachable."""
+    module = CDS_PACKAGE / "redflags.py"
+    tree = ast.parse(module.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            assert "provider" not in node.module
+            assert node.module.split(".")[0] not in {"httpx", "openai", "groq", "requests"}

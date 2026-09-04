@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
@@ -9,9 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Fields that are server-authoritative or secret and must never be accepted from
 # a browser, a prompt, a transcript, or a model response. Tenant identity, role,
-# database routing, and the ruleset a result was evaluated against are all
-# resolved on the server. A client able to name its own ruleset version could
-# make an alert look as though an approved source had produced it.
+# database routing, and the versions a result was produced by are all resolved on
+# the server. A client able to name its own prompt version, or to supply its own
+# red flags, could make a result look as though an approved source had produced
+# it.
 FORBIDDEN_CLIENT_FIELDS: frozenset[str] = frozenset(
     {
         "tenant",
@@ -49,14 +51,26 @@ FORBIDDEN_CLIENT_FIELDS: frozenset[str] = frozenset(
         "query",
         "url",
         "endpoint",
-        # Result provenance is decided by the engine, never asserted by a caller.
-        "severity",
+        # Result provenance is decided by the server, never asserted by a caller.
+        # A caller able to supply its own red flags or considerations could put
+        # words into a clinical result that no rule and no reviewed prompt
+        # produced.
+        "considerations",
+        "red_flags",
+        "redflags",
+        "confidence",
+        "probability",
+        "likelihood",
+        "risk_score",
+        "score",
+        "diagnosis",
+        "model_version",
+        "prompt_version",
+        "knowledge_version",
+        "requires_human_review",
         "rule_id",
-        "ruleset",
         "ruleset_version",
-        "ruleset_source",
-        "source_name",
-        "effective_date",
+        "redflag_ruleset_version",
         "evaluated_at",
         "status",
     }
@@ -72,8 +86,8 @@ class StrictModel(BaseModel):
 class CdsClientModel(StrictModel):
     """Base for contracts crossing the client boundary.
 
-    Server-built records that legitimately carry resolved tenant identity, a
-    severity, or a ruleset version extend StrictModel instead.
+    Server-built records that legitimately carry resolved tenant identity or a
+    rule-pack version extend StrictModel instead.
     """
 
     @model_validator(mode="before")
@@ -93,347 +107,266 @@ class CdsClientModel(StrictModel):
 # Vocabulary
 
 
-class CheckStatus(str, Enum):
-    """The outcome of a whole medication check.
-
-    There is deliberately no value meaning "safe" or "clear". The closest this
-    vocabulary comes is NO_ALERTS_IN_ACTIVE_RULESET, which is a statement about
-    one named, versioned ruleset and nothing more, and which the response
-    contract refuses to carry unless an approved ruleset actually answered.
-    """
-
-    ALERTS = "alerts"
-    NO_ALERTS_IN_ACTIVE_RULESET = "no_alerts_in_active_ruleset"
-    NEEDS_REVIEW = "needs_review"
-
-
-class AlertStatus(str, Enum):
-    """Whether a finding is a decided alert or an unresolved question."""
-
-    ALERT = "alert"
-    NEEDS_REVIEW = "needs_review"
-
-
-class Severity(str, Enum):
-    """Severity is set by the approved ruleset, never inferred and never guessed.
-
-    UNKNOWN is where every finding starts and the only value a needs_review
-    finding may hold.
-    """
-
-    UNKNOWN = "unknown"
-    LOW = "low"
-    MODERATE = "moderate"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
-class AlertType(str, Enum):
-    DRUG_DRUG = "drug_drug"
-    DRUG_ALLERGY = "drug_allergy"
-    DUPLICATE_INGREDIENT = "duplicate_ingredient"
-    DUPLICATE_THERAPY = "duplicate_therapy"
-    FORMULARY_RESTRICTION = "formulary_restriction"
-    MISSING_CRITICAL_INPUT = "missing_critical_input"
-    UNRESOLVED_IDENTITY = "unresolved_identity"
-    CHECK_UNAVAILABLE = "check_unavailable"
-
-
-class ReviewReason(str, Enum):
-    """Why a check could not conclude. Every one of these means needs_review."""
-
-    NO_APPROVED_RULESET = "no_approved_ruleset"
-    RULESET_STALE = "ruleset_stale"
-    RULESET_LOAD_FAILED = "ruleset_load_failed"
-    CHECK_FAILED = "check_failed"
-    UNRESOLVED_MEDICINE = "unresolved_medicine"
-    AMBIGUOUS_MEDICINE = "ambiguous_medicine"
-    UNCONFIRMED_MEDICINE = "unconfirmed_medicine"
-    MISSING_DOSE = "missing_dose"
-    MISSING_ROUTE = "missing_route"
-    MISSING_FORM = "missing_form"
-    MISSING_ALLERGY_HISTORY = "missing_allergy_history"
-    # Duplication is proven by identity, but whether it is appropriate for this
-    # patient is a dosing judgement no ruleset in scope decides, so it is always
-    # referred rather than given a severity.
-    DUPLICATION_NEEDS_CLINICAL_JUDGEMENT = "duplication_needs_clinical_judgement"
-
-
-class ResolutionState(str, Enum):
-    RESOLVED = "resolved"
-    AMBIGUOUS = "ambiguous"
-    UNRESOLVED = "unresolved"
-
-
-class AlertAction(str, Enum):
-    ACKNOWLEDGE = "acknowledge"
-    OVERRIDE = "override"
-
-
 class CdsErrorCode(str, Enum):
     CAPABILITY_DISABLED = "capability_disabled"
     PERMISSION_DENIED = "permission_denied"
     INVALID_REQUEST = "invalid_request"
     RESOURCE_NOT_FOUND = "resource_not_found"
-    TOO_MANY_MEDICINES = "too_many_medicines"
-    CHECK_UNAVAILABLE = "check_unavailable"
+    SUGGESTION_UNAVAILABLE = "suggestion_unavailable"
 
 
-# Normalization
+# Clinical differential support
 
 
-class MedicineInput(CdsClientModel):
-    """One medicine as the clinician typed or selected it.
+class DifferentialStatus(str, Enum):
+    """The outcome of one differential request.
 
-    confirmed_key is the canonical key the clinician confirmed after seeing the
-    normalization result. It is a lookup key into this tenant's own formulary,
-    not a severity, a rule, or anything the engine treats as clinical fact.
+    There is deliberately no value meaning "diagnosed" or "concluded". The most
+    this workflow ever produces is considerations for a clinician to review.
     """
 
-    display_name: str = Field(min_length=1, max_length=200)
-    dose: str | None = Field(default=None, max_length=100)
-    route: str | None = Field(default=None, max_length=50)
-    form: str | None = Field(default=None, max_length=50)
-    confirmed_key: str | None = Field(default=None, max_length=200)
+    SUGGESTIONS = "suggestions"
+    INSUFFICIENT_INPUT = "insufficient_input"
+    UNAVAILABLE = "unavailable"
 
 
-class NormalizedMedicine(StrictModel):
-    """A medicine after normalization, as the engine sees it."""
-
-    submitted_name: str = Field(max_length=200)
-    resolution: ResolutionState
-    canonical_key: str | None = Field(default=None, max_length=200)
-    canonical_name: str | None = Field(default=None, max_length=200)
-    ingredient_key: str | None = Field(default=None, max_length=200)
-    therapeutic_class: str | None = Field(default=None, max_length=100)
-    strength: str | None = Field(default=None, max_length=50)
-    form: str | None = Field(default=None, max_length=50)
-    route: str | None = Field(default=None, max_length=50)
-    dose: str | None = Field(default=None, max_length=100)
-    confirmed: bool = False
-    source: str = Field(max_length=100)
-    missing_critical_inputs: list[ReviewReason] = Field(default_factory=list, max_length=10)
+class Progression(str, Enum):
+    IMPROVING = "improving"
+    UNCHANGED = "unchanged"
+    WORSENING = "worsening"
+    FLUCTUATING = "fluctuating"
+    UNKNOWN = "unknown"
 
 
-class NormalizationCandidate(StrictModel):
-    """One possible match offered back for the clinician to confirm."""
+class ReportedSeverity(str, Enum):
+    """Severity as the patient reported it.
 
-    canonical_key: str = Field(max_length=200)
-    canonical_name: str = Field(max_length=200)
-    ingredient_key: str | None = Field(default=None, max_length=200)
-    therapeutic_class: str | None = Field(default=None, max_length=100)
-    strength: str | None = Field(default=None, max_length=50)
-    form: str | None = Field(default=None, max_length=50)
-
-
-class NormalizeRequest(CdsClientModel):
-    """Ask what typed medicine names resolve to, before any check runs."""
-
-    medicines: list[MedicineInput] = Field(min_length=1, max_length=30)
-
-
-class NormalizeResult(StrictModel):
-    submitted_name: str = Field(max_length=200)
-    resolution: ResolutionState
-    candidates: list[NormalizationCandidate] = Field(default_factory=list, max_length=10)
-    requires_confirmation: bool = True
-    missing_critical_inputs: list[ReviewReason] = Field(default_factory=list, max_length=10)
-
-
-class NormalizeResponse(StrictModel):
-    request_id: str = Field(min_length=1, max_length=64)
-    source: str = Field(max_length=100)
-    results: list[NormalizeResult] = Field(default_factory=list, max_length=30)
-    evaluated_at: datetime
-
-
-# Ruleset provenance
-
-
-class RulesetDescriptor(StrictModel):
-    """Everything needed to reproduce a result later.
-
-    A result citing a descriptor can be re-derived: same source, same version,
-    same effective date, same rule.
+    A recorded observation, not a graded clinical judgement, and it never
+    becomes one.
     """
 
-    source_name: str = Field(min_length=1, max_length=120)
+    MILD = "mild"
+    MODERATE = "moderate"
+    SEVERE = "severe"
+    UNKNOWN = "unknown"
+
+
+# Language that must never appear in a differential result. The model organizes
+# and explains; it does not treat. A phrase list is a blunt instrument, but it
+# is a deterministic one, and it fails closed: a result containing any of these
+# is rejected outright rather than shown with the offending sentence removed,
+# because a suggestion that had to be edited to be safe was not safe.
+_DIRECTIVE_PATTERNS: tuple[str, ...] = (
+    r"\bprescrib\w*",
+    r"\badminister\w*",
+    r"\bdispens\w*",
+    r"\btitrat\w*",
+    r"\bdiscontinu\w*",
+    r"\bstart\s+(?:the\s+)?(?:patient\s+)?on\b",
+    r"\bcommence\s+(?:the\s+)?(?:patient\s+)?on\b",
+    r"\bincrease\s+the\s+dose\b",
+    r"\bdecrease\s+the\s+dose\b",
+    r"\brefer\s+(?:the\s+)?patient\s+to\b",
+    r"\badmit\s+(?:the\s+)?patient\b",
+    r"\bdischarge\s+(?:the\s+)?patient\b",
+    # Any dosage at all. A differential result has no business carrying one.
+    r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|µg|g|ml|iu|units?)\b",
+    # Unsupported numeric certainty: percentages, "x% likely", odds.
+    r"\b\d+(?:\.\d+)?\s*%",
+    r"\bprobability\s+of\b",
+    r"\blikelihood\s+of\s+\d",
+)
+
+_DIRECTIVE_RE = re.compile("|".join(_DIRECTIVE_PATTERNS), re.IGNORECASE)
+
+
+def refuse_directive_language(value: str, field_name: str) -> str:
+    """Reject text that treats, doses, refers, admits, or asserts a number.
+
+    Applied to every free-text field of a differential result, whichever side
+    produced it. The model is the likeliest source, but a rule pack edited badly
+    would be caught by exactly the same check.
+    """
+    match = _DIRECTIVE_RE.search(value or "")
+    if match:
+        raise ValueError(
+            f"{field_name} contains directive or unsupported-certainty language: "
+            f"{match.group(0)!r}"
+        )
+    return value
+
+
+class ObservedValue(StrictModel):
+    """One piece of retrieved context, with when it was recorded.
+
+    The timestamp is not decoration. A clinician needs to know that the vitals
+    the suggestion used are six hours old, and a suggestion that cannot say how
+    fresh its inputs were is not reviewable.
+    """
+
+    label: str = Field(min_length=1, max_length=100)
+    value: str = Field(min_length=1, max_length=300)
+    recorded_at: datetime | None = None
+    source: str = Field(max_length=100)
+
+
+class SymptomInput(CdsClientModel):
+    """One structured symptom as the clinician recorded it."""
+
+    name: str = Field(min_length=1, max_length=120)
+    onset: str | None = Field(default=None, max_length=100)
+    duration: str | None = Field(default=None, max_length=100)
+    reported_severity: ReportedSeverity = ReportedSeverity.UNKNOWN
+    location: str | None = Field(default=None, max_length=120)
+    progression: Progression = Progression.UNKNOWN
+
+
+class DifferentialRequest(CdsClientModel):
+    """One clinician-initiated differential request for one visit.
+
+    The department is named by the caller and checked against the approved one,
+    so switching this capability on cannot silently widen it to a workflow no
+    clinical owner reviewed. Patient, tenant, and every retrieved value come
+    from the server.
+    """
+
+    visit_id: UUID
+    chief_complaint: str = Field(min_length=1, max_length=500)
+    symptoms: list[SymptomInput] = Field(default_factory=list, max_length=20)
+    department: str = Field(min_length=1, max_length=60)
+    encounter_type: str | None = Field(default=None, max_length=60)
+    # Free text is allowed as a capture mechanism, but it is normalized into the
+    # reviewable object below and is never passed through as an instruction.
+    additional_notes: str | None = Field(default=None, max_length=2000)
+
+
+class DifferentialInputs(StrictModel):
+    """Exactly what the suggestion was built from, and how fresh it was.
+
+    This is the reviewability contract. A clinician can read this and see the
+    complete set of inputs, so nothing influenced the result that they cannot
+    see here.
+    """
+
+    chief_complaint: str = Field(max_length=500)
+    symptoms: list[SymptomInput] = Field(default_factory=list, max_length=20)
+    department: str = Field(max_length=60)
+    encounter_type: str | None = Field(default=None, max_length=60)
+    vitals: list[ObservedValue] = Field(default_factory=list, max_length=20)
+    patient_factors: list[ObservedValue] = Field(default_factory=list, max_length=20)
+    allergies: list[str] = Field(default_factory=list, max_length=30)
+    allergy_history_recorded: bool = False
+    current_medicines: list[str] = Field(default_factory=list, max_length=60)
+    notes_used: str | None = Field(default=None, max_length=2000)
+    context_retrieved_at: datetime
+
+
+class RedFlag(StrictModel):
+    """A red flag from the deterministic rule pack.
+
+    A model never produces one of these. The rule id and version are required,
+    so a flag that cannot be traced to an approved rule cannot exist.
+    """
+
+    rule_id: str = Field(min_length=1, max_length=120)
     ruleset_version: str = Field(min_length=1, max_length=64)
-    effective_date: date
-    review_date: date | None = None
-    approved_by: str = Field(min_length=1, max_length=200)
-    approved_at: datetime
-    rule_count: int = Field(ge=0)
-    stale: bool = False
-
-
-class ActiveRulesetResponse(StrictModel):
-    request_id: str = Field(min_length=1, max_length=64)
-    available: bool
-    descriptor: RulesetDescriptor | None = None
-    unavailable_reason: ReviewReason | None = None
+    label: str = Field(min_length=1, max_length=200)
+    detail: str = Field(min_length=1, max_length=600)
+    matched_on: list[str] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
-    def _available_means_described(self) -> "ActiveRulesetResponse":
-        if self.available and self.descriptor is None:
-            raise ValueError("an available ruleset must carry its descriptor")
-        if not self.available and self.unavailable_reason is None:
-            raise ValueError("an unavailable ruleset must say why")
+    def _states_a_finding_not_an_order(self) -> "RedFlag":
+        refuse_directive_language(self.label, "red flag label")
+        refuse_directive_language(self.detail, "red flag detail")
         return self
 
 
-# Findings
+class Consideration(StrictModel):
+    """One thing worth considering, with what supports and contradicts it.
 
-
-class MedicationFinding(StrictModel):
-    """One alert, or one thing that could not be decided.
-
-    Every field a clinician needs in order to trust, reproduce, or dispute the
-    finding is present: what went in, which rule fired, from which version of
-    which source, when it was evaluated, what is not known, and what to do.
+    Carries no probability, no score, and no ranking number. An unsupported
+    figure would be read as precision the workflow does not have.
     """
 
-    finding_id: str = Field(min_length=1, max_length=64)
-    type: AlertType
-    status: AlertStatus
-    severity: Severity
-    involved: list[NormalizedMedicine] = Field(default_factory=list, max_length=10)
-    explanation: str = Field(min_length=1, max_length=2000)
-    review_action: str = Field(min_length=1, max_length=500)
-    limitations: list[str] = Field(default_factory=list, max_length=10)
-    review_reasons: list[ReviewReason] = Field(default_factory=list, max_length=10)
-    rule_id: str | None = Field(default=None, max_length=120)
-    source_name: str | None = Field(default=None, max_length=120)
-    ruleset_version: str | None = Field(default=None, max_length=64)
-    effective_date: date | None = None
-    evaluated_at: datetime
-    blocking: bool = False
+    label: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=1, max_length=1000)
+    supporting_findings: list[str] = Field(default_factory=list, max_length=10)
+    contradicting_findings: list[str] = Field(default_factory=list, max_length=10)
+    evidence_references: list[str] = Field(default_factory=list, max_length=10)
 
     @model_validator(mode="after")
-    def _provenance_and_severity_are_consistent(self) -> "MedicationFinding":
-        if self.status is AlertStatus.NEEDS_REVIEW:
-            # An unresolved question has no severity to report and must say why.
-            if self.severity is not Severity.UNKNOWN:
-                raise ValueError("a needs_review finding cannot carry a severity")
-            if not self.review_reasons:
-                raise ValueError("a needs_review finding must say why it needs review")
-            if self.blocking:
-                raise ValueError("a needs_review finding is not a blocking alert")
-            return self
-
-        # A decided alert must be attributable, or it is not evidence.
-        if self.severity is Severity.UNKNOWN:
-            raise ValueError("a decided alert must carry a severity from its ruleset")
-        missing = [
-            name
-            for name, value in (
-                ("rule_id", self.rule_id),
-                ("source_name", self.source_name),
-                ("ruleset_version", self.ruleset_version),
-                ("effective_date", self.effective_date),
-            )
-            if value in (None, "")
-        ]
-        if missing:
-            raise ValueError(
-                "a decided alert must cite its ruleset provenance, missing: " + ", ".join(missing)
-            )
+    def _organizes_rather_than_treats(self) -> "Consideration":
+        refuse_directive_language(self.label, "consideration label")
+        refuse_directive_language(self.rationale, "consideration rationale")
+        for item in self.supporting_findings:
+            refuse_directive_language(item, "supporting finding")
+        for item in self.contradicting_findings:
+            refuse_directive_language(item, "contradicting finding")
         return self
 
 
-# Medication check
+class DifferentialResponse(StrictModel):
+    """Clinical Differential Support: considerations for clinician review.
 
-
-class MedicationCheckRequest(CdsClientModel):
-    """Run the deterministic checks for one visit.
-
-    The patient is not named by the client. It is resolved from the visit, and
-    the caller's access to that visit is verified server-side against the tenant
-    the token belongs to.
+    Never a diagnosis, never a plan, never an instruction. Every field a
+    clinician needs to judge the result is present: what went in, how fresh it
+    was, what is missing, what conflicts, what the deterministic rules flagged,
+    what the limits are, and which model, prompt, and rule versions produced it.
     """
 
-    visit_id: UUID
-    additional_medicines: list[MedicineInput] = Field(default_factory=list, max_length=30)
-    include_prescribed: bool = True
-
-
-class MedicationCheckResponse(StrictModel):
     request_id: str = Field(min_length=1, max_length=64)
-    check_id: UUID
+    suggestion_id: UUID
     visit_id: UUID
-    status: CheckStatus
-    findings: list[MedicationFinding] = Field(default_factory=list, max_length=100)
-    medicines: list[NormalizedMedicine] = Field(default_factory=list, max_length=60)
-    review_reasons: list[ReviewReason] = Field(default_factory=list, max_length=20)
-    ruleset: RulesetDescriptor | None = None
-    checks_performed: list[AlertType] = Field(default_factory=list, max_length=10)
-    checks_not_performed: list[AlertType] = Field(default_factory=list, max_length=10)
+    status: DifferentialStatus
+    inputs: DifferentialInputs
+    considerations: list[Consideration] = Field(default_factory=list, max_length=8)
+    red_flags: list[RedFlag] = Field(default_factory=list, max_length=10)
+    missing_information: list[str] = Field(default_factory=list, max_length=20)
+    contradictions: list[str] = Field(default_factory=list, max_length=20)
     limitations: list[str] = Field(default_factory=list, max_length=20)
+    evidence_references: list[str] = Field(default_factory=list, max_length=20)
+    department: str = Field(max_length=60)
+    knowledge_version: str = Field(max_length=64)
+    redflag_ruleset_version: str = Field(max_length=64)
+    prompt_version: str = Field(max_length=64)
+    model_version: str | None = Field(default=None, max_length=120)
     requires_human_review: bool = True
     evaluated_at: datetime
 
     @model_validator(mode="after")
-    def _status_is_earned(self) -> "MedicationCheckResponse":
-        if self.status is CheckStatus.NEEDS_REVIEW:
-            if not self.review_reasons:
-                raise ValueError("needs_review must say why")
-            return self
-
-        # Anything other than needs_review is a claim about a specific ruleset,
-        # so that ruleset has to exist and has to be current. This is what stops
-        # a missing, stale, or failed check from ever reading as reassurance.
-        if self.ruleset is None:
-            raise ValueError("only a check backed by an approved ruleset may conclude")
-        if self.ruleset.stale:
-            raise ValueError("a stale ruleset cannot conclude; it needs review")
-
-        if self.status is CheckStatus.NO_ALERTS_IN_ACTIVE_RULESET:
-            if any(f.status is AlertStatus.ALERT for f in self.findings):
-                raise ValueError("no_alerts_in_active_ruleset cannot carry an alert")
-            if any(f.status is AlertStatus.NEEDS_REVIEW for f in self.findings):
-                raise ValueError("an unresolved finding makes the whole check needs_review")
-        if self.status is CheckStatus.ALERTS and not any(
-            f.status is AlertStatus.ALERT for f in self.findings
-        ):
-            raise ValueError("status alerts requires at least one alert")
-        return self
-
-    @model_validator(mode="after")
-    def _human_review_cannot_be_switched_off(self) -> "MedicationCheckResponse":
+    def _never_concludes_and_never_treats(self) -> "DifferentialResponse":
         if not self.requires_human_review:
-            raise ValueError("clinical review is mandatory and cannot be disabled")
+            # There is no path on which this workflow decides anything alone.
+            raise ValueError("a differential result always requires human review")
+        if self.status is not DifferentialStatus.SUGGESTIONS and self.considerations:
+            raise ValueError("only a suggestions result may carry considerations")
+        for item in self.missing_information + self.contradictions + self.limitations:
+            refuse_directive_language(item, "differential narrative")
         return self
 
 
-# Acknowledgement and override
+class DifferentialFeedbackRequest(CdsClientModel):
+    """A clinician's judgement of one suggestion.
 
-
-class AlertActionRequest(CdsClientModel):
-    """Record that a clinician saw a finding, or overrode a blocking one.
-
-    An override needs a reason. The actor is taken from the token, never from
-    this body, so an acknowledgement cannot be attributed to somebody else.
+    Recorded for human review. It is deliberately not wired to anything that
+    changes future output: an unreviewed learning loop would let one clinician's
+    click quietly alter what the next clinician is shown.
     """
 
-    check_id: UUID
-    finding_id: str = Field(min_length=1, max_length=64)
-    action: AlertAction
-    reason: str | None = Field(default=None, max_length=500)
+    suggestion_id: UUID
+    rating: str = Field(min_length=1, max_length=20)
+    comment: str | None = Field(default=None, max_length=500)
 
     @model_validator(mode="after")
-    def _override_needs_a_reason(self) -> "AlertActionRequest":
-        if self.action is AlertAction.OVERRIDE:
-            if not self.reason or not self.reason.strip():
-                raise ValueError("an override requires a reason")
+    def _rating_is_one_of_the_known_values(self) -> "DifferentialFeedbackRequest":
+        if self.rating not in {"useful", "not_useful", "incorrect", "unsafe"}:
+            raise ValueError("unknown rating")
         return self
 
 
-class AlertActionResponse(StrictModel):
+class DifferentialFeedbackResponse(StrictModel):
     request_id: str = Field(min_length=1, max_length=64)
-    action_id: UUID
-    check_id: UUID
-    finding_id: str = Field(max_length=64)
-    action: AlertAction
+    suggestion_id: UUID
     recorded_at: datetime
 
 

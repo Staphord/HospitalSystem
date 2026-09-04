@@ -46,13 +46,20 @@ from app.core.tenant_auth import TenantContext, get_current_tenant  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.dependencies import get_tenant_db  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models.cds import CdsAlertAction, CdsMedicationCheck  # noqa: E402
+from app.models.cds import (  # noqa: E402
+    CdsDifferentialFeedback,
+    CdsDifferentialSuggestion,
+)
 
 TENANT_ID = "hosp-c5c8388b"
 OTHER_TENANT_ID = "hosp-99999999"
 
 VISIT_ID = UUID("b2000002-0002-4002-8002-000000000002")
 CANCELLED_VISIT_ID = UUID("b2000002-0002-4002-8002-000000000009")
+# A visit whose medicines come from the prescriber's own record, which unlike
+# the pharmacy view carries route. Kept separate from VISIT_ID so the existing
+# pharmacy-sourced expectations stay exactly as they were.
+CONSULTATION_VISIT_ID = UUID("b2000002-0002-4002-8002-00000000000a")
 PATIENT_ID = UUID("c3000003-0003-4003-8003-000000000003")
 PATIENT_NO_ALLERGY_RECORD_ID = UUID("c3000003-0003-4003-8003-000000000004")
 PRESCRIPTION_ID = UUID("e2000002-0002-4002-8002-000000000002")
@@ -108,15 +115,37 @@ TENANT_FIXTURE_DDL = (
     )
     """,
     """
-    CREATE TABLE drug_inventory (
-        inventory_id CHAR(36) PRIMARY KEY,
+    CREATE TABLE prescriptions (
+        id CHAR(36) PRIMARY KEY,
+        visit_id CHAR(36) NOT NULL,
+        consultation_id CHAR(36),
+        patient_id CHAR(36) NOT NULL,
         drug_name VARCHAR(200) NOT NULL,
-        brand_name VARCHAR(200),
-        drug_code VARCHAR(50),
-        category VARCHAR(100),
-        unit VARCHAR(50),
-        quantity_in_stock INTEGER,
-        is_active BOOLEAN
+        dose VARCHAR(50) NOT NULL,
+        frequency VARCHAR(50) NOT NULL,
+        duration VARCHAR(50) NOT NULL,
+        route VARCHAR(50) NOT NULL,
+        instructions TEXT,
+        prescribed_by VARCHAR(255),
+        status VARCHAR(50)
+    )
+    """,
+    """
+    CREATE TABLE triage_assessments (
+        id CHAR(36) PRIMARY KEY,
+        visit_id CHAR(36) NOT NULL,
+        patient_id VARCHAR(50) NOT NULL,
+        blood_pressure VARCHAR(20),
+        temperature FLOAT,
+        pulse INTEGER,
+        oxygen_saturation FLOAT,
+        respiratory_rate INTEGER,
+        weight FLOAT,
+        presenting_complaint TEXT,
+        structured_complaint VARCHAR(255),
+        triage_category VARCHAR(50),
+        notes TEXT,
+        created_at TIMESTAMP
     )
     """,
 )
@@ -124,22 +153,6 @@ TENANT_FIXTURE_DDL = (
 PRESCRIPTION_ITEM_ID = UUID("d4000004-0004-4004-8004-000000000004")
 
 TENANT_FIXTURE_ROWS = (
-    (
-        "INSERT INTO drug_inventory (inventory_id, drug_name, brand_name, drug_code, "
-        "category, unit, quantity_in_stock, is_active) VALUES "
-        "('11111111-1111-4111-8111-111111111111', 'Warfarin', 'Coumadin', 'WAR-5', "
-        "'Anticoagulant', 'tablets', 100, 1),"
-        "('22222222-2222-4222-8222-222222222222', 'Ibuprofen', 'Brufen', 'IBU-400', "
-        "'NSAID', 'tablets', 100, 1),"
-        "('33333333-3333-4333-8333-333333333333', 'Amoxicillin', 'Amoxil', 'AMX-500', "
-        "'Antibiotic', 'tablets', 100, 1),"
-        "('44444444-4444-4444-8444-444444444444', 'Paracetamol', 'Panadol', 'PCM-500', "
-        "'Analgesic', 'tablets', 100, 1),"
-        "('55555555-5555-4555-8555-555555555555', 'Paracetamol Extra', 'Panadol Extra', "
-        "'PCM-EX', 'Analgesic', 'tablets', 100, 1),"
-        "('66666666-6666-4666-8666-666666666666', 'Diclofenac', 'Voltaren', 'DIC-50', "
-        "'NSAID', 'tablets', 100, 1)"
-    ),
     (
         "INSERT INTO patients (id, hospital_id, patient_number, full_name, date_of_birth, "
         "gender, allergies) VALUES "
@@ -154,18 +167,48 @@ TENANT_FIXTURE_ROWS = (
         f"('{VISIT_ID}', '{PATIENT_ID}', 'V-1', '2026-08-27', 'outpatient', 'cash', "
         "'in_pharmacy', 1),"
         f"('{CANCELLED_VISIT_ID}', '{PATIENT_ID}', 'V-2', '2026-08-27', 'outpatient', "
-        "'cash', 'cancelled', 0)"
+        "'cash', 'cancelled', 0),"
+        f"('{CONSULTATION_VISIT_ID}', '{PATIENT_ID}', 'V-3', '2026-08-27', 'outpatient', "
+        "'cash', 'in_consultation', 0)"
     ),
     (
         "INSERT INTO pharmacy_prescriptions (prescription_id, visit_id, patient_id, "
         "prescribed_by, status) VALUES "
-        f"('{PRESCRIPTION_ID}', '{VISIT_ID}', '{PATIENT_ID}', 'Dr Test', 'pending')"
+        f"('{PRESCRIPTION_ID}', '{VISIT_ID}', '{PATIENT_ID}', 'Dr Test', 'pending'),"
+        f"('e2000002-0002-4002-8002-00000000000a', '{CONSULTATION_VISIT_ID}', "
+        f"'{PATIENT_ID}', 'Dr Test', 'pending')"
     ),
     (
         "INSERT INTO pharmacy_prescription_items (prescription_item_id, prescription_id, "
         "drug_name, dose, frequency, duration, quantity_prescribed, status) VALUES "
         f"('{PRESCRIPTION_ITEM_ID}', '{PRESCRIPTION_ID}', 'Warfarin 5mg tablet', '5mg', "
-        "'Once daily', '7 days', 7, 'pending')"
+        "'Once daily', '7 days', 7, 'pending'),"
+        # The same drug the consultation visit already prescribed, so dedup
+        # across the two sources is exercised, plus one the pharmacy alone has.
+        "('d4000004-0004-4004-8004-00000000000a', "
+        "'e2000002-0002-4002-8002-00000000000a', 'Warfarin 5mg tablet', '5mg', "
+        "'Once daily', '7 days', 7, 'pending'),"
+        "('d4000004-0004-4004-8004-00000000000b', "
+        "'e2000002-0002-4002-8002-00000000000a', 'Paracetamol 500mg tablet', '500mg', "
+        "'As needed', '3 days', 9, 'pending')"
+    ),
+    (
+        "INSERT INTO triage_assessments (id, visit_id, patient_id, blood_pressure, "
+        "temperature, pulse, oxygen_saturation, respiratory_rate, weight, "
+        "triage_category, created_at) VALUES "
+        f"('f6000006-0006-4006-8006-000000000006', '{CONSULTATION_VISIT_ID}', "
+        f"'{PATIENT_ID}', '128/82', 37.1, 78, 98.0, 16, 64.5, 'standard', "
+        "'2026-08-27 08:15:00')"
+    ),
+    (
+        "INSERT INTO prescriptions (id, visit_id, consultation_id, patient_id, drug_name, "
+        "dose, frequency, duration, route, status) VALUES "
+        f"('a1000001-0001-4001-8001-000000000001', '{CONSULTATION_VISIT_ID}', "
+        f"'f5000005-0005-4005-8005-000000000005', '{PATIENT_ID}', 'Warfarin 5mg tablet', "
+        "'5mg', 'Once daily', '7 days', 'oral', 'pending'),"
+        f"('a1000001-0001-4001-8001-000000000002', '{CONSULTATION_VISIT_ID}', "
+        f"'f5000005-0005-4005-8005-000000000005', '{PATIENT_ID}', 'Ibuprofen 400mg tablet', "
+        "'400mg', 'Three times daily', '5 days', 'oral', 'pending')"
     ),
 )
 
@@ -209,12 +252,14 @@ def session_factory(tenant_engine):
 
 @pytest.fixture
 def enabled(monkeypatch):
-    """Switch the service and the medication capability on for one test."""
+    """Switch the service and the differential capability on for one test."""
     from app.core import config
 
     monkeypatch.setattr(config.settings, "cds_enabled", True, raising=False)
-    monkeypatch.setattr(config.settings, "cds_medication_check_enabled", True, raising=False)
-    return CdsCapability.MEDICATION_CHECK
+    monkeypatch.setattr(
+        config.settings, "cds_differential_support_enabled", True, raising=False
+    )
+    return CdsCapability.DIFFERENTIAL_SUPPORT
 
 
 @pytest.fixture(autouse=True)
@@ -254,8 +299,9 @@ def client(session_factory):
 
 __all__ = [
     "CANCELLED_VISIT_ID",
-    "CdsAlertAction",
-    "CdsMedicationCheck",
+    "CONSULTATION_VISIT_ID",
+    "CdsDifferentialFeedback",
+    "CdsDifferentialSuggestion",
     "OTHER_TENANT_ID",
     "PATIENT_ID",
     "PATIENT_NO_ALLERGY_RECORD_ID",
