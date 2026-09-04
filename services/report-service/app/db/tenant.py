@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator, AsyncIterator
 
 from cachetools import TTLCache
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -43,10 +44,23 @@ async def _get_async_session_factory(tenant_id: str) -> async_sessionmaker:
     return factory
 
 
-async def get_tenant_session(tenant_id: str) -> AsyncGenerator[AsyncSession, None]:
+@asynccontextmanager
+async def tenant_session(tenant_id: str) -> AsyncIterator[AsyncSession]:
+    """Open one tenant session outside the FastAPI dependency system.
+
+    The assistant needs a session from inside a plain async function rather than
+    from a route signature, so that a connection is opened only when a question
+    actually needs one. get_tenant_session below stays the dependency form and
+    is built on this, so both paths resolve the tenant DSN identically.
+    """
     factory = await _get_async_session_factory(tenant_id)
     async with factory() as session:
         try:
             yield session
         finally:
             await session.close()
+
+
+async def get_tenant_session(tenant_id: str) -> AsyncGenerator[AsyncSession, None]:
+    async with tenant_session(tenant_id) as session:
+        yield session
