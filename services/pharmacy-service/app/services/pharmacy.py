@@ -74,6 +74,8 @@ from app.api.v1.schemas import (
     PrescriptionItem as SchemaPrescriptionItem,
 )
 from app.core.security import TokenPayload
+from shared.medicines import Monograph, Severity, find_medicines, interactions_between
+
 from app.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.models.pharmacy import (
     Queue, Visit, Patient, Prescription, PrescriptionItem, DispensingRecord,
@@ -288,6 +290,38 @@ async def get_visit_prescriptions(db: AsyncSession, visit_id: UUID) -> VisitPres
     )
 
 
+# How the reference's four severities read on a dispensing alert, which has
+# three. "Avoid" and "serious" are both high: a pharmacist deciding whether to
+# hand something over needs to know it is serious either way, and the detail
+# line carries which of the two the reference actually said.
+_PHARMACY_SEVERITY = {
+    Severity.AVOID: "high",
+    Severity.SERIOUS: "high",
+    Severity.MODERATE: "moderate",
+    Severity.MINOR: "low",
+}
+
+
+def _prescribed_medicines(items) -> list[tuple[str, Monograph]]:
+    """Resolve prescribed items to monographs, keeping the name as written.
+
+    The prescription says "Warfarin 5mg tablet"; the reference says "Warfarin".
+    An alert should quote the prescription, because that is what the pharmacist
+    is holding, so both are carried through. One medicine prescribed twice
+    resolves once.
+    """
+    resolved: list[tuple[str, Monograph]] = []
+    seen: set[str] = set()
+    for item in items:
+        written = (item.drug_name or "").strip()
+        for monograph in find_medicines(written):
+            if monograph.drug_id in seen:
+                continue
+            seen.add(monograph.drug_id)
+            resolved.append((written, monograph))
+    return resolved
+
+
 async def check_drug_interactions(db: AsyncSession, visit_id: UUID) -> InteractionCheckResponse:
     visit = await db.get(Visit, visit_id)
     if not visit:
@@ -318,17 +352,32 @@ async def check_drug_interactions(db: AsyncSession, visit_id: UUID) -> Interacti
                         )
                     )
 
-    # Simple drug-drug interaction check (e.g. Warfarin and Ibuprofen)
-    drug_names = {item.drug_name.lower() for item in items}
-    if any("warfarin" in d for d in drug_names) and any("ibuprofen" in d for d in drug_names):
+    # Drug-drug interactions, from the hospital medicines reference.
+    #
+    # This used to be one pair written inline here - warfarin with ibuprofen -
+    # so a pharmacist dispensing enalapril with diclofenac, or simvastatin with
+    # clarithromycin, was told nothing. Both are flagged now, because the gate
+    # reads the same pack the assistant answers from: one set of rules, so a
+    # pharmacist reading an alert and a doctor asking the assistant cannot be
+    # told two different things.
+    #
+    # A prescribed item is matched by the name written on the prescription,
+    # which is free text. A name the pack does not carry raises no alert, and
+    # that is not the same as there being nothing to raise. It is the same limit
+    # the assistant states out loud, and the reason to extend the pack rather
+    # than loosen the matching.
+    prescribed = _prescribed_medicines(items)
+    monographs = [monograph for _, monograph in prescribed]
+    written = {monograph.drug_id: name for name, monograph in prescribed}
+    for first, second, rule in interactions_between(monographs):
         alerts.append(
             InteractionAlert(
                 type="drug_drug",
-                severity="high",
-                drug_a="Warfarin",
-                drug_b="Ibuprofen",
-                detail="High risk of bleeding. NSAIDs like Ibuprofen increase Warfarin's anticoagulant effect.",
-                recommendation="Use alternative analgesic or obtain explicit doctor authorization.",
+                severity=_PHARMACY_SEVERITY[rule.severity],
+                drug_a=written.get(first.drug_id) or first.generic_name,
+                drug_b=written.get(second.drug_id) or second.generic_name,
+                detail=rule.severity.headline + ". " + rule.effect,
+                recommendation=rule.management,
             )
         )
 
