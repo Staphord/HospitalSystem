@@ -99,6 +99,18 @@ reuse the ones checked into `infrastructure/docker-compose.yml` — those are
 public dev secrets), writes `/opt/hospitalflow/env/common.env`, and
 generates + starts all 16 `hospital-*.service` units.
 
+**To include the Hospital Assistant,** add `GROQ_API_KEY='<your Groq key>'` to
+that same command. It switches on operational chat and chat history together,
+and it is the only thing that does: with no key the assistant stays off
+entirely, because a launcher that fails on every question is worse than no
+launcher. The key is written only into `common.env` (mode 640, owned by the
+service user) and never appears in a log, an audit record, or a browser — the
+script prints whether the assistant ended up on, never the key itself.
+
+Chat history needs nothing else: it is stored in each hospital's own tenant
+database, and tenant provisioning applies the migration that creates its tables
+along with the rest.
+
 Check it worked:
 
 ```bash

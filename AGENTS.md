@@ -11,6 +11,54 @@ Rules:
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
 
+## Changing code you did not write
+
+Only change what you wrote yourself. Confine every edit to the code your own
+task added.
+
+When the work seems to need a change to existing code - refactoring a shared
+function, altering an existing prompt, reordering existing control flow,
+changing a component someone else owns, editing a shared document - stop before
+making it and bring it to the user. Give them:
+
+- what the change is, and what would behave differently after it,
+- who wrote the code originally (`git log -1 --format='%h %an %ad' -- <path>`),
+- what breaks or is at risk if it goes in,
+- a recommendation, with the alternatives, including doing nothing.
+
+Then wait for their decision. Additive changes inside your own feature - a new
+module, a new setting, a new row in a table you introduced - do not need this.
+Changing the behaviour of something that already worked does.
+
+The reason is ownership, not caution: this repository has several authors, and a
+behaviour-preserving refactor still lands in someone else's file and someone
+else's review. They should get to decide.
+
+### Trace what depends on it before you propose an option
+
+Do not present an option until you know what else it touches. Assess each
+candidate change against the whole codebase, not just the file in front of you,
+and say what you found:
+
+- Who calls it. `grep -rn "<name>" --include=*.py` across `services/`, and the
+  same for the frontend. This repository copies modules between services rather
+  than sharing them, so the same function often exists in a dozen places and
+  fixing one copy fixes only that one.
+- What the callers assume. A behaviour-preserving refactor is only preserving
+  for the behaviour someone thought to check. Look at the tests that cover the
+  callers, not only the tests for the thing you are changing.
+- What reads the same data. A shared tenant table is declared as an ORM model in
+  six or more services; changing what a column means affects all of them.
+- Whether a flag actually contains the change. If the new path is reachable only
+  behind a switched-off flag, say so - that is the difference between a risky
+  change and a safe one, and it is usually the deciding fact.
+
+Then state the blast radius plainly: what breaks, what merely changes shape, and
+what is provably untouched. An option whose consequences you have not traced is
+not ready to recommend.
+
+---
+
 ## Context Summary (Session 1)
 
 ### Goal

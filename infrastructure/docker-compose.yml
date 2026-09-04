@@ -631,6 +631,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -856,6 +858,15 @@ services:
       ASSISTANT_MAX_AUDIO_BYTES: ${ASSISTANT_MAX_AUDIO_BYTES:-5242880}
       ASSISTANT_MAX_AUDIO_DURATION_MS: ${ASSISTANT_MAX_AUDIO_DURATION_MS:-60000}
       ASSISTANT_VOICE_TIMEOUT_SECONDS: ${ASSISTANT_VOICE_TIMEOUT_SECONDS:-20}
+      ASSISTANT_CHAT_HISTORY_ENABLED: ${ASSISTANT_CHAT_HISTORY_ENABLED:-false}
+      ASSISTANT_MEDICATION_CHECK_ENABLED: ${ASSISTANT_MEDICATION_CHECK_ENABLED:-false}
+      ASSISTANT_MEDICINES_MODEL_FALLBACK_ENABLED: ${ASSISTANT_MEDICINES_MODEL_FALLBACK_ENABLED:-false}
+      ASSISTANT_LIVE_DATA_ENABLED: ${ASSISTANT_LIVE_DATA_ENABLED:-false}
+      ASSISTANT_LIVE_DATA_CACHE_SECONDS: ${ASSISTANT_LIVE_DATA_CACHE_SECONDS:-30}
+      ASSISTANT_LIVE_DATA_TIMEOUT_SECONDS: ${ASSISTANT_LIVE_DATA_TIMEOUT_SECONDS:-3}
+      ASSISTANT_LIVE_DATA_MAX_METRICS: ${ASSISTANT_LIVE_DATA_MAX_METRICS:-3}
+      ASSISTANT_HISTORY_MAX_CONVERSATIONS: ${ASSISTANT_HISTORY_MAX_CONVERSATIONS:-50}
+      ASSISTANT_HISTORY_MAX_MESSAGES: ${ASSISTANT_HISTORY_MAX_MESSAGES:-200}
     depends_on:
       master-service:
         condition: service_healthy
@@ -867,6 +878,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    volumes:
+      - ../shared:/app/shared:ro
     networks:
       - hospital-network
     healthcheck:
@@ -900,17 +913,22 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       # Clinical decision support. Off unless an operator opts in: with nothing
       # exported both flags are false, so every /api/v1/cds route answers 404
-      # and no clinical code runs. The ruleset source defaults to "null", which
-      # is fail-closed: every check returns needs_review and nothing is ever
-      # reported as safe. Supply an approved, versioned ruleset artifact and
-      # point CDS_RULESET_PATH at it to enable real interaction checking.
+      # and no clinical code runs. Doctors only, one approved department, and
+      # with no GROQ_API_KEY the provider is the fail-closed null provider, so
+      # no consideration is ever produced.
       CDS_ENABLED: ${CDS_ENABLED:-false}
-      CDS_MEDICATION_CHECK_ENABLED: ${CDS_MEDICATION_CHECK_ENABLED:-false}
       CDS_DIFFERENTIAL_SUPPORT_ENABLED: ${CDS_DIFFERENTIAL_SUPPORT_ENABLED:-false}
-      CDS_RULESET_SOURCE: ${CDS_RULESET_SOURCE:-null}
-      CDS_RULESET_PATH: ${CDS_RULESET_PATH:-}
-      CDS_RULESET_STALE_AFTER_DAYS: ${CDS_RULESET_STALE_AFTER_DAYS:-180}
-      CDS_MAX_MEDICATIONS_PER_CHECK: ${CDS_MAX_MEDICATIONS_PER_CHECK:-30}
+      CDS_DIFFERENTIAL_DEPARTMENT: ${CDS_DIFFERENTIAL_DEPARTMENT:-general_opd}
+      CDS_REDFLAG_RULESET_VERSION: ${CDS_REDFLAG_RULESET_VERSION:-builtin-general-opd-2026.08}
+      CDS_DIFFERENTIAL_PROMPT_VERSION: ${CDS_DIFFERENTIAL_PROMPT_VERSION:-differential-2026.08.1}
+      CDS_MAX_SYMPTOMS_PER_REQUEST: ${CDS_MAX_SYMPTOMS_PER_REQUEST:-20}
+      CDS_MAX_MEDICINES_IN_CONTEXT: ${CDS_MAX_MEDICINES_IN_CONTEXT:-30}
+      CDS_MAX_CONSIDERATIONS: ${CDS_MAX_CONSIDERATIONS:-8}
+      CDS_DIFFERENTIAL_TIMEOUT_SECONDS: ${CDS_DIFFERENTIAL_TIMEOUT_SECONDS:-20}
+      CDS_PROVIDER: ${CDS_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
     depends_on:
       master-service:
         condition: service_healthy

@@ -27,7 +27,11 @@ rsync -a --delete \
 
 # Services whose code does `from shared...` / uses migrations or scripts at
 # runtime — same set as the volume mounts in infrastructure/docker-compose.yml.
-SHARED_CONSUMERS=(api-gateway auth-service master-service admin-service)
+# pharmacy-service and report-service read the medicines pack from
+# shared/medicines: the assistant answers medicine questions from it and the
+# dispensing gate raises its interaction alerts from it, so the two cannot
+# disagree.
+SHARED_CONSUMERS=(api-gateway auth-service master-service admin-service pharmacy-service report-service)
 MIGRATIONS_CONSUMERS=(auth-service master-service)
 
 for svc in "${SHARED_CONSUMERS[@]}"; do
