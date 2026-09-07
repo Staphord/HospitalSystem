@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+sqlalchemy
+asyncpg
+httpx
+python-jose[cryptography]
+cachetools
+slowapi
+redis
+psycopg2-binary
+cryptography
+pytest==9.1.1
+pytest-asyncio==1.4.0
+aiosqlite

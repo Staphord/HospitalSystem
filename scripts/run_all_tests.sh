@@ -18,6 +18,7 @@ SERVICES=(
   admin-service
   notification-service
   report-service
+  clinical-decision-support-service
 )
 
 for svc in "${SERVICES[@]}"; do

@@ -7,6 +7,14 @@
 #   KEYCLOAK_ADMIN_PASSWORD - printed by 02-install-keycloak.sh
 #   VPS_IP                  - your VPS's public IP (used for CORS/ALLOWED_ORIGINS)
 #
+# Optional:
+#   GROQ_API_KEY            - turns the Hospital Assistant on, chat and chat
+#                             history together. Left out, both stay off and the
+#                             assistant is simply absent: a launcher that fails
+#                             on every question is worse than no launcher. The
+#                             key is written only into common.env (mode 640,
+#                             owned by the service user) and never into a log.
+#
 # Example:
 #   sudo PG_PASSWORD=xxxx KEYCLOAK_ADMIN_PASSWORD=yyyy VPS_IP=203.0.113.10 \
 #     ./deploy/04-generate-env-and-systemd.sh
@@ -28,6 +36,16 @@ ENV_FILE="${ENV_DIR}/common.env"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# The assistant follows its key: supplied means on, absent means off. Both
+# flags move together, because chat history with no chat stores nothing, and
+# chat with no history is the thing staff report as the assistant forgetting.
+GROQ_API_KEY="${GROQ_API_KEY:-}"
+if [ -n "${GROQ_API_KEY}" ]; then
+  ASSISTANT_ENABLED="true"
+else
+  ASSISTANT_ENABLED="false"
+fi
+
 SECRET_KEY="$(openssl rand -hex 32)"
 TENANT_KEY="$("${BACKEND_DIR}/scripts/venv/bin/python" -c \
   "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")"
@@ -39,11 +57,19 @@ sed \
   -e "s#__VPS_IP__#${VPS_IP}#g" \
   -e "s#__SECRET_KEY__#${SECRET_KEY}#g" \
   -e "s#__TENANT_DB_ENCRYPTION_KEY__#${TENANT_KEY}#g" \
+  -e "s#__ASSISTANT_ENABLED__#${ASSISTANT_ENABLED}#g" \
+  -e "s#__GROQ_API_KEY__#${GROQ_API_KEY}#g" \
   "${SCRIPT_DIR}/env.template" > "${ENV_FILE}"
 
 chown "${APP_USER}:${APP_USER}" "${ENV_FILE}"
 chmod 640 "${ENV_FILE}"
 echo "Wrote ${ENV_FILE}"
+# Whether a key was supplied, never the key itself.
+if [ "${ASSISTANT_ENABLED}" = "true" ]; then
+  echo "Hospital Assistant: chat and chat history enabled (GROQ_API_KEY supplied)"
+else
+  echo "Hospital Assistant: off (no GROQ_API_KEY given); re-run with one to enable"
+fi
 
 # name:port — matches infrastructure/docker-compose.yml exactly.
 SERVICES=(

@@ -10,8 +10,8 @@ psycopg2-binary
 cachetools
 cryptography
 httpx
-pytest
-pytest-asyncio
+pytest==9.1.1
+pytest-asyncio==1.4.0
 python-dotenv
 aio-pika
 psutil

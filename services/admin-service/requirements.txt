@@ -15,8 +15,8 @@ slowapi
 cachetools
 cryptography
 apscheduler
-pytest
-pytest-asyncio
+pytest==9.1.1
+pytest-asyncio==1.4.0
 httpx
 python-dotenv
 aio-pika
