@@ -109,14 +109,21 @@ async def _introspect_token(token: str) -> None:
         "client_id": settings.keycloak_client_id,
         "client_secret": settings.keycloak_client_secret,
     }
-    async with httpx.AsyncClient(timeout=10.0) as c:
-        resp = await c.post(url, data=data)
-        resp.raise_for_status()
-        payload = resp.json()
-        active = bool(payload.get("active"))
-        cache[token] = active
-        if not active:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Inactive token")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            resp = await c.post(url, data=data)
+            resp.raise_for_status()
+            payload = resp.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable",
+        ) from e
+
+    active = bool(payload.get("active"))
+    cache[token] = active
+    if not active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Inactive token")
 
 
 class JWTVerificationMiddleware(BaseHTTPMiddleware):
