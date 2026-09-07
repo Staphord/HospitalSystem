@@ -136,9 +136,16 @@ jobs:
         env:
           PYTHONPATH: .:services/${{ matrix.service }}:shared
         run: |
-          set -o pipefail
-          count=$(pytest services/${{ matrix.service }}/tests --collect-only -q | awk '/collected/{print $1; exit}')
-          test "${count:-0}" -gt 0
+          # pytest's own exit code is the check: 2 on a collection error, 5 when
+          # nothing was collected, 0 only when at least one test collected cleanly.
+          #
+          # Do not pipe this into awk to scrape the "N tests collected" summary.
+          # -q prints every node id before that summary, and a node id containing
+          # the word "collected" (billing.collected, "How much have we collected
+          # today?") matched first. awk printed a truncated id and exited, closing
+          # the pipe while pytest was still writing, so pytest died of SIGPIPE and
+          # pipefail failed the step on a suite that collects perfectly.
+          pytest services/${{ matrix.service }}/tests --collect-only -q
       - name: Run service tests with coverage
         env:
           PYTHONPATH: .:services/${{ matrix.service }}:shared
