@@ -390,14 +390,8 @@ async def _send_email(email: str, reset_link: str) -> None:
 
 async def _user_exists_in_keycloak(email: str) -> bool:
     try:
-        admin_url = f"{settings.keycloak_url}/admin/realms/{settings.keycloak_realm}/users"
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            admin_token = await _get_admin_token()
-            headers = {"Authorization": f"Bearer {admin_token}"}
-            resp = await client.get(f"{admin_url}?email={email}", headers=headers)
-            if resp.is_success:
-                users = resp.json()
-                return len(users) > 0
+        from app.services.keycloak_admin import find_user_realm_by_email
+        return await find_user_realm_by_email(email) is not None
     except Exception as e:
         print(f"[ERROR] Keycloak user existence check failed: {str(e)}")
     return False
@@ -409,7 +403,8 @@ async def request_password_reset(email: str, db: Session) -> None:
         db.query(User).filter(User.email == email).first() is not None
         or db.query(SuperAdmin).filter(SuperAdmin.email == email).first() is not None
     )
-    # 2. Check Keycloak if not in local DB
+    # 2. Check Keycloak across all realms if not in local DB (tenant staff
+    # live in per-hospital realms, not the default/master realm)
     if not user_exists:
         user_exists = await _user_exists_in_keycloak(email)
 
@@ -449,12 +444,14 @@ async def confirm_password_reset(token: str, new_password: str, db: Session) -> 
         raise BadRequestError("Invalid or expired password reset token")
 
     try:
-        admin_url = f"{settings.keycloak_url}/admin/realms/{settings.keycloak_realm}/users"
+        from app.services.keycloak_admin import find_user_realm_by_email
+        realm = await find_user_realm_by_email(record.email) or settings.keycloak_realm
+        admin_url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
         async with httpx.AsyncClient(timeout=10.0) as client:
             admin_token = await _get_admin_token()
             headers = {"Authorization": f"Bearer {admin_token}"}
             user_resp = await client.get(
-                f"{admin_url}?email={record.email}",
+                f"{admin_url}?email={record.email}&exact=true",
                 headers=headers,
             )
             if user_resp.is_success and user_resp.json():
