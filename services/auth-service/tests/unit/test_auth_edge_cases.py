@@ -282,16 +282,11 @@ async def test_auth_email_keycloak_and_mfa_cache_edges(monkeypatch):
     assert auth_service.verify_mfa_totp("cache-sub", "000000") is False
     assert auth_service.is_valid_totp_secret("not-a-valid-secret") is False
 
-    class Response:
-        is_success = True
-        def json(self): return [{"id": "u"}]
-    class Client:
-        async def __aenter__(self): return self
-        async def __aexit__(self, *a): pass
-        async def get(self, *a, **k): return Response()
-    monkeypatch.setattr(auth_service, "_get_admin_token", AsyncMock(return_value="token"))
-    import httpx
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **k: Client())
+    # _user_exists_in_keycloak now delegates to a cross-realm search (users
+    # can live in any tenant realm, not just the default one); the search
+    # itself is covered by test_keycloak_services.py.
+    from app.services import keycloak_admin
+    monkeypatch.setattr(keycloak_admin, "find_user_realm_by_email", AsyncMock(return_value="hosp-one"))
     assert await auth_service._user_exists_in_keycloak("u@example.com") is True
 
 

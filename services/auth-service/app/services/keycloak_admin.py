@@ -85,6 +85,56 @@ async def find_user_realm_by_username(username: str) -> str | None:
     return None
 
 
+async def find_user_realm_by_email(email: str) -> str | None:
+    """Search for a user across ALL Keycloak realms by email."""
+    hdrs = await _headers()
+    # Try default realm and master first (fast path)
+    fast_realms = []
+    if settings.keycloak_realm:
+        fast_realms.append(settings.keycloak_realm)
+    if "master" not in fast_realms:
+        fast_realms.insert(0, "master")
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for realm in fast_realms:
+            url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
+            r = await client.get(f"{url}?email={email}&exact=true&maxResults=1", headers=hdrs)
+            if r.is_success and r.json():
+                if realm.startswith("hosp-"):
+                    from app.core.database import get_session_local
+                    from app.models.master import Tenant
+                    db = get_session_local()()
+                    try:
+                        tenant = db.query(Tenant).filter(Tenant.tenant_id == realm, Tenant.is_active == True).first()
+                        if not tenant:
+                            continue
+                    finally:
+                        db.close()
+                return realm
+
+    # Get all realm names
+    all_realms = await _list_all_realms()
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for realm in all_realms:
+            if realm in fast_realms:
+                continue
+            url = f"{settings.keycloak_url}/admin/realms/{realm}/users"
+            r = await client.get(f"{url}?email={email}&exact=true&maxResults=1", headers=hdrs)
+            if r.is_success and r.json():
+                if realm.startswith("hosp-"):
+                    from app.core.database import get_session_local
+                    from app.models.master import Tenant
+                    db = get_session_local()()
+                    try:
+                        tenant = db.query(Tenant).filter(Tenant.tenant_id == realm, Tenant.is_active == True).first()
+                        if not tenant:
+                            continue
+                    finally:
+                        db.close()
+                return realm
+    return None
+
+
 async def _list_all_realms() -> list[str]:
     """Helper to list all Keycloak realm names."""
     hdrs = await _headers()
