@@ -20,7 +20,7 @@ from app.assistant.content.models import (
 # Version of this content pack as a whole. It is recorded on every answer and in
 # the audit record so an answer can always be traced to the exact content that
 # produced it. Bump it whenever an entry is added, changed, or withdrawn.
-CONTENT_PACK_VERSION = "operational-content-2026.08.1"
+CONTENT_PACK_VERSION = "operational-content-2026.09.1"
 
 _V1 = "1.0.0"
 _EFFECTIVE = date(2026, 1, 1)
@@ -86,13 +86,14 @@ _REPORTS: list[ContentEntry] = [
         "Patient census report",
         """
         The patient census report shows how many patients were registered and
-        seen over a date range. Open it, choose a start and end date, and the
-        hospital administrator can review the totals on screen.
+        seen over a date range. Open Patient Reports, set the From and To dates,
+        leave the report type on Census, and press Apply Filters. The totals are
+        shown on screen and can be exported from the same page.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
-        location="Reports, then Patient reports (/admin/reports/patients)",
+        location="Reports & Analytics, then Patient Reports (/admin/reports/patients)",
         example_question="How do I run the patient census report?",
         swahili_example_question="Ninawezaje kuendesha ripoti ya sensa ya wagonjwa?",
     ),
@@ -103,12 +104,14 @@ _REPORTS: list[ContentEntry] = [
         """
         The wait times report summarises how long patients waited between stages
         of a visit over a date range. It is used to spot bottlenecks between
-        reception, triage, and consultation.
+        reception, triage, and consultation. It is one of the report types on the
+        Patient Reports screen: set the dates and choose Wait Times in the report
+        type list, then press Apply Filters.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
-        location="Reports, then Operational reports (/admin/reports/operations)",
+        location="Reports & Analytics, then Patient Reports (/admin/reports/patients)",
         example_question="How do I run the wait times report?",
         swahili_example_question="Ninawezaje kuendesha ripoti ya muda wa kusubiri?",
     ),
@@ -119,12 +122,13 @@ _REPORTS: list[ContentEntry] = [
         """
         The discharges report lists discharge activity over a date range, so ward
         and administrative staff can review throughput and confirm that discharge
-        paperwork was completed.
+        paperwork was completed. It is the Discharge Stats report type on the
+        Patient Reports screen.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
-        location="Reports, then Patient reports (/admin/reports/patients)",
+        location="Reports & Analytics, then Patient Reports (/admin/reports/patients)",
         example_question="Where is the discharges report?",
         swahili_example_question="Ripoti ya kuruhusiwa iko wapi?",
     ),
@@ -134,12 +138,14 @@ _REPORTS: list[ContentEntry] = [
         "Bed occupancy report",
         """
         The bed occupancy report shows current bed usage across wards. It is the
-        report to open when someone asks how full the hospital is right now.
+        report to open when someone asks how full the hospital is right now. Open
+        Operational Reports: the bed occupancy rate and the average length of stay
+        are the first figures on that screen.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
-        location="Reports, then Operational reports (/admin/reports/operations)",
+        location="Reports & Analytics, then Operational Reports (/admin/reports/operations)",
         example_question="How do I open the bed occupancy report?",
         swahili_example_question="Ninawezaje kufungua ripoti ya matumizi ya vitanda?",
     ),
@@ -148,13 +154,14 @@ _REPORTS: list[ContentEntry] = [
         ContentKind.REPORT_CATALOG,
         "Revenue summary report",
         """
-        The revenue summary report totals billed and collected amounts over a
-        date range. It is restricted to the hospital administrator.
+        The revenue summary report totals collected revenue over a date range and
+        breaks it down by department and by cash against insurance. Set the dates
+        and press Apply Filters. It is restricted to the hospital administrator.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
-        location="Reports, then Revenue reports (/admin/reports/revenue)",
+        location="Reports & Analytics, then Revenue Reports (/admin/reports/revenue)",
         example_question="How do I run the revenue summary report?",
         swahili_example_question="Ninawezaje kuendesha ripoti ya muhtasari wa mapato?",
     ),
@@ -163,14 +170,15 @@ _REPORTS: list[ContentEntry] = [
         ContentKind.REPORT_CATALOG,
         "Operational activity report",
         """
-        The operational activity report summarises activity volumes by department
-        over a date range, covering laboratory, radiology, pharmacy, and ward
-        workload.
+        The operational activity report summarises staff activity by department
+        over a date range, alongside the bed occupancy rate, the average length of
+        stay, and the number of active staff. Set the dates, choose a department,
+        and press Apply Filters.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
-        location="Reports, then Operational reports (/admin/reports/operations)",
+        location="Reports & Analytics, then Operational Reports (/admin/reports/operations)",
         example_question="Where is the operational activity report?",
         swahili_example_question="Ripoti ya shughuli za uendeshaji iko wapi?",
     ),
@@ -179,14 +187,16 @@ _REPORTS: list[ContentEntry] = [
         ContentKind.REPORT_CATALOG,
         "Reports dashboard",
         """
-        The reports dashboard is the landing page for reporting. It collects the
-        patient, revenue, and operational reports in one place for the hospital
-        administrator.
+        The reports dashboard is the landing page for reporting, titled Reports
+        and Analytics. It holds three cards - Patient Reports, Revenue Reports and
+        Operational Reports - and each card opens that set of reports. Every
+        reporting screen is also listed directly in the sidebar under Reports and
+        Analytics.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
         required_role="hospital_admin",
-        location="Reports (/admin/reports)",
+        location="Reports & Analytics, then Reports (/admin/reports)",
         example_question="Where is the reports dashboard?",
         swahili_example_question="Dashibodi ya ripoti iko wapi?",
     ),
@@ -203,9 +213,12 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Register a new patient",
         """
-        Open Reception, then Register patient. Complete the patient details and
-        save. The new patient can then be found from Reception, then Search, and
-        a visit can be started for them so they appear in the visit queue.
+        Open Register Patient (/reception/register). Complete the patient details
+        and press Save and Assign to Queue: that registers the patient and starts
+        their visit in one step, and the screen then moves to Queue Management
+        with their queue number. A patient who is already registered does not need
+        registering again - open Patient Search (/reception/search), find them,
+        and check them in from there to start a new visit.
         """,
         frozenset({"receptionist", "hospital_admin"}),
         frozenset({DEPARTMENT_RECEPTION, DEPARTMENT_ADMINISTRATION}),
@@ -218,8 +231,9 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Work the visit queue",
         """
-        Open Reception, then Queue. The queue lists patients with an open visit
-        in the order they arrived. From here a visit moves on to triage.
+        Open Queue Management (/reception/queue). The queue lists patients with an
+        open visit in the order they arrived. From here a visit moves on to
+        triage.
         """,
         frozenset({"receptionist", "hospital_admin"}),
         frozenset({DEPARTMENT_RECEPTION, DEPARTMENT_ADMINISTRATION}),
@@ -232,9 +246,10 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Assess a patient in triage",
         """
-        Open Triage, then Queue, and select the waiting patient. Record the
+        Open the triage queue (/triage/queue), listed as Triage Queue in a triage
+        nurse's sidebar, and press Assess on the waiting patient's row. Record the
         observations on the assessment screen and save. Past assessments for a
-        patient are available under Triage, then History.
+        patient are under Patient History (/triage/history).
         """,
         frozenset({"triage_nurse", "hospital_admin"}),
         frozenset({DEPARTMENT_TRIAGE, DEPARTMENT_ADMINISTRATION}),
@@ -247,10 +262,11 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Open a consultation encounter",
         """
-        Open Consultation, then Queue, and select the patient to open their
-        encounter. Investigation results ordered during the encounter appear
-        under Consultation, then Results. Past encounters are under Consultation,
-        then History.
+        Open the consultation queue (/consultation/queue), listed as Patient Queue
+        in a doctor's sidebar, and select the patient to open their encounter.
+        Investigation results ordered during the encounter appear under
+        Investigation Results (/consultation/results). Past encounters are under
+        Patient History (/consultation/history).
         """,
         frozenset({"doctor", "hospital_admin"}),
         frozenset({DEPARTMENT_CLINICAL, DEPARTMENT_ADMINISTRATION}),
@@ -263,9 +279,11 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Process a laboratory request",
         """
-        Open Laboratory, then Requests, and select a request to see its detail.
-        Specimen handling is tracked under Laboratory, then Specimens, and
-        completed results are listed under Laboratory, then Results.
+        Open Test Requests (/laboratory/requests) and select a request to see its
+        detail. The Pending, In Progress and Completed Today tabs at the top of
+        that screen filter the list, so finished work is under Completed Today.
+        Specimen handling is tracked under Specimen Tracking
+        (/laboratory/specimens).
         """,
         frozenset({"lab_technician", "hospital_admin"}),
         frozenset({DEPARTMENT_LABORATORY, DEPARTMENT_ADMINISTRATION}),
@@ -278,8 +296,9 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Process an imaging request",
         """
-        Open Radiology, then Requests, and select a request to record its report.
-        Upcoming imaging appointments are listed under Radiology, then Schedule.
+        Open Imaging Requests (/radiology/requests) and select a request to record
+        its report. Upcoming imaging appointments are listed under Imaging
+        Schedule (/radiology/schedule).
         """,
         frozenset({"radiographer", "hospital_admin"}),
         frozenset({DEPARTMENT_RADIOLOGY, DEPARTMENT_ADMINISTRATION}),
@@ -292,11 +311,12 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Dispense a prescription",
         """
-        Open Pharmacy, then Queue, and select the prescription to open the
-        dispensing screen. Stock levels are maintained under Pharmacy, then
-        Stock. Dispensing follows the existing pharmacy checks in the dispensing
-        screen itself; the assistant does not perform or replace any of those
-        checks.
+        Open Prescription Queue (/pharmacy/queue) and use the dispense action on
+        the prescription to open the dispensing screen. Stock levels are
+        maintained under Stock Management (/pharmacy/stock), which a pharmacist
+        finds under the Inventory heading in the sidebar. Dispensing follows the
+        existing pharmacy checks in the dispensing screen itself; the assistant
+        does not perform or replace any of those checks.
         """,
         frozenset({"pharmacist", "hospital_admin"}),
         frozenset({DEPARTMENT_PHARMACY, DEPARTMENT_ADMINISTRATION}),
@@ -309,10 +329,12 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Manage ward beds and patients",
         """
-        Open Ward, then Beds for the bed map, or Ward, then Patients for the
-        patients assigned to you. Nursing notes are recorded from a patient in
-        that list. Shift handover is under Ward, then Handover, and visitors are
-        logged under Ward, then Visitors.
+        Open Bed Map (/ward/beds) for the bed map, or My Patients (/ward/patients)
+        for the patients assigned to you. Nursing notes are recorded from a
+        patient in that list, and from an occupied bed on the bed map. Shift
+        Handover is at /ward/handover and Visitor Log at /ward/visitors; in a ward
+        nurse's sidebar each of those has its own heading rather than sitting
+        under Ward.
         """,
         frozenset({"ward_nurse", "hospital_admin"}),
         frozenset({DEPARTMENT_WARD, DEPARTMENT_ADMINISTRATION}),
@@ -325,9 +347,11 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Take a payment against a bill",
         """
-        Open Billing, then Bills, and select the bill to view its detail. Use the
-        payment action on that bill to record a payment. The end-of-day totals
-        are under Billing, then Summary.
+        Open Patient Bills (/billing/bills) and go to the Payment Status tab.
+        Press Process Payment on the patient's row to record a payment; View Bill
+        opens the bill detail without taking one. Process Payment is greyed out
+        and reads Processed once nothing is outstanding. The end-of-day totals are
+        under Daily Summary (/billing/summary).
         """,
         frozenset({"cashier", "hospital_admin"}),
         frozenset({DEPARTMENT_BILLING, DEPARTMENT_ADMINISTRATION}),
@@ -340,10 +364,11 @@ _WORKFLOWS: list[ContentEntry] = [
         ContentKind.WORKFLOW,
         "Add a staff member",
         """
-        Open Administration, then Staff, and choose to add a staff member. Set
-        their role when creating the account, because the role decides which
-        parts of the system they can reach. Existing accounts can be suspended or
-        resumed from the same staff list.
+        Open All Staff (/admin/staff) and press Add New Staff. Set their role when
+        creating the account, because the role decides which parts of the system
+        they can reach. To change an existing account, select the staff member in
+        the list to open their record: Deactivate and Activate are there, next to
+        Reset Password. The list rows themselves only offer Edit and Delete.
         """,
         ADMIN_ONLY,
         frozenset({DEPARTMENT_ADMINISTRATION}),
@@ -365,8 +390,11 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         "Finding your way around",
         """
         The left navigation shows only the areas your role can reach, so two
-        staff members can see different menus. Your account and password settings
-        are under Profile. Alerts raised for you are under Notifications.
+        staff members can see different menus, and the same screen can be listed
+        under a different heading for a different role. Your account and password
+        settings are under Profile, which you open from your own name in the top
+        bar rather than from the left navigation. Alerts raised for you are under
+        Notifications, opened from the bell in the top bar.
         """,
         ALL_STAFF,
         example_question="How do I find my way around the system?",
@@ -377,9 +405,12 @@ _HELP_AND_POLICY: list[ContentEntry] = [
         ContentKind.HELP,
         "Change your password",
         """
-        Open Profile and use the password option there. If you cannot sign in at
-        all, use the forgot password link on the sign-in screen. A hospital
-        administrator can also reset a staff password from the staff list.
+        Open Profile from your own name in the top bar and use the Change Password
+        tab. It asks for your current password before setting the new one. If you
+        cannot sign in at all, use the forgot password link on the sign-in screen.
+        A hospital administrator can also reset a staff password: they open All
+        Staff, select the staff member to open their record, and use Reset
+        Password there.
         """,
         ALL_STAFF,
         example_question="How do I change my password?",
