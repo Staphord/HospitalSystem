@@ -44,6 +44,7 @@ from app.assistant.permissions import (
     WARD_NURSE,
 )
 from app.assistant.retrieval import build_retrieval_context, retrieve
+from app.assistant.medicines.reference import find_medicines
 from app.assistant.suggestions import (
     DEFAULT_SUGGESTION_LIMIT,
     FOLLOW_UP_LIMIT,
@@ -88,7 +89,7 @@ def live_data_on(monkeypatch):
     invite a question the server would then decline. TestSuggestionsFailClosed
     checks the off case; the tests taking this fixture check the on case.
     """
-    monkeypatch.setattr(settings, "assistant_live_data_enabled", True, raising=False)
+    monkeypatch.setattr(settings, "assistant_operational_chat_enabled", True)
 
 
 class TestEveryContentSuggestionIsAnswerable:
@@ -237,6 +238,13 @@ class TestSuggestionsAreRoleAware:
                 assert found, (
                     f"a {role} is offered {suggestion.question!r}, which retrieves "
                     f"no content they may read"
+                )
+            elif suggestion.kind == "medicine":
+                # Answered from the reference pack, not from the retrieval
+                # index or a metric, so it is checked against the pack.
+                assert find_medicines(suggestion.question), (
+                    f"a {role} is offered {suggestion.question!r}, which names "
+                    f"no medicine the reference carries"
                 )
             else:
                 routed = route(suggestion.question, roles=roles)

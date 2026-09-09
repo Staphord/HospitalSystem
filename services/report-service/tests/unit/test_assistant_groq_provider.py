@@ -158,34 +158,20 @@ class TestErrorNormalisation:
 
 
 class TestProviderSelection:
-    def test_without_a_credential_the_null_provider_is_used(self, monkeypatch):
-        monkeypatch.setattr(
-            provider_mod.settings, "assistant_groq_api_key", None, raising=False
-        )
+    def test_without_a_credential_the_null_provider_is_used(self, assistant_config):
+        assistant_config(api_key=None)
         assert isinstance(get_provider(), NullProvider)
 
-    def test_with_a_credential_the_groq_transport_is_used(self, monkeypatch):
-        monkeypatch.setattr(
-            provider_mod.settings, "assistant_provider", "groq", raising=False
-        )
-        monkeypatch.setattr(
-            provider_mod.settings, "assistant_groq_api_key", API_KEY, raising=False
-        )
-        monkeypatch.setattr(
-            gp_mod.settings, "assistant_groq_api_key", API_KEY, raising=False
-        )
+    def test_with_a_credential_the_groq_transport_is_used(self, assistant_config):
+        assistant_config(provider="groq", api_key=API_KEY)
         assert isinstance(get_provider(), GroqProvider)
 
-    def test_an_unknown_vendor_falls_back_to_the_null_provider(self, monkeypatch):
-        monkeypatch.setattr(
-            provider_mod.settings, "assistant_provider", "someone_else", raising=False
-        )
+    def test_an_unknown_vendor_falls_back_to_the_null_provider(self, assistant_config):
+        assistant_config(provider="someone_else", api_key=API_KEY)
         assert isinstance(get_provider(), NullProvider)
 
-    def test_build_returns_none_without_a_credential(self, monkeypatch):
-        monkeypatch.setattr(
-            gp_mod.settings, "assistant_groq_api_key", None, raising=False
-        )
+    def test_build_returns_none_without_a_credential(self, assistant_config):
+        assistant_config(api_key=None)
         assert build_groq_provider() is None
 
     def test_null_provider_never_fabricates_an_answer(self):

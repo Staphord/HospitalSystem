@@ -13,7 +13,7 @@ from app.assistant.provider import (
     ProviderResponse,
 )
 from app.assistant.redaction import scrub
-from app.core.config import settings
+from app.assistant.config_store import get_config
 
 logger = logging.getLogger("service")
 
@@ -133,14 +133,12 @@ class GroqProvider:
 
 def build_groq_provider() -> GroqProvider | None:
     """Build the Groq provider from server configuration, or None if unusable."""
-    api_key = getattr(settings, "assistant_groq_api_key", None)
-    if not api_key:
+    config = get_config()
+    if not config.api_key:
         return None
     return GroqProvider(
-        api_key=api_key,
-        base_url=getattr(settings, "assistant_groq_base_url", "") or "",
-        model=getattr(settings, "assistant_groq_model", "") or "",
-        default_timeout=float(
-            getattr(settings, "assistant_request_timeout_seconds", 20.0)
-        ),
+        api_key=config.api_key,
+        base_url=config.base_url,
+        model=config.model,
+        default_timeout=float(config.request_timeout_seconds),
     )

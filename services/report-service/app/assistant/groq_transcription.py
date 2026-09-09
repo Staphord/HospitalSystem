@@ -13,7 +13,7 @@ from app.assistant.transcription import (
     TranscriptionRequest,
     TranscriptionResult,
 )
-from app.core.config import settings
+from app.assistant.config_store import get_config
 
 logger = logging.getLogger("service")
 
@@ -145,14 +145,12 @@ class GroqTranscriptionProvider:
 
 def build_groq_transcription_provider() -> GroqTranscriptionProvider | None:
     """Build the Groq speech transport from configuration, or None if unusable."""
-    api_key = getattr(settings, "assistant_groq_api_key", None)
-    if not api_key:
+    config = get_config()
+    if not config.api_key:
         return None
     return GroqTranscriptionProvider(
-        api_key=api_key,
-        base_url=getattr(settings, "assistant_groq_base_url", "") or "",
-        model=getattr(settings, "assistant_transcription_model", "") or "",
-        default_timeout=float(
-            getattr(settings, "assistant_voice_timeout_seconds", 20.0)
-        ),
+        api_key=config.api_key,
+        base_url=config.base_url,
+        model=config.transcription_model,
+        default_timeout=float(config.voice_timeout_seconds),
     )

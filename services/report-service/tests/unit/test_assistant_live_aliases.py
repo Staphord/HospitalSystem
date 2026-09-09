@@ -316,9 +316,13 @@ class TestPatientRowsAreNeverCached:
     def test_no_patient_result_reaches_the_cache(self, metric):
         from app.assistant.live import execution
 
-        execution._CACHE.clear()
+        # The cache is built lazily now that its lifetime is a super admin
+        # setting rather than a constant, so it is reached through the accessor
+        # rather than through the module global, which is None until first use.
+        cache = execution._get_cache()
+        cache.clear()
         key = _cache_key("hosp-1", metric, {"patient_number": A_PATIENT_NUMBER})
-        assert execution._CACHE.get(key) is None
+        assert cache.get(key) is None
 
 
 class TestTheMetricsAreShapedForTheAliasPath:

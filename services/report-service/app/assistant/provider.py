@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from app.core.config import settings
+from app.assistant.config_store import get_config
 
 # Vendor-neutral seam between the assistant and whichever model provider is
 # configured. Groq is the approved vendor for this project, but nothing outside
@@ -94,7 +94,7 @@ class NullProvider:
 
 def configured_provider_name() -> str:
     """Return the vendor recorded in configuration, normalized."""
-    return (getattr(settings, "assistant_provider", NULL) or NULL).strip().lower()
+    return (get_config().provider or NULL).strip().lower()
 
 
 def is_provider_configured() -> bool:
@@ -105,14 +105,14 @@ def is_provider_configured() -> bool:
     """
     if configured_provider_name() != GROQ:
         return False
-    return bool(getattr(settings, "assistant_groq_api_key", None))
+    return bool(get_config().api_key)
 
 
 def describe_configured_provider() -> dict[str, str]:
     """Return non-secret provider configuration for audit and diagnostics."""
     return {
         "provider": configured_provider_name(),
-        "model_version": str(getattr(settings, "assistant_groq_model", "") or "unset"),
+        "model_version": str(get_config().model or "unset"),
         "credential_present": "true" if is_provider_configured() else "false",
     }
 

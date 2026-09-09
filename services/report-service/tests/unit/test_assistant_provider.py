@@ -14,12 +14,11 @@ from app.assistant.provider import (
     get_provider,
     is_provider_configured,
 )
-from app.core.config import settings
 
 
 class TestProviderBoundary:
     def test_provider_is_the_fail_closed_null_provider_without_a_credential(
-        self, monkeypatch
+        self, assistant_config
     ):
         # Phase 1 asserted that get_provider() always returns NullProvider,
         # because no transport existed yet. Phase 2 registers the Groq
@@ -34,14 +33,13 @@ class TestProviderBoundary:
         #
         # Change authorised by the user on 2026-08-26 and agreed with
         # kakaAllord, owner of commit 0289498.
-        monkeypatch.setattr(settings, "assistant_groq_api_key", None, raising=False)
+        assistant_config(api_key=None)
         assert isinstance(get_provider(), NullProvider)
 
     def test_provider_is_the_fail_closed_null_provider_for_an_unknown_vendor(
-        self, monkeypatch
+        self, assistant_config
     ):
-        monkeypatch.setattr(settings, "assistant_provider", "unknown_vendor", raising=False)
-        monkeypatch.setattr(settings, "assistant_groq_api_key", "gsk_x", raising=False)
+        assistant_config(provider="unknown_vendor", api_key="gsk_x")
         assert isinstance(get_provider(), NullProvider)
 
     def test_null_provider_satisfies_the_provider_interface(self):
@@ -66,23 +64,22 @@ class TestGroqIsTheRecordedVendor:
     def test_configured_vendor_is_groq(self):
         assert configured_provider_name() == "groq"
 
-    def test_vendor_is_not_configured_without_a_server_side_credential(self, monkeypatch):
-        monkeypatch.setattr(settings, "assistant_groq_api_key", None)
+    def test_vendor_is_not_configured_without_a_server_side_credential(self, assistant_config):
+        assistant_config(api_key=None)
         assert is_provider_configured() is False
 
-    def test_vendor_is_configured_once_a_credential_is_present(self, monkeypatch):
-        monkeypatch.setattr(settings, "assistant_groq_api_key", "test-key-value")
+    def test_vendor_is_configured_once_a_credential_is_present(self, assistant_config):
+        assistant_config(api_key="test-key-value")
         assert is_provider_configured() is True
 
-    def test_an_unrecognised_vendor_is_never_treated_as_configured(self, monkeypatch):
-        monkeypatch.setattr(settings, "assistant_provider", "some-other-vendor")
-        monkeypatch.setattr(settings, "assistant_groq_api_key", "test-key-value")
+    def test_an_unrecognised_vendor_is_never_treated_as_configured(self, assistant_config):
+        assistant_config(provider="some-other-vendor", api_key="test-key-value")
         assert is_provider_configured() is False
 
 
 class TestCredentialIsNeverExposed:
-    def test_description_reports_presence_but_not_the_credential(self, monkeypatch):
-        monkeypatch.setattr(settings, "assistant_groq_api_key", "super-secret-key-value")
+    def test_description_reports_presence_but_not_the_credential(self, assistant_config):
+        assistant_config(api_key="super-secret-key-value")
         described = describe_configured_provider()
 
         assert described["credential_present"] == "true"

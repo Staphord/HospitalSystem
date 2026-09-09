@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.assistant.config_store import get_config
 from app.models.assistant import (
     AUTHOR_ASSISTANT,
     AUTHOR_USER,
@@ -63,11 +63,11 @@ def derive_title(question: str) -> str:
 
 
 def _max_conversations() -> int:
-    return max(1, int(getattr(settings, "assistant_history_max_conversations", 50)))
+    return max(1, int(get_config().history_max_conversations))
 
 
 def _max_messages() -> int:
-    return max(2, int(getattr(settings, "assistant_history_max_messages", 200)))
+    return max(2, int(get_config().history_max_messages))
 
 
 async def list_conversations(

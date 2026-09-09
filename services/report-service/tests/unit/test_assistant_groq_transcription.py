@@ -231,22 +231,14 @@ class TestVendorFailuresAreNormalised:
 
 
 class TestBuildingFromConfiguration:
-    def test_no_credential_yields_no_transport(self, monkeypatch):
-        monkeypatch.setattr(
-            gt_mod.settings, "assistant_groq_api_key", None, raising=False
-        )
+    def test_no_credential_yields_no_transport(self, assistant_config):
+        assistant_config(api_key=None)
         assert build_groq_transcription_provider() is None
 
-    def test_a_credential_yields_a_transport_on_the_configured_model(self, monkeypatch):
-        monkeypatch.setattr(
-            gt_mod.settings, "assistant_groq_api_key", API_KEY, raising=False
-        )
-        monkeypatch.setattr(
-            gt_mod.settings,
-            "assistant_transcription_model",
-            "whisper-large-v3",
-            raising=False,
-        )
+    def test_a_credential_yields_a_transport_on_the_configured_model(
+        self, assistant_config
+    ):
+        assistant_config(api_key=API_KEY, transcription_model="whisper-large-v3")
         provider = build_groq_transcription_provider()
         assert provider is not None
         assert provider.describe()["model_version"] == "whisper-large-v3"

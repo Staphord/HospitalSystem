@@ -47,11 +47,8 @@ class TestTheSeamCarriesNoVendor:
         assert "Authorization" not in source
         assert "Bearer" not in source
 
-    def test_describe_reports_presence_never_the_credential(self, monkeypatch):
-        monkeypatch.setattr(
-            tr_mod.settings, "assistant_groq_api_key", "gsk_secret_value", raising=False
-        )
-        monkeypatch.setattr(tr_mod.settings, "assistant_provider", GROQ, raising=False)
+    def test_describe_reports_presence_never_the_credential(self, assistant_config):
+        assistant_config(api_key="gsk_secret_value", provider=GROQ)
 
         described = describe_configured_transcription()
         assert described["credential_present"] == "true"
@@ -60,11 +57,8 @@ class TestTheSeamCarriesNoVendor:
 
 class TestFailsClosedWithoutACredential:
     @pytest.fixture(autouse=True)
-    def no_credential(self, monkeypatch):
-        monkeypatch.setattr(
-            tr_mod.settings, "assistant_groq_api_key", None, raising=False
-        )
-        monkeypatch.setattr(tr_mod.settings, "assistant_provider", GROQ, raising=False)
+    def no_credential(self, assistant_config):
+        assistant_config(api_key=None, provider=GROQ)
 
     def test_no_credential_means_not_configured(self):
         assert is_transcription_configured() is False
@@ -81,13 +75,8 @@ class TestFailsClosedWithoutACredential:
         # The refusal must read as unavailability, never as a transcript.
         assert "not available" in exc.value.message.lower()
 
-    def test_an_unknown_vendor_is_not_configured(self, monkeypatch):
-        monkeypatch.setattr(
-            tr_mod.settings, "assistant_groq_api_key", "gsk_x", raising=False
-        )
-        monkeypatch.setattr(
-            tr_mod.settings, "assistant_provider", "some-other-vendor", raising=False
-        )
+    def test_an_unknown_vendor_is_not_configured(self, assistant_config):
+        assistant_config(api_key="gsk_x", provider="some-other-vendor")
         assert is_transcription_configured() is False
         assert isinstance(get_transcription_provider(), NullTranscriptionProvider)
 

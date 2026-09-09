@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from app.core.config import settings
+from app.assistant.config_store import get_config
 
 # Vendor-neutral seam between the assistant and whichever speech-to-text engine
 # is configured. It mirrors app.assistant.provider deliberately: nothing outside
@@ -178,7 +178,7 @@ class NullTranscriptionProvider:
 
 def configured_transcription_provider_name() -> str:
     """Return the speech vendor recorded in configuration, normalized."""
-    return (getattr(settings, "assistant_provider", NULL) or NULL).strip().lower()
+    return (get_config().provider or NULL).strip().lower()
 
 
 def is_transcription_configured() -> bool:
@@ -189,7 +189,7 @@ def is_transcription_configured() -> bool:
     """
     if configured_transcription_provider_name() != GROQ:
         return False
-    return bool(getattr(settings, "assistant_groq_api_key", None))
+    return bool(get_config().api_key)
 
 
 def describe_configured_transcription() -> dict[str, str]:
@@ -197,7 +197,7 @@ def describe_configured_transcription() -> dict[str, str]:
     return {
         "provider": configured_transcription_provider_name(),
         "model_version": str(
-            getattr(settings, "assistant_transcription_model", "") or "unset"
+            get_config().transcription_model or "unset"
         ),
         "credential_present": "true" if is_transcription_configured() else "false",
     }

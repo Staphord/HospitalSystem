@@ -189,6 +189,30 @@ class AssistantSuggestion(AssistantModel):
     kind: str = Field(min_length=1, max_length=40)
 
 
+class AssistantStatusResponse(AssistantModel):
+    """Whether this caller should be offered the assistant at all.
+
+    Read once when the shell mounts, before any question exists. It exists so
+    the floating launcher is never drawn for a deployment that has the
+    assistant switched off, or for a caller whose roles could not use it: the
+    previous behaviour drew the button and discovered the 404 only when someone
+    pressed it.
+
+    It carries no content, no tenant data and no configuration values - only
+    what the browser needs to decide whether to render a button. `capabilities`
+    is advisory and lets the panel hide controls it would otherwise offer; the
+    server re-checks every one of them on the request that uses it.
+    """
+
+    enabled: bool = False
+    capabilities: list[str] = Field(default_factory=list, max_length=20)
+    # False when the deployment is switched on but has no usable model
+    # credential. Staff still see the launcher; the panel can explain that the
+    # assistant is not configured yet rather than showing a provider error on
+    # the first question.
+    provider_configured: bool = False
+
+
 class AssistantSuggestionsResponse(AssistantModel):
     """Starting questions, chosen for the caller's own roles.
 
@@ -434,3 +458,4 @@ class AssistantErrorResponse(AssistantModel):
     request_id: str = Field(min_length=1, max_length=64)
     code: AssistantErrorCode
     message: str = Field(min_length=1, max_length=300)
+

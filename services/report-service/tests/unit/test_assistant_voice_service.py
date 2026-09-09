@@ -70,7 +70,7 @@ def caller(
 
 @pytest.fixture
 def voice_on(monkeypatch):
-    monkeypatch.setattr(svc.settings, "assistant_voice_enabled", True, raising=False)
+    monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", True)
 
 
 @pytest.fixture

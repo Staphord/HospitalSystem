@@ -14,7 +14,7 @@ from app.assistant.live.aliases import ALIAS_FIELD, AliasTable
 from app.assistant.live.contracts import MetricParams, MetricResult, MetricRow, MetricTier
 from app.assistant.live.registry import MetricDefinition
 from app.assistant.live.routing import RoutedMetric
-from app.core.config import settings
+from app.assistant.config_store import get_config
 from app.db.tenant import tenant_session
 
 logger = logging.getLogger("assistant.live")
@@ -23,10 +23,24 @@ logger = logging.getLogger("assistant.live")
 # limit allows twenty questions a minute; without this, twenty questions about
 # bed availability would be twenty scans. Every figure carries the time it was
 # read, so a cached figure is visibly a cached figure rather than a silent one.
-_CACHE: TTLCache[tuple, MetricResult] = TTLCache(
-    maxsize=512,
-    ttl=max(1, int(getattr(settings, "assistant_live_data_cache_seconds", 30))),
-)
+#
+# The lifetime is set by the super admin and can change while the service is
+# running, and a TTLCache fixes its ttl at construction. So the cache is built
+# lazily and rebuilt when the configured lifetime changes - dropping what it
+# held, which costs one re-read per metric and is the correct behaviour anyway:
+# a shortened lifetime should not leave older entries alive under the old one.
+_CACHE: TTLCache[tuple, MetricResult] | None = None
+_CACHE_TTL: int | None = None
+
+
+def _get_cache() -> TTLCache:
+    global _CACHE, _CACHE_TTL
+
+    ttl = max(1, int(get_config().live_data_cache_seconds))
+    if _CACHE is None or _CACHE_TTL != ttl:
+        _CACHE = TTLCache(maxsize=512, ttl=ttl)
+        _CACHE_TTL = ttl
+    return _CACHE
 
 
 def _cache_key(
@@ -71,9 +85,7 @@ async def _prepare_readonly(session: AsyncSession) -> None:
     correctly: a definition that somehow carried a write cannot commit one, and
     a pathological query releases its connection instead of holding it.
     """
-    timeout_ms = int(
-        float(getattr(settings, "assistant_live_data_timeout_seconds", 3.0)) * 1000
-    )
+    timeout_ms = int(float(get_config().live_data_timeout_seconds) * 1000)
     await session.execute(text("SET TRANSACTION READ ONLY"))
     await session.execute(
         text("SET LOCAL statement_timeout = " + str(max(250, timeout_ms)))
@@ -228,7 +240,7 @@ async def execute(
             pending.append(item)
             continue
         binds = item.params.as_binds(item.definition.params)
-        cached = _CACHE.get(_cache_key(tenant_id, item.definition, binds))
+        cached = _get_cache().get(_cache_key(tenant_id, item.definition, binds))
         if cached is not None:
             results.append(cached)
         else:
@@ -237,7 +249,7 @@ async def execute(
     if not pending:
         return results
 
-    timeout = float(getattr(settings, "assistant_live_data_timeout_seconds", 3.0))
+    timeout = float(get_config().live_data_timeout_seconds)
     try:
         async with tenant_session(tenant_id) as session:
             await _prepare_readonly(session)
@@ -257,7 +269,9 @@ async def execute(
                     )
                 if not outcome.failed and item.definition.tier is not MetricTier.PATIENT:
                     binds = item.params.as_binds(item.definition.params)
-                    _CACHE[_cache_key(tenant_id, item.definition, binds)] = outcome
+                    _get_cache()[
+                        _cache_key(tenant_id, item.definition, binds)
+                    ] = outcome
                 results.append(outcome)
     except Exception:
         logger.warning("live data unavailable for tenant, answering from content only")

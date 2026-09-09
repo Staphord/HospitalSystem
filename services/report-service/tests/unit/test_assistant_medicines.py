@@ -87,21 +87,19 @@ class StubProvider:
 
 @pytest.fixture(autouse=True)
 def chat_on(monkeypatch):
-    monkeypatch.setattr(
-        svc.settings, "assistant_operational_chat_enabled", True, raising=False
-    )
+    """The assistant, switched on for this file.
+
+    There is one switch now, so this is also what makes the medicines
+    reference reachable - a doctor asking a medicine question no longer waits
+    on a second flag. The few tests below that assert the off behaviour take
+    `assistant_off` to turn it back off again.
+    """
+    monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", True)
 
 
 @pytest.fixture
-def medicines_on(monkeypatch):
-    """Switch the medicines capability on for one test.
-
-    It ships off, like every clinical capability here, so the tests that assert
-    the off behaviour simply do not take this fixture.
-    """
-    monkeypatch.setattr(
-        svc.settings, "assistant_medication_check_enabled", True, raising=False
-    )
+def assistant_off(monkeypatch):
+    monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", False)
 
 
 @pytest.fixture
@@ -646,7 +644,7 @@ class TestAlternativesTheReferenceItselfNames:
 
 class TestWhatTheClinicianActuallyGets:
     def test_a_good_answer_reaches_the_clinician_with_the_reference_footer(
-        self, medicines_on, stub
+        self, stub
     ):
         stub.text = "Avoid both here. Change to methyldopa and use paracetamol."
         response, audit = ask(
@@ -660,13 +658,13 @@ class TestWhatTheClinicianActuallyGets:
         assert footer() in response.answer
 
     def test_the_answer_is_stamped_with_the_reference_version(
-        self, medicines_on, stub
+        self, stub
     ):
         _, audit = ask("what is the dose of amoxicillin")
         assert audit.ruleset_version == medicines.pack_version()
 
     def test_the_model_is_given_the_reference_and_the_clinical_instructions(
-        self, medicines_on, stub
+        self, stub
     ):
         ask("Can ibuprofen and enalapril be given together in pregnancy?")
 
@@ -678,7 +676,7 @@ class TestWhatTheClinicianActuallyGets:
         assert "Contraindicated" in request.content or "contraindicated" in request.content
 
     def test_an_invented_dose_costs_the_model_its_whole_answer(
-        self, medicines_on, stub
+        self, stub
     ):
         stub.text = "Give amoxicillin 900 mg every 8 hours."
         response, audit = ask("what is the adult dose of amoxicillin")
@@ -690,7 +688,7 @@ class TestWhatTheClinicianActuallyGets:
         assert "500 mg by mouth every 8 hours" in response.answer
 
     def test_an_answer_that_calls_a_combination_safe_is_replaced(
-        self, medicines_on, stub
+        self, stub
     ):
         stub.text = "Yes, this combination is safe."
         response, audit = ask("can paracetamol and amoxicillin be given together")
@@ -699,9 +697,6 @@ class TestWhatTheClinicianActuallyGets:
         assert "safe" not in response.answer.lower()
 
     def test_a_provider_outage_still_answers_from_the_reference(self, monkeypatch):
-        monkeypatch.setattr(
-            svc.settings, "assistant_medication_check_enabled", True, raising=False
-        )
         broken = StubProvider(
             error=AssistantProviderError(
                 ProviderErrorCode.UNAVAILABLE, "provider is down"
@@ -716,7 +711,7 @@ class TestWhatTheClinicianActuallyGets:
         assert "500 mg by mouth every 8 hours" in response.answer
 
     def test_a_medicine_outside_the_reference_is_named_not_guessed_at(
-        self, medicines_on, stub
+        self, stub
     ):
         stub.text = "Warfarin needs INR monitoring."
         response, _ = ask("can warfarin 5mg and amiodarone 200mg be used together")
@@ -724,7 +719,7 @@ class TestWhatTheClinicianActuallyGets:
         assert "amiodarone" in response.answer
         assert "no entry for" in response.answer
 
-    def test_a_question_naming_no_medicine_asks_for_one(self, medicines_on, stub):
+    def test_a_question_naming_no_medicine_asks_for_one(self, stub):
         response, audit = ask("what painkiller can I prescribe")
 
         assert response.status is AssistantAnswerStatus.UNSUPPORTED
@@ -732,7 +727,7 @@ class TestWhatTheClinicianActuallyGets:
         # Nothing was sent to the provider: there was nothing to organise.
         assert stub.requests == []
 
-    def test_a_swahili_question_is_answered_in_swahili(self, medicines_on, stub):
+    def test_a_swahili_question_is_answered_in_swahili(self, stub):
         stub.text = "Hapana, enalapril haipaswi kutumika wakati wa ujauzito."
         response, _ = ask(
             "Je, ibuprofen na enalapril zinaweza kutumika pamoja kwa mjamzito?"
@@ -740,7 +735,7 @@ class TestWhatTheClinicianActuallyGets:
         assert footer(swahili=True) in response.answer
 
     def test_no_operational_follow_ups_are_offered_under_a_clinical_answer(
-        self, medicines_on, stub
+        self, stub
     ):
         response, _ = ask("what is the dose of amoxicillin")
         assert response.follow_ups == []
@@ -761,7 +756,9 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
     reader cannot mistake one kind of answer for the other.
     """
 
-    def test_it_is_off_unless_the_hospital_turns_it_on(self, medicines_on, stub):
+    def test_the_pack_answers_unless_the_hospital_turns_the_fallback_on(
+        self, stub
+    ):
         """Warfarin is in the pack, so the verified path answers as it always
         did and amiodarone is named back as missing - no model knowledge, and
         the reference instructions, not the model-knowledge ones."""
@@ -772,7 +769,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert stub.requests[0].instructions == MEDICINES_INSTRUCTIONS
 
     def test_with_it_on_the_model_is_asked_about_the_medicine(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         stub.text = "Amiodarone raises the INR substantially."
         response, _ = ask("can warfarin and amiodarone be given together")
@@ -782,7 +779,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert "Amiodarone raises the INR" in response.answer
 
     def test_the_answer_opens_with_what_it_is_not(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         """The banner leads. A caveat underneath is read after the reader has
         already decided what to do."""
@@ -794,7 +791,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert "not been verified" in response.answer
 
     def test_it_does_not_carry_the_hospital_reference_footer(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         """The footer says an answer came from the reference. This one did not,
         and the two must never appear on the same answer."""
@@ -805,7 +802,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert "was not the source for this answer" in response.answer
 
     def test_the_audit_records_that_nothing_checked_it(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         """So a hospital can always ask how many of its answers were
         unverified, and which."""
@@ -816,7 +813,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert audit.ruleset_version.endswith("+model-knowledge")
 
     def test_the_reference_extract_still_goes_to_the_model_as_context(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         """Where the pack does know one of the medicines, the model is held to
         it rather than left to recall it."""
@@ -828,7 +825,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert "INR" in content
 
     def test_an_answer_that_reassures_is_still_refused(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         """The one guard that survives without a reference to check against."""
         stub.text = "Yes, this combination is safe."
@@ -839,7 +836,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert "NOT FROM THE HOSPITAL REFERENCE" not in response.answer
 
     def test_a_question_naming_nothing_at_all_still_asks_for_a_name(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         """The fallback is for a medicine that was named. "Do they interact"
         names none, so the answer is still to ask which."""
@@ -849,7 +846,7 @@ class TestAnsweringForMedicinesThePackDoesNotCarry:
         assert stub.requests == []
 
     def test_a_medicine_the_pack_carries_never_takes_this_path(
-        self, medicines_on, model_fallback_on, stub
+        self, model_fallback_on, stub
     ):
         """The verified path is not optional where the reference has an
         answer."""
@@ -876,16 +873,19 @@ class TestTheGates:
         ):
             assert not is_role_allowed(AssistantCapability.MEDICATION_CHECK, [denied])
 
-    def test_with_the_flag_off_a_doctor_gets_the_operational_refusal(self, stub):
-        """Fail-closed: the capability being off must be indistinguishable from
+    def test_with_the_assistant_off_a_doctor_reaches_no_medicines_answer(
+        self, assistant_off, stub
+    ):
+        """Fail-closed: the assistant being off must be indistinguishable from
         it never having been built."""
         response, audit = ask("can ibuprofen and enalapril be given in pregnancy")
 
         assert audit.capability is AssistantCapability.OPERATIONAL_CHAT
-        assert medicines.pack_version() not in response.answer
+        assert medicines.pack_version() not in str(response)
+        assert stub.requests == []
 
     def test_a_receptionist_asking_a_clinical_question_is_refused_as_before(
-        self, medicines_on, stub
+        self, stub
     ):
         response, audit = ask(
             "can ibuprofen and enalapril be given in pregnancy", roles=(RECEPTIONIST,)
@@ -894,29 +894,29 @@ class TestTheGates:
         assert audit.capability is AssistantCapability.OPERATIONAL_CHAT
         assert medicines.pack_version() not in response.answer
 
-    def test_a_pharmacist_reaches_it(self, medicines_on, stub):
+    def test_a_pharmacist_reaches_it(self, stub):
         stub.text = "The reference records a serious interaction."
         _, audit = ask(
             "does warfarin interact with metronidazole", roles=(PHARMACIST,)
         )
         assert audit.capability is AssistantCapability.MEDICATION_CHECK
 
-    def test_a_super_admin_never_reaches_it(self, medicines_on, stub):
+    def test_a_super_admin_never_reaches_it(self, stub):
         _, audit = ask(
             "what is the dose of amoxicillin", roles=(DOCTOR,), is_super_admin=True
         )
         assert audit.capability is AssistantCapability.OPERATIONAL_CHAT
 
-    def test_a_read_only_session_never_reaches_it(self, medicines_on, stub):
+    def test_a_read_only_session_never_reaches_it(self, stub):
         _, audit = ask("what is the dose of amoxicillin", scope="readonly")
         assert audit.capability is not AssistantCapability.MEDICATION_CHECK
 
-    def test_a_caller_with_no_tenant_never_reaches_it(self, medicines_on, stub):
+    def test_a_caller_with_no_tenant_never_reaches_it(self, stub):
         _, audit = ask("what is the dose of amoxicillin", tenant_id=None)
         assert audit.capability is not AssistantCapability.MEDICATION_CHECK
 
     def test_a_stock_question_from_a_pharmacist_stays_operational(
-        self, medicines_on, stub
+        self, stub
     ):
         _, audit = ask("which drugs are low in stock", roles=(PHARMACIST,))
         assert audit.capability is AssistantCapability.OPERATIONAL_CHAT
@@ -926,15 +926,15 @@ class TestWhatTheAssistantSaysItCanDo:
     def _context(self, role):
         return build_retrieval_context(TENANT, [role])
 
-    def test_medicines_is_listed_for_a_doctor_once_it_is_on(self, medicines_on):
+    def test_medicines_is_listed_for_a_doctor_once_it_is_on(self):
         lines = describe_capabilities(self._context(DOCTOR), frozenset({DOCTOR}))
         assert any(line.startswith("Medicines") for line in lines)
 
-    def test_it_is_not_listed_while_the_capability_is_off(self):
+    def test_it_is_not_listed_while_the_assistant_is_off(self, assistant_off):
         lines = describe_capabilities(self._context(DOCTOR), frozenset({DOCTOR}))
         assert not any(line.startswith("Medicines") for line in lines)
 
-    def test_it_is_not_listed_for_a_role_that_cannot_use_it(self, medicines_on):
+    def test_it_is_not_listed_for_a_role_that_cannot_use_it(self):
         lines = describe_capabilities(
             self._context(RECEPTIONIST), frozenset({RECEPTIONIST})
         )
@@ -959,28 +959,26 @@ class TestEveryMedicineSuggestionIsAnswerable:
             if suggestion.kind == "medicine"
         ]
 
-    def test_a_doctor_is_offered_medicine_questions(self, medicines_on):
+    def test_a_doctor_is_offered_medicine_questions(self):
         assert self._offered()
 
-    def test_none_are_offered_while_the_capability_is_off(self):
+    def test_none_are_offered_while_the_assistant_is_off(self, assistant_off):
         assert self._offered() == []
 
-    def test_none_are_offered_to_a_role_that_cannot_use_them(self, medicines_on):
+    def test_none_are_offered_to_a_role_that_cannot_use_them(self):
         assert self._offered(role=RECEPTIONIST) == []
 
-    def test_every_offered_question_routes_to_the_medicines_path(self, medicines_on):
+    def test_every_offered_question_routes_to_the_medicines_path(self):
         for suggestion in self._offered():
             assert medicines.is_medicines_question(suggestion.question), (
                 suggestion.question
             )
 
-    def test_every_offered_question_names_a_medicine_the_pack_carries(
-        self, medicines_on
-    ):
+    def test_every_offered_question_names_a_medicine_the_pack_carries(self):
         for suggestion in self._offered():
             assert medicines.find_medicines(suggestion.question), suggestion.question
 
-    def test_every_swahili_version_names_the_same_medicines(self, medicines_on):
+    def test_every_swahili_version_names_the_same_medicines(self):
         """A Swahili suggestion that reaches a different monograph than its
         English twin would answer a different question depending on language."""
         for suggestion in self._offered():

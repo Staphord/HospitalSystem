@@ -7,11 +7,13 @@ only about answering a question in words: deciding whether a question is even
 about medicines, reading which population it concerns, rendering an extract for
 the model, and checking what the model wrote before anybody reads it.
 
-The capability is gated three ways before any of it runs: the operator flag
-`ASSISTANT_MEDICATION_CHECK_ENABLED`, the role matrix in `permissions.py`
-(doctor and pharmacist only, never hospital_admin, never a super admin), and the
-tenant resolved from the verified token. With the flag off, a medicine question
-is refused exactly as it was before this package existed.
+The capability is gated three ways before any of it runs: the deployment
+switch `ASSISTANT_OPERATIONAL_CHAT_ENABLED`, the role matrix in
+`permissions.py` (doctor and pharmacist only, never hospital_admin, never a
+super admin), and the tenant resolved from the verified token. Medicines had a
+switch of its own until the flags collapsed into one; the role matrix is what
+keeps it clinical, and it is unchanged. With the assistant off, a medicine
+question is refused exactly as it was before this package existed.
 """
 
 from shared.medicines.models import (
