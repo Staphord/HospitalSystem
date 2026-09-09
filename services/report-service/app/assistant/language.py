@@ -143,6 +143,12 @@ SWAHILI_TO_ENGLISH: dict[str, tuple[str, ...]] = {
     # Reports and administration
     "ripoti": ("report", "reports"),
     "taarifa": ("report", "reports", "information"),
+    # "ripoti" alone reaches every report entry equally, so the words that say
+    # *which* report have to reach the pack too. Without these, "Ripoti ya
+    # shughuli za uendeshaji iko wapi?" scored the same against all seven and
+    # was answered with whichever ones happened to sort first.
+    "shughuli": ("activity", "activities", "operational"),
+    "uendeshaji": ("operational", "operations"),
     "utawala": ("administration",),
     "mipangilio": ("settings", "administration"),
     # Account, access and passwords
