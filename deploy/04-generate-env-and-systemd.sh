@@ -8,12 +8,14 @@
 #   VPS_IP                  - your VPS's public IP (used for CORS/ALLOWED_ORIGINS)
 #
 # Optional:
-#   GROQ_API_KEY            - turns the Hospital Assistant on, chat and chat
-#                             history together. Left out, both stay off and the
-#                             assistant is simply absent: a launcher that fails
-#                             on every question is worse than no launcher. The
-#                             key is written only into common.env (mode 640,
-#                             owned by the service user) and never into a log.
+#   GROQ_API_KEY            - turns the Hospital Assistant on. Left out, it
+#                             stays off and the assistant is simply absent: no
+#                             launcher is drawn at all, which is better than a
+#                             button that fails on every question. The key is
+#                             written only into common.env (mode 640, owned by
+#                             the service user) and never into a log. It can
+#                             also be set later, without a deploy, from the
+#                             super admin portal at /master/ai-assistant.
 #
 # Example:
 #   sudo PG_PASSWORD=xxxx KEYCLOAK_ADMIN_PASSWORD=yyyy VPS_IP=203.0.113.10 \
@@ -36,9 +38,10 @@ ENV_FILE="${ENV_DIR}/common.env"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# The assistant follows its key: supplied means on, absent means off. Both
-# flags move together, because chat history with no chat stores nothing, and
-# chat with no history is the thing staff report as the assistant forgetting.
+# The assistant follows its key: supplied means on, absent means off. There is
+# one switch now - the per-capability flags are gone, because they let a
+# deployment run the assistant half on, which reached the ward as a microphone
+# button that answered 404 and a chat that forgot everything.
 GROQ_API_KEY="${GROQ_API_KEY:-}"
 if [ -n "${GROQ_API_KEY}" ]; then
   ASSISTANT_ENABLED="true"
@@ -66,7 +69,7 @@ chmod 640 "${ENV_FILE}"
 echo "Wrote ${ENV_FILE}"
 # Whether a key was supplied, never the key itself.
 if [ "${ASSISTANT_ENABLED}" = "true" ]; then
-  echo "Hospital Assistant: chat and chat history enabled (GROQ_API_KEY supplied)"
+  echo "Hospital Assistant: enabled (GROQ_API_KEY supplied)"
 else
   echo "Hospital Assistant: off (no GROQ_API_KEY given); re-run with one to enable"
 fi

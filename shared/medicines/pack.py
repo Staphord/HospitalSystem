@@ -14,8 +14,9 @@ conservative: where a reference would hedge, this hedges, and where it would say
 avoid, this says avoid. It is not a formulary, it is not exhaustive, and it is
 not a substitute for the national guidelines the hospital works to. The
 hospital's own pharmacist must read every entry against those guidelines and
-sign it off before `ASSISTANT_MEDICATION_CHECK_ENABLED` is turned on for real
-patients. Bump `MEDICINES_PACK_VERSION` on every change: it is stamped on the
+sign it off before the assistant is turned on for real patients: there is one
+switch now, `ASSISTANT_OPERATIONAL_CHAT_ENABLED`, and turning it on makes this
+pack answerable to every doctor and pharmacist at once. Bump `MEDICINES_PACK_VERSION` on every change: it is stamped on the
 audit record for every answer, so an answer given last month can be traced to
 the exact text that produced it.
 

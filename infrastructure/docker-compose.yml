@@ -854,28 +854,25 @@ services:
       DEFAULT_HOSPITAL_ID: default-hospital
       TENANT_DB_ENCRYPTION_KEY: ${TENANT_DB_ENCRYPTION_KEY}
       RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672/
-      # Hospital assistant. Off unless an operator opts in: with nothing exported
-      # the flag is false, so the assistant routes return 404, and the key is
-      # empty, so the provider stays the fail-closed NullProvider and no vendor
-      # call is reachable. Supply the key through the deployment secret store.
+      # Hospital assistant. One switch, off unless an operator opts in: with
+      # nothing exported the assistant routes return 404 and the browser never
+      # draws the launcher. Everything else about the assistant - the model,
+      # the key, the timeouts and the limits - is set by the platform super
+      # admin at /master/ai-assistant and stored in the master database, so it
+      # is deliberately absent here. The GROQ_* values below are bootstrap
+      # only, for a database that has no configuration row yet; supply the key
+      # through the deployment secret store, or set it in the portal instead.
+
       ASSISTANT_OPERATIONAL_CHAT_ENABLED: ${ASSISTANT_OPERATIONAL_CHAT_ENABLED:-false}
-      ASSISTANT_PROVIDER: ${ASSISTANT_PROVIDER:-groq}
-      GROQ_API_KEY: ${GROQ_API_KEY:-}
-      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
-      ASSISTANT_VOICE_ENABLED: ${ASSISTANT_VOICE_ENABLED:-false}
-      ASSISTANT_TRANSCRIPTION_MODEL: ${ASSISTANT_TRANSCRIPTION_MODEL:-whisper-large-v3}
-      ASSISTANT_MAX_AUDIO_BYTES: ${ASSISTANT_MAX_AUDIO_BYTES:-5242880}
-      ASSISTANT_MAX_AUDIO_DURATION_MS: ${ASSISTANT_MAX_AUDIO_DURATION_MS:-60000}
-      ASSISTANT_VOICE_TIMEOUT_SECONDS: ${ASSISTANT_VOICE_TIMEOUT_SECONDS:-20}
-      ASSISTANT_CHAT_HISTORY_ENABLED: ${ASSISTANT_CHAT_HISTORY_ENABLED:-false}
-      ASSISTANT_MEDICATION_CHECK_ENABLED: ${ASSISTANT_MEDICATION_CHECK_ENABLED:-false}
       ASSISTANT_MEDICINES_MODEL_FALLBACK_ENABLED: ${ASSISTANT_MEDICINES_MODEL_FALLBACK_ENABLED:-false}
-      ASSISTANT_LIVE_DATA_ENABLED: ${ASSISTANT_LIVE_DATA_ENABLED:-false}
-      ASSISTANT_LIVE_DATA_CACHE_SECONDS: ${ASSISTANT_LIVE_DATA_CACHE_SECONDS:-30}
-      ASSISTANT_LIVE_DATA_TIMEOUT_SECONDS: ${ASSISTANT_LIVE_DATA_TIMEOUT_SECONDS:-3}
-      ASSISTANT_LIVE_DATA_MAX_METRICS: ${ASSISTANT_LIVE_DATA_MAX_METRICS:-3}
-      ASSISTANT_HISTORY_MAX_CONVERSATIONS: ${ASSISTANT_HISTORY_MAX_CONVERSATIONS:-50}
-      ASSISTANT_HISTORY_MAX_MESSAGES: ${ASSISTANT_HISTORY_MAX_MESSAGES:-200}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_BASE_URL: ${GROQ_BASE_URL:-https://api.groq.com/openai/v1}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
+      # Read-only impersonation enforcement. Declared here because it was
+      # previously unreachable in a container: report-service reads it, but
+      # nothing exported it, so it was pinned to its "log" default and could
+      # never be moved to "enforce".
+      READONLY_SCOPE_ENFORCEMENT: ${READONLY_SCOPE_ENFORCEMENT:-log}
     depends_on:
       master-service:
         condition: service_healthy

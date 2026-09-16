@@ -1,3 +1,30 @@
+## Standing rule: re-verify `test_creds.md` after every change
+
+`../test_creds.md` is the QA contract for the AI assistant — the accounts, the roles, the
+seeded figures each question must return, and the guard rails each role must hit. It is
+the file QA runs from, and it fails silently: when it drifts, every line still reads as
+correct while sending the tester after bugs that do not exist, or worse, passing a real
+one.
+
+**After any change to** the assistant or its live-figure catalogue
+(`services/report-service/app/assistant/`), the role permissions
+(`app/assistant/permissions.py`), the seed data, or the Keycloak realm and its users and
+roles — **open `test_creds.md`, check the parts your change touched, correct anything
+that has moved, and update the `Checked` date at the top of it.** Say in your summary
+that you did, or say why nothing needed changing.
+
+Two failure modes it has already had, both worth checking for first:
+
+- **Dates.** Every *today* / *this week* / *this month* figure is filtered against the
+  real clock, and the seed is fixed to 2026-08-31. On any later day they answer 0 and
+  look broken. `test_creds.md` opens with a re-runnable SQL block that rolls the seeded
+  dates forward; run it before trusting a date-scoped figure.
+- **Accounts.** Credentials written into this file went stale and stayed here for
+  months. Verify a login rather than assuming it — the commands are at the bottom of
+  `test_creds.md`.
+
+---
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
@@ -118,8 +145,13 @@ Build multi-tenant hospital management system with FastAPI backend (Keycloak OID
 
 ### Test Users
 - Super Admin: `superadmin` / `superadmin123`
-- Hospital Admin: `hadmin1` / `admin12345`
-- Hospital User: `staff1` / `staff1234`
+- ~~Hospital Admin: `hadmin1` / `admin12345`~~ — **gone.** Verified 2026-09-07: this user
+  does not exist in any realm.
+- ~~Hospital User: `staff1` / `staff1234`~~ — **gone**, same check.
+
+**Current working accounts are in `../test_creds.md`**, not here. That file is kept
+verified against the running stack; this section is a historical record of session 1 and
+must not be used to sign in.
 
 ---
 

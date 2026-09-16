@@ -20,10 +20,11 @@ services:
       - hospital-network
     restart: "no"
 
-  api-gateway:
+  staging-api-gateway:
     build:
       context: ../services/api-gateway
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-api-gateway:latest
     container_name: hospital-staging-api-gateway
     environment:
       - AUTH_SERVICE_URL=http://hospital-staging-auth-service:8001
@@ -46,7 +47,7 @@ services:
     env_file:
       - ../.env
     depends_on:
-      master-service:
+      staging-master-service:
         condition: service_healthy
     volumes:
       - ../shared:/app/shared:ro
@@ -58,17 +59,18 @@ services:
       timeout: 5s
       retries: 5
 
-  auth-service:
+  staging-auth-service:
     build:
       context: ../services/auth-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-auth-service:latest
     container_name: hospital-staging-auth-service
     ports:
       - "127.0.0.1:8101:8001"
     env_file:
       - ../.env
     depends_on:
-      master-service:
+      staging-master-service:
         condition: service_healthy
     volumes:
       - ../migrations:/app/migrations:ro
@@ -81,10 +83,11 @@ services:
       timeout: 5s
       retries: 5
 
-  master-service:
+  staging-master-service:
     build:
       context: ../services/master-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-master-service:latest
     container_name: hospital-staging-master-service
     ports:
       - "127.0.0.1:8102:8002"
@@ -101,10 +104,11 @@ services:
       timeout: 5s
       retries: 5
 
-  patient-service:
+  staging-patient-service:
     build:
       context: ../services/patient-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-patient-service:latest
     container_name: hospital-staging-patient-service
     ports:
       - "127.0.0.1:8105:8005"
@@ -121,10 +125,11 @@ services:
       timeout: 5s
       retries: 5
 
-  visit-service:
+  staging-visit-service:
     build:
       context: ../services/visit-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-visit-service:latest
     container_name: hospital-staging-visit-service
     ports:
       - "127.0.0.1:8106:8006"
@@ -141,10 +146,11 @@ services:
       timeout: 5s
       retries: 5
 
-  reception-service:
+  staging-reception-service:
     build:
       context: ../services/reception-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-reception-service:latest
     container_name: hospital-staging-reception-service
     ports:
       - "127.0.0.1:8110:8010"
@@ -161,10 +167,11 @@ services:
       timeout: 5s
       retries: 5
 
-  triage-service:
+  staging-triage-service:
     build:
       context: ../services/triage-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-triage-service:latest
     container_name: hospital-staging-triage-service
     ports:
       - "127.0.0.1:8111:8011"
@@ -181,10 +188,11 @@ services:
       timeout: 5s
       retries: 5
 
-  consultation-service:
+  staging-consultation-service:
     build:
       context: ../services/consultation-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-consultation-service:latest
     container_name: hospital-staging-consultation-service
     ports:
       - "127.0.0.1:8112:8012"
@@ -201,10 +209,11 @@ services:
       timeout: 5s
       retries: 5
 
-  laboratory-service:
+  staging-laboratory-service:
     build:
       context: ../services/laboratory-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-laboratory-service:latest
     container_name: hospital-staging-laboratory-service
     ports:
       - "127.0.0.1:8113:8013"
@@ -221,10 +230,11 @@ services:
       timeout: 5s
       retries: 5
 
-  radiology-service:
+  staging-radiology-service:
     build:
       context: ../services/radiology-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-radiology-service:latest
     container_name: hospital-staging-radiology-service
     ports:
       - "127.0.0.1:8114:8014"
@@ -241,10 +251,11 @@ services:
       timeout: 5s
       retries: 5
 
-  pharmacy-service:
+  staging-pharmacy-service:
     build:
       context: ../services/pharmacy-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-pharmacy-service:latest
     container_name: hospital-staging-pharmacy-service
     ports:
       - "127.0.0.1:8115:8015"
@@ -261,10 +272,11 @@ services:
       timeout: 5s
       retries: 5
 
-  billing-service:
+  staging-billing-service:
     build:
       context: ../services/billing-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-billing-service:latest
     container_name: hospital-staging-billing-service
     ports:
       - "127.0.0.1:8116:8016"
@@ -281,10 +293,11 @@ services:
       timeout: 5s
       retries: 5
 
-  ward-service:
+  staging-ward-service:
     build:
       context: ../services/ward-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-ward-service:latest
     container_name: hospital-staging-ward-service
     ports:
       - "127.0.0.1:8117:8017"
@@ -301,10 +314,11 @@ services:
       timeout: 5s
       retries: 5
 
-  admin-service:
+  staging-admin-service:
     build:
       context: ../services/admin-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-admin-service:latest
     container_name: hospital-staging-admin-service
     ports:
       - "127.0.0.1:8118:8018"
@@ -321,10 +335,11 @@ services:
       timeout: 5s
       retries: 5
 
-  notification-service:
+  staging-notification-service:
     build:
       context: ../services/notification-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-notification-service:latest
     container_name: hospital-staging-notification-service
     ports:
       - "127.0.0.1:8119:8019"
@@ -341,10 +356,11 @@ services:
       timeout: 5s
       retries: 5
 
-  report-service:
+  staging-report-service:
     build:
       context: ../services/report-service
       dockerfile: Dockerfile
+    image: hospitalsystem-staging-report-service:latest
     container_name: hospital-staging-report-service
     ports:
       - "127.0.0.1:8120:8020"

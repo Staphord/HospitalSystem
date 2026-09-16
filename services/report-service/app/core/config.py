@@ -28,104 +28,48 @@ class Settings(BaseSettings):
 
     audit_db_url: str | None = Field(default=None, alias="AUDIT_DATABASE_URL")
 
-    # Hospital Assistant capability switches. Every capability is independently
-    # gated and defaults to off, so no assistant behaviour can be reached until
-    # its phase has passed its exit gate and an operator turns it on.
+    # ── Hospital Assistant ──────────────────────────────────────────────────
+    #
+    # One switch, and only one. With it off the assistant does not exist for
+    # this deployment: every assistant route answers 404, and the status route
+    # tells the browser not to render the launcher at all, so staff are never
+    # shown a control that cannot work. With it on, every assistant capability
+    # is available, and who reaches each one is decided by role in
+    # app/assistant/permissions.py rather than by configuration.
+    #
+    # The per-capability switches that used to sit here are gone. They existed
+    # to stage a phased rollout that has now landed; keeping them would have
+    # meant a deployment could half-enable the assistant and leave staff with a
+    # launcher whose buttons do nothing.
     assistant_operational_chat_enabled: bool = Field(
         default=False, alias="ASSISTANT_OPERATIONAL_CHAT_ENABLED"
     )
-    assistant_voice_enabled: bool = Field(default=False, alias="ASSISTANT_VOICE_ENABLED")
-    assistant_medication_check_enabled: bool = Field(
-        default=False, alias="ASSISTANT_MEDICATION_CHECK_ENABLED"
-    )
-    assistant_differential_support_enabled: bool = Field(
-        default=False, alias="ASSISTANT_DIFFERENTIAL_SUPPORT_ENABLED"
-    )
-    assistant_realtime_voice_enabled: bool = Field(
-        default=False, alias="ASSISTANT_REALTIME_VOICE_ENABLED"
-    )
-    assistant_chat_history_enabled: bool = Field(
-        default=False, alias="ASSISTANT_CHAT_HISTORY_ENABLED"
-    )
-    assistant_live_data_enabled: bool = Field(
-        default=False, alias="ASSISTANT_LIVE_DATA_ENABLED"
-    )
+
     # Whether a medicine the reference pack does not carry may be answered from
     # the model's own knowledge of pharmacology, clearly marked as unverified.
-    # Off by default and separate from the medicines capability itself, so a
-    # hospital can run the reference and nothing but the reference.
+    #
+    # This is deliberately the one assistant setting still read from the
+    # environment rather than the super admin portal: its safe value depends on
+    # a clinical judgement about the reference pack, so it belongs where a
+    # deployment can set it and track the change in version control, not
+    # somewhere it can be flipped from a browser.
     assistant_medicines_model_fallback_enabled: bool = Field(
         default=False, alias="ASSISTANT_MEDICINES_MODEL_FALLBACK_ENABLED"
     )
 
-    # Model provider. Groq is the approved vendor; the credential is read here on
-    # the server only and is never sent to a browser, a log, or an audit record.
-    assistant_provider: str = Field(default="groq", alias="ASSISTANT_PROVIDER")
+    # Provider bootstrap only.
+    #
+    # These seed the stored assistant configuration the first time the service
+    # starts against a database that has none, so an existing deployment keeps
+    # working across this change. From then on the super admin portal is the
+    # authority: see app/assistant/config_store.py. Prefer leaving the key empty
+    # here and setting it in the portal, which stores it encrypted rather than
+    # leaving it readable in a process environment.
     assistant_groq_api_key: str | None = Field(default=None, alias="GROQ_API_KEY")
     assistant_groq_base_url: str = Field(
         default="https://api.groq.com/openai/v1", alias="GROQ_BASE_URL"
     )
-    assistant_groq_model: str = Field(
-        default="openai/gpt-oss-120b", alias="GROQ_MODEL"
-    )
-    assistant_request_timeout_seconds: float = Field(
-        default=20.0, alias="ASSISTANT_REQUEST_TIMEOUT_SECONDS"
-    )
-    assistant_max_question_chars: int = Field(
-        default=2000, alias="ASSISTANT_MAX_QUESTION_CHARS"
-    )
-
-    # Chat history bounds. These exist so one staff member cannot fill a tenant
-    # database by leaving the panel open: the oldest conversation is dropped
-    # once the ceiling is reached, and a single thread stops growing instead of
-    # growing without limit. History is kept until its owner deletes it, which
-    # is why there is deliberately no expiry setting here to discard it quietly.
-    assistant_history_max_conversations: int = Field(
-        default=50, alias="ASSISTANT_HISTORY_MAX_CONVERSATIONS"
-    )
-    assistant_history_max_messages: int = Field(
-        default=200, alias="ASSISTANT_HISTORY_MAX_MESSAGES"
-    )
-
-    # Push-to-talk voice. Every bound here is enforced on the server; nothing
-    # about a capture is accepted from the browser. whisper-large-v3 is chosen
-    # over the turbo variant because Swahili and code-mixed Swahili/English
-    # speech are a requirement, and turbo trades multilingual accuracy for
-    # speed. Raw audio is never persisted: there is deliberately no retention
-    # setting to turn on.
-    assistant_transcription_model: str = Field(
-        default="whisper-large-v3", alias="ASSISTANT_TRANSCRIPTION_MODEL"
-    )
-    assistant_max_audio_bytes: int = Field(
-        default=5 * 1024 * 1024, alias="ASSISTANT_MAX_AUDIO_BYTES"
-    )
-    assistant_max_audio_duration_ms: int = Field(
-        default=60_000, alias="ASSISTANT_MAX_AUDIO_DURATION_MS"
-    )
-    # Must stay below the API gateway's fixed 30 second proxy timeout, or the
-    # browser sees a gateway error instead of the assistant's own safe refusal.
-    assistant_voice_timeout_seconds: float = Field(
-        default=20.0, alias="ASSISTANT_VOICE_TIMEOUT_SECONDS"
-    )
-
-    # Live operational figures read from the tenant database.
-    #
-    # The cache exists so the chat rate limit cannot be turned into database
-    # load: twenty questions a minute about bed availability must not become
-    # twenty scans. It is deliberately short, and every figure is stamped
-    # with the time it was read so staff can see how fresh it is.
-    #
-    # The statement timeout is applied inside the read-only transaction, so a
-    # pathological query releases its connection instead of holding it.
-    assistant_live_data_cache_seconds: int = Field(
-        default=30, alias="ASSISTANT_LIVE_DATA_CACHE_SECONDS"
-    )
-    assistant_live_data_timeout_seconds: float = Field(
-        default=3.0, alias="ASSISTANT_LIVE_DATA_TIMEOUT_SECONDS"
-    )
-    assistant_live_data_max_metrics: int = Field(
-        default=3, alias="ASSISTANT_LIVE_DATA_MAX_METRICS"
-    )
+    assistant_groq_model: str = Field(default="openai/gpt-oss-120b", alias="GROQ_MODEL")
 
     # Read-only impersonation enforcement.
     #

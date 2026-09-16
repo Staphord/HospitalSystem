@@ -64,8 +64,8 @@ class StubTranscriber:
 
 @pytest.fixture
 def as_user(monkeypatch):
-    """Sign in as a chosen role and tenant, with voice switched on."""
-    monkeypatch.setattr(svc.settings, "assistant_voice_enabled", True, raising=False)
+    """Sign in as a chosen role and tenant, with the assistant switched on."""
+    monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", True)
 
     def _sign_in(**kwargs):
         ctx = FakeTenantContext(**kwargs)
@@ -111,18 +111,16 @@ def post(client, audio=CAPTURE, content_type="audio/webm", params=None):
 
 class TestAuthentication:
     def test_a_request_without_a_token_is_refused(self, client, monkeypatch):
-        monkeypatch.setattr(svc.settings, "assistant_voice_enabled", True, raising=False)
+        monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", True)
         app.dependency_overrides.clear()
         assert post(client).status_code == 401
 
 
-class TestTheCapabilityFlagIsTheKillSwitch:
-    def test_with_voice_off_the_endpoint_is_not_there(
+class TestTheAssistantSwitchIsTheKillSwitch:
+    def test_with_the_assistant_off_the_endpoint_is_not_there(
         self, client, monkeypatch, transcriber
     ):
-        monkeypatch.setattr(
-            svc.settings, "assistant_voice_enabled", False, raising=False
-        )
+        monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", False)
         app.dependency_overrides[get_current_tenant] = lambda: FakeTenantContext()
         try:
             response = post(client)
@@ -132,19 +130,15 @@ class TestTheCapabilityFlagIsTheKillSwitch:
         finally:
             app.dependency_overrides.clear()
 
-    def test_chat_being_on_does_not_switch_voice_on(
+    def test_the_assistant_being_on_switches_voice_on_too(
         self, client, monkeypatch, transcriber
     ):
-        # Independent flags: enabling operational chat must not enable voice.
-        monkeypatch.setattr(
-            svc.settings, "assistant_operational_chat_enabled", True, raising=False
-        )
-        monkeypatch.setattr(
-            svc.settings, "assistant_voice_enabled", False, raising=False
-        )
+        # One switch. Voice used to have its own, which meant a deployment
+        # could show staff a microphone button that answered 404.
+        monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", True)
         app.dependency_overrides[get_current_tenant] = lambda: FakeTenantContext()
         try:
-            assert post(client).status_code == 404
+            assert post(client).status_code == 200
         finally:
             app.dependency_overrides.clear()
 

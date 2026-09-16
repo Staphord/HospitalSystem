@@ -325,12 +325,10 @@ class TestInputValidation:
         assert response.status_code == 422
 
     def test_an_oversized_question_is_refused(
-        self, client, as_user, stub, monkeypatch
+        self, client, as_user, stub, assistant_config
     ):
         as_user()
-        monkeypatch.setattr(
-            svc.settings, "assistant_max_question_chars", 10, raising=False
-        )
+        assistant_config(max_question_chars=10)
         response = client.post(CHAT_URL, json={"question": "a" * 100})
         assert response.status_code == 413
         assert response.json()["code"] == "REQUEST_TOO_LARGE"

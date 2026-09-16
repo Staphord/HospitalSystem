@@ -60,13 +60,8 @@ def tenant_engine():
 
 @pytest.fixture
 def as_user(monkeypatch, tenant_engine):
-    """Sign in as a chosen role, with chat and history both switched on."""
-    monkeypatch.setattr(
-        svc.settings, "assistant_operational_chat_enabled", True, raising=False
-    )
-    monkeypatch.setattr(
-        svc.settings, "assistant_chat_history_enabled", True, raising=False
-    )
+    """Sign in as a chosen role, with the assistant switched on."""
+    monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", True)
     monkeypatch.setattr(svc, "get_provider", lambda: StubProvider())
 
     factory = async_sessionmaker(
@@ -238,31 +233,32 @@ class TestDeletion:
         assert client.delete(f"{CONVERSATIONS_URL}/{missing}").status_code == 400
 
 
-class TestTheCapabilityIsSwitchedIndependently:
-    def test_history_off_leaves_chat_working_and_stores_nothing(
-        self, client, as_user, monkeypatch
-    ):
+class TestHistoryFollowsTheOneAssistantSwitch:
+    """History used to have a switch of its own.
+
+    That combination - chat on, history off - is what "the chat is gone when I
+    come back" looked like from the ward, and it was indistinguishable from a
+    bug. There is one switch now, so an answer is always stored.
+    """
+
+    def test_the_assistant_on_stores_the_exchange(self, client, as_user):
         as_user()
-        monkeypatch.setattr(
-            svc.settings, "assistant_chat_history_enabled", False, raising=False
-        )
 
         body = client.post(CHAT_URL, json=QUESTION).json()
 
         assert body["answer"]
-        assert body["conversation_id"] is None
+        assert body["conversation_id"] is not None
 
-    def test_history_off_hides_the_history_routes_entirely(
+    def test_the_assistant_off_hides_the_history_routes_entirely(
         self, client, as_user, monkeypatch
     ):
         as_user()
-        monkeypatch.setattr(
-            svc.settings, "assistant_chat_history_enabled", False, raising=False
-        )
+        monkeypatch.setattr(svc.settings, "assistant_operational_chat_enabled", False)
 
         # 404, the same answer as a capability that does not exist, so an
         # operator pulling the switch does not advertise that it is there.
         assert client.get(CONVERSATIONS_URL).status_code == 404
+        assert client.post(CHAT_URL, json=QUESTION).status_code == 404
 
     def test_a_super_admin_is_refused_history(self, client, as_user):
         as_user(roles=["super_admin"], is_super_admin=True)

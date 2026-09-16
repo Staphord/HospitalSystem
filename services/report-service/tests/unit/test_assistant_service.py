@@ -207,8 +207,8 @@ class TestTenantIsolation:
 
 
 class TestRequestLimits:
-    def test_an_oversized_question_is_refused(self, monkeypatch, stub):
-        monkeypatch.setattr(svc.settings, "assistant_max_question_chars", 20, raising=False)
+    def test_an_oversized_question_is_refused(self, assistant_config, stub):
+        assistant_config(max_question_chars=20)
         response, audit = ask(question="a" * 50)
         assert isinstance(response, AssistantErrorResponse)
         assert response.code == AssistantErrorCode.REQUEST_TOO_LARGE
@@ -352,15 +352,13 @@ class TestProviderFailures:
         assert "postgres" not in response.message
         assert audit.outcome is AssistantOutcome.PROVIDER_ERROR
 
-    def test_a_hanging_provider_is_cancelled(self, monkeypatch):
+    def test_a_hanging_provider_is_cancelled(self, monkeypatch, assistant_config):
         class Hanging(StubProvider):
             async def complete(self, request):
                 await asyncio.sleep(30)
 
         monkeypatch.setattr(svc, "get_provider", lambda: Hanging())
-        monkeypatch.setattr(
-            svc.settings, "assistant_request_timeout_seconds", 0.01, raising=False
-        )
+        assistant_config(request_timeout_seconds=0.01)
         response, audit = ask()
         assert isinstance(response, AssistantErrorResponse)
         assert response.code == AssistantErrorCode.PROVIDER_TIMEOUT

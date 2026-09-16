@@ -36,6 +36,20 @@ APPROVED_ASSISTANT_ROUTES = {
     # 2026-08-31, who reported that the questions the panel suggested did not
     # work for the role they were signed in as.
     "/api/v1/reports/assistant/suggestions": {"get"},
+    # Availability. Read only, takes nothing, and returns no content: whether
+    # this caller should be offered the launcher at all. It exists so the
+    # floating button is never drawn for a deployment with the assistant
+    # switched off. Change authorised by the user on 2026-09-09, who asked that
+    # the launcher never appear when the switch is off.
+    "/api/v1/reports/assistant/status": {"get"},
+    # Platform configuration, super admin only. Not a staff-facing assistant
+    # route: it sets the model provider and the request bounds for every
+    # hospital at once, which is why it sits under /admin and is refused to
+    # every tenant role including hospital_admin. Change authorised by the user
+    # on 2026-09-09, who asked for the API key and model choice to move out of
+    # the environment and into the super admin portal.
+    "/api/v1/reports/admin/assistant-config": {"get", "put"},
+    "/api/v1/reports/admin/assistant-config/test": {"post"},
 }
 
 APPROVED_ASSISTANT_PATHS = set(APPROVED_ASSISTANT_ROUTES)

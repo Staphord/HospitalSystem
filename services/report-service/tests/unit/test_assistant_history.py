@@ -290,11 +290,9 @@ class TestDeletion:
 
 class TestHistoryCannotGrowWithoutLimit:
     async def test_the_oldest_thread_is_dropped_at_the_ceiling(
-        self, tenant_db, monkeypatch
+        self, tenant_db, assistant_config
     ):
-        monkeypatch.setattr(
-            history.settings, "assistant_history_max_conversations", 3, raising=False
-        )
+        assistant_config(history_max_conversations=3)
 
         created = []
         for index in range(5):
@@ -312,11 +310,9 @@ class TestHistoryCannotGrowWithoutLimit:
         assert created[-1].conversation_id in surviving
 
     async def test_a_dropped_thread_leaves_no_orphaned_messages(
-        self, tenant_db, monkeypatch
+        self, tenant_db, assistant_config
     ):
-        monkeypatch.setattr(
-            history.settings, "assistant_history_max_conversations", 1, raising=False
-        )
+        assistant_config(history_max_conversations=1)
 
         dropped = await _record(tenant_db, question="First")
         await _record(tenant_db, question="Second")
@@ -330,11 +326,9 @@ class TestHistoryCannotGrowWithoutLimit:
         )
         assert remaining.scalar_one() == 0
 
-    async def test_a_full_thread_rolls_into_a_new_one(self, tenant_db, monkeypatch):
+    async def test_a_full_thread_rolls_into_a_new_one(self, tenant_db, assistant_config):
         """The question is still answered; it just starts a fresh thread."""
-        monkeypatch.setattr(
-            history.settings, "assistant_history_max_messages", 2, raising=False
-        )
+        assistant_config(history_max_messages=2)
 
         first = await _record(tenant_db)
 

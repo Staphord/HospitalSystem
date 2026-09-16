@@ -26,6 +26,7 @@ import re
 
 import pytest
 
+from app.assistant.medicines import MONOGRAPHS
 from app.assistant.capabilities import (
     CAPABILITY_AREAS,
     capability_answer,
@@ -83,7 +84,7 @@ def _context(role: str):
 
 @pytest.fixture
 def live_data_on(monkeypatch):
-    monkeypatch.setattr(settings, "assistant_live_data_enabled", True, raising=False)
+    monkeypatch.setattr(settings, "assistant_operational_chat_enabled", True)
 
 
 class TestItRecognisesTheQuestion:
@@ -147,9 +148,16 @@ class TestTheListIsBuiltFromWhatTheCallerCanActuallyReach:
             named = any(line.startswith(area.name) for line in offered)
             if not named:
                 continue
-            reachable = any(
-                e.startswith(area.entry_prefixes) for e in entry_ids
-            ) or any(m.startswith(area.metric_prefixes) for m in metric_ids)
+            if area.requires_capability is not None:
+                # An area backed by a capability rather than by content or
+                # figures. Nothing in the retrieval index or the metric
+                # registry stands behind it, so the oracle is the pack it
+                # actually answers from.
+                reachable = bool(MONOGRAPHS)
+            else:
+                reachable = any(
+                    e.startswith(area.entry_prefixes) for e in entry_ids
+                ) or any(m.startswith(area.metric_prefixes) for m in metric_ids)
             assert reachable, (
                 f"a {role} is told they can use {area.name}, but they can reach "
                 f"nothing behind it"

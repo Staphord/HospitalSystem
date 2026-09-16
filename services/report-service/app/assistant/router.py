@@ -16,6 +16,7 @@ from app.assistant.contracts import (
     AssistantErrorResponse,
     AssistantFeedbackRequest,
     AssistantSuggestion,
+    AssistantStatusResponse,
     AssistantSuggestionsResponse,
     AssistantVoiceTranscriptResponse,
 )
@@ -29,10 +30,17 @@ from app.assistant.service import (
     record_feedback,
     transcribe_capture,
 )
-from app.assistant.flags import AssistantCapability, is_capability_enabled
+from app.assistant.config_store import get_config
+from app.assistant.flags import (
+    AssistantCapability,
+    enabled_capabilities,
+    is_assistant_enabled,
+    is_capability_enabled,
+)
+from app.assistant.permissions import is_role_allowed
+from app.assistant.provider import is_provider_configured
 from app.assistant.retrieval import build_retrieval_context
 from app.assistant.suggestions import build_suggestions
-from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.tenant_auth import TenantContext, get_current_tenant
 from app.db.tenant import tenant_session
@@ -45,10 +53,14 @@ router = APIRouter(tags=["Assistant"])
 # browser through the gateway route that already exists for report-service. No
 # new gateway route and no per-service frontend base URL is introduced.
 
-# Hard ceiling on an upload, taken from configuration so an operator can lower
-# it. It sits below the gateway body limit, so an oversized capture is refused
-# here with an assistant error rather than by shared middleware.
-MAX_UPLOAD_BYTES = int(getattr(settings, "assistant_max_audio_bytes", 5 * 1024 * 1024))
+# Hard ceiling on an upload. Read per request rather than once at import, so a
+# super admin lowering it in the portal takes effect without a restart. It sits
+# below the gateway body limit, so an oversized capture is refused here with an
+# assistant error rather than by shared middleware.
+
+
+def _max_upload_bytes() -> int:
+    return int(get_config().max_audio_bytes)
 
 _STATUS_BY_CODE: dict[AssistantErrorCode, int] = {
     # The capability is switched off for this deployment, so for this caller the
@@ -115,6 +127,52 @@ def _error_response(error: AssistantErrorResponse) -> JSONResponse:
     return JSONResponse(
         status_code=_STATUS_BY_CODE.get(error.code, 400),
         content=error.model_dump(mode="json"),
+    )
+
+
+# Whether to draw the launcher
+#
+# The browser asks this once, before any question exists. With the assistant
+# switched off for this deployment it answers `enabled: false` and the floating
+# launcher is never rendered - rather than rendering a button that answers 404
+# the first time a nurse presses it.
+#
+# Deliberately not gated behind a capability check of its own: a caller has to
+# be able to ask "is this here?" and get an honest no.
+
+
+@router.get(
+    "/assistant/status",
+    response_model=AssistantStatusResponse,
+    summary="Whether the assistant is available to this caller",
+)
+@limiter.limit("60/minute")
+async def assistant_status(
+    request: Request,
+    ctx: TenantContext = Depends(get_current_tenant),
+):
+    caller = build_caller(ctx)
+
+    # The same three refusals the chat itself applies, answered here as absence
+    # rather than as an error: the deployment switch, a read-only impersonation
+    # session, and a caller whose roles reach nothing.
+    if not is_assistant_enabled() or caller.scope == "readonly":
+        return AssistantStatusResponse(enabled=False)
+
+    available = [
+        capability
+        for capability in enabled_capabilities()
+        if is_role_allowed(
+            capability, caller.roles, is_super_admin=caller.is_super_admin
+        )
+    ]
+    if not available:
+        return AssistantStatusResponse(enabled=False)
+
+    return AssistantStatusResponse(
+        enabled=True,
+        capabilities=[capability.value for capability in available],
+        provider_configured=is_provider_configured(),
     )
 
 
@@ -345,7 +403,7 @@ async def assistant_voice_transcribe(
     declared_length = request.headers.get("content-length")
     if declared_length:
         try:
-            if int(declared_length) > MAX_UPLOAD_BYTES:
+            if int(declared_length) > _max_upload_bytes():
                 return _error_response(
                     AssistantErrorResponse(
                         request_id=request_id,

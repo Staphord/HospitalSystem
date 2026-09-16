@@ -82,3 +82,52 @@ async def tenant_db():
         yield session
 
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _clear_assistant_config_cache():
+    """Start every test with no cached assistant configuration.
+
+    get_config() caches for ten seconds so a busy chat does not read the
+    configuration row on every message. In a suite that is a leak: one test
+    setting a credential would decide what the next few tests see. Clearing it
+    on both sides of a test keeps them independent.
+
+    No database is reachable here, so the resolved configuration is always the
+    built-in defaults plus whatever a test has set on `settings` - which is
+    what lets a test simulate a configured provider by setting the bootstrap
+    fields.
+    """
+    from app.assistant import config_store
+
+    config_store.invalidate_cache()
+    yield
+    config_store.invalidate_cache()
+
+
+@pytest.fixture
+def assistant_config():
+    """Put a chosen assistant configuration in force for one test.
+
+    The provider credential, the model, the timeouts and the history bounds are
+    no longer environment variables: they come from a row the platform super
+    admin owns, resolved through app.assistant.config_store. A test that wants
+    "no credential" or "a two message ceiling" seeds the resolved value here
+    rather than setting an environment variable that nothing reads any more.
+
+    Seeding the cache rather than the row is deliberate: it needs no database,
+    and it reaches every module at once, however each one imported get_config.
+    """
+    import time
+    from dataclasses import replace
+
+    from app.assistant import config_store
+
+    def _use(**overrides):
+        config = replace(config_store.AssistantRuntimeConfig(), **overrides)
+        config_store._cached = config
+        config_store._cached_at = time.monotonic()
+        return config
+
+    yield _use
+    config_store.invalidate_cache()
