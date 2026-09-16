@@ -54,6 +54,20 @@ async def login(username: str, password: str, db: Session, realm: str | None = N
     if response.status_code == 429:
         raise BadRequestError("Too many login attempts. Please try again later.")
     if not response.is_success:
+        # Keycloak's password grant returns 400 invalid_grant for a wrong
+        # username/password (not 401) — that's a genuine credentials failure
+        # and must be classified the same as the 401 case above, or callers
+        # that only trust 401 (e.g. the superadmin login brute-force/error
+        # classification) will treat every bad password as an infra outage.
+        try:
+            error_body = response.json()
+        except ValueError:
+            error_body = {}
+        if response.status_code == 400 and error_body.get("error") == "invalid_grant":
+            description = error_body.get("error_description", "")
+            if "not fully set up" in description.lower():
+                raise UnauthorizedError(description)
+            raise UnauthorizedError("Invalid username or password")
         detail = response.text or "Authentication service unavailable"
         raise BadRequestError(f"Keycloak error ({response.status_code}): {detail}")
 
