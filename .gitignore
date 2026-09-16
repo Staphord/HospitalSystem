@@ -34,3 +34,4 @@ graphify-out/
 # Deployment state directory
 .deploy-state/
 
+keycloak/migration-backup-*/
