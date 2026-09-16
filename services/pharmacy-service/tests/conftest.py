@@ -1,3 +1,19 @@
+"""Pytest conftest setup for pharmacy-service.
+
+`shared/` is put on the path before anything imports the app. At runtime the
+deploy script symlinks the repository's `shared/` into each service that imports
+it, and docker-compose mounts it at the same place; neither exists when pytest
+runs from inside the service, so the repository root goes on the path here - the
+same directory, reached the way a developer reaches it.
+"""
+
+import os
+import sys
+
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import asyncio
 from datetime import date, datetime, timezone
 from uuid import UUID

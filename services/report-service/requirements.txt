@@ -11,6 +11,8 @@ slowapi
 redis
 psycopg2-binary
 cryptography
-pytest
-pytest-asyncio
+pytest==9.1.1
+pytest-asyncio==1.4.0
+# Test-only: the in-memory tenant database the assistant history suite builds.
+aiosqlite
 aio-pika

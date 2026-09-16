@@ -1,3 +1,30 @@
+## Standing rule: re-verify `test_creds.md` after every change
+
+`../test_creds.md` is the QA contract for the AI assistant — the accounts, the roles, the
+seeded figures each question must return, and the guard rails each role must hit. It is
+the file QA runs from, and it fails silently: when it drifts, every line still reads as
+correct while sending the tester after bugs that do not exist, or worse, passing a real
+one.
+
+**After any change to** the assistant or its live-figure catalogue
+(`services/report-service/app/assistant/`), the role permissions
+(`app/assistant/permissions.py`), the seed data, or the Keycloak realm and its users and
+roles — **open `test_creds.md`, check the parts your change touched, correct anything
+that has moved, and update the `Checked` date at the top of it.** Say in your summary
+that you did, or say why nothing needed changing.
+
+Two failure modes it has already had, both worth checking for first:
+
+- **Dates.** Every *today* / *this week* / *this month* figure is filtered against the
+  real clock, and the seed is fixed to 2026-08-31. On any later day they answer 0 and
+  look broken. `test_creds.md` opens with a re-runnable SQL block that rolls the seeded
+  dates forward; run it before trusting a date-scoped figure.
+- **Accounts.** Credentials written into this file went stale and stayed here for
+  months. Verify a login rather than assuming it — the commands are at the bottom of
+  `test_creds.md`.
+
+---
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
@@ -10,6 +37,54 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Changing code you did not write
+
+Only change what you wrote yourself. Confine every edit to the code your own
+task added.
+
+When the work seems to need a change to existing code - refactoring a shared
+function, altering an existing prompt, reordering existing control flow,
+changing a component someone else owns, editing a shared document - stop before
+making it and bring it to the user. Give them:
+
+- what the change is, and what would behave differently after it,
+- who wrote the code originally (`git log -1 --format='%h %an %ad' -- <path>`),
+- what breaks or is at risk if it goes in,
+- a recommendation, with the alternatives, including doing nothing.
+
+Then wait for their decision. Additive changes inside your own feature - a new
+module, a new setting, a new row in a table you introduced - do not need this.
+Changing the behaviour of something that already worked does.
+
+The reason is ownership, not caution: this repository has several authors, and a
+behaviour-preserving refactor still lands in someone else's file and someone
+else's review. They should get to decide.
+
+### Trace what depends on it before you propose an option
+
+Do not present an option until you know what else it touches. Assess each
+candidate change against the whole codebase, not just the file in front of you,
+and say what you found:
+
+- Who calls it. `grep -rn "<name>" --include=*.py` across `services/`, and the
+  same for the frontend. This repository copies modules between services rather
+  than sharing them, so the same function often exists in a dozen places and
+  fixing one copy fixes only that one.
+- What the callers assume. A behaviour-preserving refactor is only preserving
+  for the behaviour someone thought to check. Look at the tests that cover the
+  callers, not only the tests for the thing you are changing.
+- What reads the same data. A shared tenant table is declared as an ORM model in
+  six or more services; changing what a column means affects all of them.
+- Whether a flag actually contains the change. If the new path is reachable only
+  behind a switched-off flag, say so - that is the difference between a risky
+  change and a safe one, and it is usually the deciding fact.
+
+Then state the blast radius plainly: what breaks, what merely changes shape, and
+what is provably untouched. An option whose consequences you have not traced is
+not ready to recommend.
+
+---
 
 ## Context Summary (Session 1)
 
@@ -70,8 +145,13 @@ Build multi-tenant hospital management system with FastAPI backend (Keycloak OID
 
 ### Test Users
 - Super Admin: `superadmin` / `superadmin123`
-- Hospital Admin: `hadmin1` / `admin12345`
-- Hospital User: `staff1` / `staff1234`
+- ~~Hospital Admin: `hadmin1` / `admin12345`~~ — **gone.** Verified 2026-09-07: this user
+  does not exist in any realm.
+- ~~Hospital User: `staff1` / `staff1234`~~ — **gone**, same check.
+
+**Current working accounts are in `../test_creds.md`**, not here. That file is kept
+verified against the running stack; this section is a historical record of session 1 and
+must not be used to sign in.
 
 ---
 
@@ -245,3 +325,37 @@ Extend the Hospital Flow Streamlit portal with tenant subscription visibility, u
 - `services/api-gateway/app/proxy.py` — Route `/api/v1/tenant` to master-service
 - `streamlit_app/app.py` — User suspend/resume, terminate button, subscription page, lockout screen, user-list error feedback, proactive subscription status check on dashboard load
 - `scripts/migrate_existing_tenants.py` — Utility to run tenant migrations on all existing tenant DBs
+
+---
+
+## Assistant content pack: naming screens
+
+`services/report-service/app/assistant/content/entries.py` tells staff where to go
+("Reports, then Patient reports (/admin/reports/patients)"). Those screens live in
+`frontend-hospital`, behind a role check this repo cannot see. When the two drift, a
+user is told to open a page that is not in their menu.
+
+The bridge is **`frontend-hospital/nav-manifest.json`** - generated from the rendered
+sidebar by `npm run nav:manifest` and committed. It maps every menu path to the roles
+whose sidebar shows it.
+
+When adding or editing a content entry:
+
+- **Use a real path.** Every `/path` in an entry's `location` or `body` must appear in
+  the manifest.
+- **Match the role scope to the menu.** Every role that can retrieve the entry must
+  have that screen in the manifest. Widening `roles` on an entry without widening the
+  frontend menu is what caused the original bug.
+- **Use the manifest's `label`** as the screen name in prose, so the words in the
+  answer match the words on screen.
+
+`tests/unit/test_assistant_content_locations.py` enforces all three. It drives the real
+`build_retrieval_context` / `visible_entries` path, so it checks what a role would
+actually be shown, department and approval filters included. It skips with a loud
+message if the frontend is not checked out alongside this repo; set
+`NAV_MANIFEST_PATH` to point at the manifest elsewhere (CI should set it).
+
+The reverse direction is guarded in the frontend by
+`src/app/layout/__tests__/navContract.test.tsx`, which fails if a nav item is offered
+to a role the router rejects, if a page has no way to reach it, or if the sidebar drops
+an item a role is permitted to see.
